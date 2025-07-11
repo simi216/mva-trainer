@@ -18,7 +18,105 @@ from copy import deepcopy
 
 
 class RegressionBaseModel:
+    """
+    RegressionBaseModel is a base class for building and training regression models with support for custom data preprocessing, 
+    model saving/loading, and evaluation.
+    Attributes:
+        model (keras.Model): The Keras model instance.
+        X_train (np.ndarray): Training input data.
+        X_test (np.ndarray): Testing input data.
+        y_train (np.ndarray): Training target data.
+        y_test (np.ndarray): Testing target data.
+        history (keras.callbacks.History): Training history object.
+        sample_weights (np.ndarray): Sample weights for training.
+        class_weights (np.ndarray): Class weights for training.
+        max_leptons (int): Maximum number of leptons in the data.
+        max_jets (int): Maximum number of jets in the data.
+        global_features (list): List of global features in the data.
+        n_jets (int): Number of jet features.
+        n_leptons (int): Number of lepton features.
+        n_global (int): Number of global features.
+        n_regression_targets (int): Number of regression targets.
+        padding_value (float): Padding value used in the data.
+        combined_features (list): List of combined features.
+        n_combined (int): Number of combined features.
+        feature_index_dict (dict): Dictionary mapping feature names to indices.
+        data_preprocessor (DataPreprocessor): Data preprocessor instance.
+    Methods:
+        __init__(data_preprocessor):
+            Initializes the RegressionBaseModel with a data preprocessor.
+        load_data(X_train=None, y_train=None, X_test=None, y_test=None):
+            Loads the training and testing data into the model.
+        save_model(file_path="model.keras"):
+            Saves the model to the specified file path.
+        load_model(file_path):
+            Loads a model from the specified file path.
+        build_model():
+            Abstract method to build the model architecture. Must be implemented by subclasses.
+        plot_history():
+            Plots the training history of the model.
+        compile_model(lambda_excl=1, *args, **kwargs):
+            Compiles the model with specified loss functions and additional arguments.
+        train_model(epochs=10, batch_size=32, weight=None, *args, **kwargs):
+            Trains the model with the provided data and parameters.
+        compute_sample_weights(alpha=0.5):
+            Computes sample weights for training based on data distribution.
+        scatter_plot(bins=30, fig=None, ax=None):
+            Generates a scatter plot comparing predicted and true regression values.
+        confusion_matrix():
+            Generates a confusion matrix for assignment predictions.
+        make_prediction(data, exclusive=True):
+            Makes predictions using the model for the given data.
+        evaluate_accuracy(data=None, truth=None, exclusive=True):
+            Evaluates the accuracy of the model's predictions.
+        compute_assignment_accuracy(truth, prediction):
+            Computes the accuracy of assignment predictions.
+        compute_regression_accuracy(truth, prediction):
+            Computes the regression accuracy as the mean absolute error.
+        plot_confusion_matrix(n_bootstrap=100, exclusive=True):
+            Plots a confusion matrix with bootstrap confidence intervals.
+        get_confusion_matrix(exclusive=True):
+            Computes confusion matrices for lepton assignments.
+        plot_external_confusion_matrix(jet_matcher_indices, truth_index, max_jets, n_bootstrap=100, sample_weight=None):
+            Plots an external confusion matrix with bootstrap confidence intervals.
+        compute_binned_regression_accuracy(truth, prediction, feature_data, bins=20, xlims=None, event_weights=None):
+            Computes binned regression accuracy for a given feature.
+        get_binned_regression_accuracy(feature_name, data_type="non_training", bins=20, xlims=None):
+            Computes binned accuracy for a specific feature.
+        compute_permutation_importance(shuffle_number=1):
+            Computes permutation importance for each feature in the model.
+        get_outputs():
+            Returns the outputs of the model, including predictions and ground truth.
+    """
     def __init__(self, data_preprocessor: DataPreprocessor):
+        """
+        Initializes the RegressionBaseModel with the given data preprocessor.
+        Args:
+            data_preprocessor (DataPreprocessor): An instance of DataPreprocessor 
+                containing the preprocessed data and metadata required for the model.
+        Attributes:
+            model (keras.Model): The Keras model instance, initialized as None.
+            X_train (np.ndarray): Training feature data, initialized as None.
+            X_test (np.ndarray): Testing feature data, initialized as None.
+            y_train (np.ndarray): Training target data, initialized as None.
+            y_test (np.ndarray): Testing target data, initialized as None.
+            history (keras.callbacks.History): Training history, initialized as None.
+            sample_weights (np.ndarray): Sample weights for training, initialized as None.
+            class_weights (np.ndarray): Class weights for training, initialized as None.
+            max_leptons (int): Maximum number of leptons from the data preprocessor.
+            max_jets (int): Maximum number of jets from the data preprocessor.
+            global_features (list): List of global features from the data preprocessor.
+            n_jets (int): Number of jet features from the data preprocessor.
+            n_leptons (int): Number of lepton features from the data preprocessor.
+            n_global (int): Number of global features, or 0 if none are provided.
+            n_regression_targets (int): Number of regression targets from the data preprocessor.
+            padding_value (float): Padding value used in the data preprocessor.
+            combined_features (list): List of combined features from the data preprocessor.
+            n_combined (int): Number of combined features from the data preprocessor.
+            feature_index_dict (dict): Dictionary mapping feature names to indices.
+            data_preprocessor (DataPreprocessor): The data preprocessor instance.
+        """
+
         self.model: keras.Model = None
         self.X_train: np.ndarray = None
         self.X_test: np.ndarray = None
@@ -46,8 +144,22 @@ class RegressionBaseModel:
 
     def load_data(self, X_train=None, y_train=None, X_test=None, y_test=None):
         """
-        Load the data into the model.
+        Loads training and testing data into the model. 
+        If all data arguments (X_train, y_train, X_test, y_test) are provided, 
+        they will be directly assigned to the corresponding attributes. 
+        Otherwise, the data will be fetched using the `data_preprocessor.get_data()` method.
+        Args:
+            X_train (array-like, optional): Training feature data. Defaults to None.
+            y_train (array-like, optional): Training target data. Defaults to None.
+            X_test (array-like, optional): Testing feature data. Defaults to None.
+            y_test (array-like, optional): Testing target data. Defaults to None.
+        Attributes:
+            X_train (array-like): Training feature data.
+            y_train (array-like): Training target data.
+            X_test (array-like): Testing feature data.
+            y_test (array-like): Testing target data.
         """
+        
         if (
             X_train is not None
             and X_test is not None
@@ -64,6 +176,25 @@ class RegressionBaseModel:
             )
 
     def save_model(self, file_path="model.keras"):
+        """
+        Saves the current model to the specified file path in the `.keras` format and 
+        writes the model's structure to a separate text file.
+        Args:
+            file_path (str): The file path where the model will be saved. 
+                             Must end with `.keras`. Defaults to "model.keras".
+        Raises:
+            ValueError: If the model has not been built using the `build_model()` method.
+            ValueError: If the provided file path does not end with `.keras`.
+        Side Effects:
+            - Saves the model to the specified file path.
+            - Writes the model's structure to a text file with the same name as the 
+              model file but with `_structure.txt` appended.
+        Example:
+            >>> model.save_model("my_model.keras")
+            This will save the model to "my_model.keras" and write the structure to 
+            "my_model_structure.txt".
+        """
+
         if self.model is None:
             raise ValueError(
                 "Model not built. Please build the model using build_model() method."
@@ -82,6 +213,20 @@ class RegressionBaseModel:
         self.model.summary(print_fn=myprint)
 
     def load_model(self, file_path):
+        """
+        Load a pre-trained model from the specified file path.
+        This method loads a Keras model from the given file path and assigns it 
+        to the `self.model` attribute. It uses the `CustomObjects` dictionary 
+        to ensure any custom layers, loss functions, or other components are 
+        properly loaded.
+        Args:
+            file_path (str): The path to the file containing the saved Keras model.
+        Returns:
+            None
+        Raises:
+            OSError: If the file at `file_path` does not exist or cannot be loaded.
+        """
+
         self.model = keras.models.load_model(
             file_path, custom_objects=CustomObjects.__dict__
         )
@@ -90,11 +235,36 @@ class RegressionBaseModel:
     def build_model(self):
         """
         Build the model architecture.
-        This method should be implemented by subclasses.
+        This method should be implemented by subclasses to define the specific
+        architecture and configuration of the model. It is intended to be 
+        overridden in derived classes.
+        Raises:
+            NotImplementedError: If the method is not implemented in a subclass.
         """
+        
         raise NotImplementedError("Subclasses should implement this method.")
 
     def plot_history(self):
+        """
+        Plots the training and validation history of the model.
+        This method visualizes the training and validation metrics stored in the 
+        `self.history` object. It identifies metrics that have both training and 
+        validation values and creates subplots for each of them.
+        Returns:
+            tuple: A tuple containing the matplotlib figure and axes objects 
+                   (fig, ax) used for the plots.
+        Notes:
+            - The method assumes that `self.history` is an object with a `history` 
+              attribute, which is a dictionary containing metric names as keys and 
+              lists of values as values.
+            - Metrics with "accuracy" in their name are plotted with a linear scale 
+              on the y-axis, while others are plotted with a logarithmic scale.
+            - If no training history is available (`self.history` is None), the 
+              method prints a message and returns without plotting.
+        Example:
+            >>> model.plot_history()
+        """
+
         if self.history is None:
             print("No training history available.")
             return
@@ -116,6 +286,23 @@ class RegressionBaseModel:
         return fig, ax
 
     def compile_model(self, lambda_excl=1, *args, **kwargs):
+        """
+        Compiles the model with specified loss functions and additional arguments.
+        This method sets up the model for training by configuring the loss functions
+        for the outputs and passing any additional arguments to the `compile` method
+        of the model.
+        Args:
+            lambda_excl (float, optional): A regularization parameter for the combined loss.
+            Defaults to 1.
+            *args: Variable length argument list to be passed to the `compile` method.
+            **kwargs: Arbitrary keyword arguments to be passed to the `compile` method.
+        Notes:
+            - The `assignment_output` uses a custom loss function defined in `CustomObjects.AssignmentLoss`.
+            - The `regression_output` uses a custom loss function defined in `CustomObjects.RegressionLoss`.
+            - The commented-out line indicates an alternative combined loss function
+              (`CustomObjects.CombinedLoss`) that can be used with the `lambda_excl` parameter.
+        """
+
         self.model.compile(
             loss={
                 "assignment_output": CustomObjects.AssignmentLoss(),
@@ -127,6 +314,28 @@ class RegressionBaseModel:
         )
 
     def train_model(self, epochs=10, batch_size=32, weight=None, *args, **kwargs):
+        """
+        Trains the model using the provided training data and parameters.
+        Args:
+            epochs (int, optional): Number of epochs to train the model. Defaults to 10.
+            batch_size (int, optional): Number of samples per gradient update. Defaults to 32.
+            weight (str, optional): Type of weighting to apply. Can be 'sample' or 'class'. 
+                If None, no weighting is applied. Defaults to None.
+            *args: Additional positional arguments to pass to the `fit` method of the model.
+            **kwargs: Additional keyword arguments to pass to the `fit` method of the model.
+        Raises:
+            ValueError: If the model is not built or the training data is not loaded.
+            ValueError: If an invalid weight type is provided.
+        Notes:
+            - The method checks if the model and training data are prepared before training.
+            - If `weight` is specified, it computes either sample weights or class weights 
+              and passes them to the `fit` method.
+            - Handles both cases where global features are present or absent in the data.
+            - The training history is stored in `self.history`.
+        Returns:
+            None
+        """
+
         if self.model is None:
             raise ValueError(
                 "Model not built. Please build the model using build_model() method."
@@ -185,6 +394,31 @@ class RegressionBaseModel:
         print("Training completed.")
 
     def compute_sample_weights(self, alpha=0.5):
+        """
+        Compute sample weights for training based on event weights, jet numbers, 
+        and regression target distributions.
+        This method calculates two types of sample weights:
+        - Assignment sample weights: Adjusted based on the number of jets in each sample 
+          and normalized by the mean.
+        - Regression sample weights: Adjusted based on the distribution of regression 
+          targets using histogram binning and normalized by the mean.
+        Args:
+            alpha (float, optional): A scaling factor to control the influence of 
+                sample frequency on the weights. Default is 0.5.
+        Attributes:
+            self.sample_weights (dict): A dictionary containing:
+                - "assignment_output": The computed assignment sample weights.
+                - "regression_output": The computed regression sample weights.
+        Notes:
+            - The method assumes that `self.X_train` contains the training data with 
+              keys "jet" and "event_weight".
+            - The `self.y_train` attribute is expected to contain the regression targets.
+            - The `self.padding_value` is used to identify padded jet entries.
+            - The `self.max_jets` attribute specifies the maximum number of jets.
+            - The `self.n_regression_targets` attribute specifies the number of regression 
+              targets.
+        """
+
         bins = 5
         jet_numbers = np.sum(
             ~np.all(self.X_train["jet"] == self.padding_value, axis=(-1)), axis=-1
@@ -236,6 +470,31 @@ class RegressionBaseModel:
         }
 
     def scatter_plot(self, bins=30, fig=None, ax=None):
+        """
+        Generates a scatter plot comparing the predicted regression values to the true values.
+        This method creates a 2D histogram (heatmap) for each regression target, showing the 
+        relationship between the predicted and true values. The histogram is normalized along 
+        the true value axis.
+        Args:
+            bins (int, optional): Number of bins to use for the 2D histogram. Defaults to 30.
+            fig (matplotlib.figure.Figure, optional): Existing matplotlib figure to use. 
+                If None, a new figure is created. Defaults to None.
+            ax (matplotlib.axes.Axes or list of Axes, optional): Existing matplotlib axes to use. 
+                If None, new axes are created. Defaults to None.
+        Returns:
+            tuple: A tuple containing:
+                - fig (matplotlib.figure.Figure): The matplotlib figure object.
+                - ax (list of matplotlib.axes.Axes): A list of matplotlib axes objects, one for each 
+                  regression target.
+        Notes:
+            - The method assumes that the model has been trained and `self.model.predict` can 
+              generate predictions.
+            - The `self.X_test` dictionary should contain the keys "jet", "lepton", and "global" 
+              for input features, and optionally "event_weight" for weighting the histogram.
+            - The `self.y_test` should contain the true regression values.
+            - The number of regression targets is determined by `self.n_regression_targets`.
+        """
+
         y_pred = self.model.predict(
             [self.X_test["jet"], self.X_test["lepton"], self.X_test["global"]]
         )
@@ -278,6 +537,24 @@ class RegressionBaseModel:
         return fig, ax
 
     def confusion_matrix(self):
+        """
+        Generates and visualizes the confusion matrix for the model's predictions.
+        This method computes the confusion matrix by comparing the predicted 
+        class labels with the true class labels from the test dataset. It then 
+        visualizes the confusion matrix as a heatmap using Matplotlib and Seaborn.
+        Returns:
+            tuple: A tuple containing:
+                - fig (matplotlib.figure.Figure): The Matplotlib figure object for the heatmap.
+                - ax (matplotlib.axes._subplots.AxesSubplot): The Matplotlib axes object for the heatmap.
+        Notes:
+            - The method assumes that the model has been trained and that the 
+              test dataset (`self.X_test`) contains the necessary keys: "jet", 
+              "lepton", "global", and "labels".
+            - The predictions are expected to be in the form of a dictionary 
+              with a key "assignment_output" containing the predicted probabilities 
+              or logits for each class.
+        """
+
         y_pred = self.model.predict(
             [self.X_test["jet"], self.X_test["lepton"], self.X_test["global"]]
         )
@@ -299,6 +576,31 @@ class RegressionBaseModel:
         return fig, ax
 
     def make_prediction(self, data, exclusive=True):
+        """
+        Make predictions using the trained model.
+        This method takes input data and generates predictions for assignments and 
+        regression outputs. It supports both exclusive and non-exclusive assignment 
+        modes. Exclusive mode ensures that each jet is assigned to at most one lepton 
+        and vice versa.
+        Args:
+            data (dict): A dictionary containing input data with keys:
+                - "jet": Jet features.
+                - "lepton": Lepton features.
+                - "global" (optional): Global features, if applicable.
+            exclusive (bool, optional): If True, ensures exclusive assignments 
+                between jets and leptons. Defaults to True.
+        Returns:
+            tuple: A tuple containing:
+                - one_hot (numpy.ndarray): A one-hot encoded array of shape 
+                  (batch_size, max_jets, 2) representing the assignment predictions.
+                - regression (numpy.ndarray): An array of regression predictions.
+        Raises:
+            ValueError: If the model is not built before calling this method.
+        Warnings:
+            Prints a warning if the regression output appears to be constant, 
+            indicating potential issues with the model or data.
+        """
+
         if self.model is None:
             raise ValueError(
                 "Model not built. Please build the model using build_model() method."
@@ -346,6 +648,37 @@ class RegressionBaseModel:
         return one_hot, regression
 
     def evaluate_accuracy(self, data=None, truth=None, exclusive=True):
+        """
+        Evaluate the accuracy of the model's predictions.
+        This method calculates the assignment accuracy and regression accuracy
+        based on the provided data and truth values. If no data or truth values
+        are provided, it uses the test data stored in the model.
+        Args:
+            data (dict, optional): A dictionary containing the input data with the
+                following keys:
+                - 'jet': Jet features.
+                - 'lepton': Lepton features.
+                - 'labels': Ground truth labels for assignment.
+                - 'event_weight' (optional): Event weights for the data.
+                - 'global' (optional): Global features, required if global features
+                  are enabled in the model.
+            truth (array-like, optional): Ground truth values for regression. If not
+                provided, the method uses `self.y_test`.
+            exclusive (bool, optional): Whether to use exclusive predictions. Defaults
+                to True.
+        Returns:
+            tuple: A tuple containing:
+                - Assignment accuracy metrics (as returned by `compute_assignment_accuracy`).
+                - Regression accuracy metric (as returned by `compute_regression_accuracy`).
+        Raises:
+            ValueError: If only one of `data` or `truth` is provided.
+            ValueError: If no test data is available and neither `data` nor `truth` is provided.
+            ValueError: If the model has not been built.
+            ValueError: If required keys ('jet', 'lepton', 'labels') are missing in `data`.
+            ValueError: If 'global' key is missing in `data` when global features are enabled.
+            ValueError: If the shapes of assignment predictions and truth values do not match.
+        """
+
         if (truth is None) ^ (data is None):
             raise ValueError("Either both data and truth must be provided or neither.")
         if data is None and truth is None:
@@ -387,6 +720,23 @@ class RegressionBaseModel:
 
     @staticmethod
     def compute_assignment_accuracy(truth, prediction):
+        """
+        Compute the accuracy of assignments for two predicted labels compared to their ground truth values.
+        Parameters:
+        ----------
+        truth : numpy.ndarray
+            A 2D array where each row contains the ground truth labels for two elements (e.g., [lep_1_truth, lep_2_truth]).
+        prediction : numpy.ndarray
+            A 2D array where each row contains the predicted labels for two elements (e.g., [lep_1_pred, lep_2_pred]).
+        Returns:
+        -------
+        tuple
+            A tuple containing three accuracy metrics:
+            - lep_1_accuracy (float): The accuracy of the first element's predictions.
+            - lep_2_accuracy (float): The accuracy of the second element's predictions.
+            - combined_accuracy (float): The accuracy of both elements being correctly predicted simultaneously.
+        """
+
         lep_1_truth, lep_2_truth = truth[:, 0], truth[:, 1]
         lep_1_pred, lep_2_pred = prediction[:, 0], prediction[:, 1]
 
@@ -401,11 +751,39 @@ class RegressionBaseModel:
     @staticmethod
     def compute_regression_accuracy(truth, prediction):
         """
-        Compute the regression accuracy as the mean absolute error.
+        Compute the regression accuracy as the mean absolute percentage error (MAPE).
+        Parameters:
+            truth (array-like): The ground truth values.
+            prediction (array-like): The predicted values.
+        Returns:
+            float: The mean absolute percentage error (MAPE) computed as 
+                   the mean of the absolute differences between truth and 
+                   prediction, normalized by the truth values.
         """
+        
         return np.mean(np.abs(truth - prediction) / truth, axis=0)
 
     def plot_confusion_matrix(self, n_bootstrap=100, exclusive=True):
+        """
+        Plots the confusion matrix for the model's predictions on the test dataset.
+        Parameters:
+        -----------
+        n_bootstrap : int, optional
+            The number of bootstrap resampling iterations to perform for uncertainty estimation. 
+            Default is 100.
+        exclusive : bool, optional
+            If True, ensures exclusive assignment during prediction. Default is True.
+        Returns:
+        --------
+        matplotlib.figure.Figure
+            A figure object representing the confusion matrix plot.
+        Notes:
+        ------
+        - This method uses the `make_prediction` method to generate predictions for the test dataset.
+        - The confusion matrix is generated using the `plot_external_confusion_matrix` method.
+        - The `event_weight` column in `X_test` is used as sample weights for the confusion matrix.
+        """
+        
         assignment_pred, _ = self.make_prediction(self.X_test, exclusive=exclusive)
         truth_index = np.argmax(self.y_test, axis=1)
         max_jets = self.max_jets
@@ -418,6 +796,23 @@ class RegressionBaseModel:
         )
 
     def get_confusion_matrix(self, exclusive=True):
+        """
+        Computes the confusion matrices for two lepton assignments based on the model's predictions.
+        Args:
+            exclusive (bool, optional): If True, ensures exclusive assignment of predictions. 
+                Defaults to True.
+        Returns:
+            tuple: A tuple containing two confusion matrices:
+                - lep_1_confusion_matrix (numpy.ndarray): Confusion matrix for the first lepton.
+                - lep_2_confusion_matrix (numpy.ndarray): Confusion matrix for the second lepton.
+        Notes:
+            - The confusion matrices are normalized such that each row sums to 1.
+            - The `self.X_test` dictionary is expected to contain the following keys:
+                - "labels": Ground truth labels for the test data.
+                - "event_weight": Weights for each event in the test data.
+            - The `self.max_jets` attribute defines the number of possible jet assignments.
+        """
+
         assignment_pred, _ = self.make_prediction(self.X_test, exclusive=exclusive)
         jet_matcher_indices = np.argmax(assignment_pred, axis=1)
 
@@ -461,6 +856,40 @@ class RegressionBaseModel:
         n_bootstrap=100,
         sample_weight=None,
     ):
+        """
+        Plots confusion matrices for two leptons with bootstrap resampling.
+        This function generates confusion matrices for two leptons (lepton 1 and lepton 2)
+        using bootstrap resampling. It calculates the mean and standard deviation of the
+        confusion matrices over multiple bootstrap samples and visualizes them using heatmaps.
+        Parameters:
+        -----------
+        jet_matcher_indices : numpy.ndarray
+            Array of predicted jet indices for each lepton. Shape should be (n_samples, 2),
+            where the second dimension corresponds to the two leptons.
+        truth_index : numpy.ndarray
+            Array of true jet indices for each lepton. Shape should be (n_samples, 2),
+            where the second dimension corresponds to the two leptons.
+        max_jets : int
+            The maximum number of jet categories (labels) to consider in the confusion matrix.
+        n_bootstrap : int, optional, default=100
+            The number of bootstrap resampling iterations to perform.
+        sample_weight : numpy.ndarray, optional, default=None
+            Array of sample weights for each data point. If None, all samples are weighted equally.
+        Returns:
+        --------
+        fig : matplotlib.figure.Figure
+            The matplotlib figure object containing the confusion matrix plots.
+        ax : numpy.ndarray of matplotlib.axes._subplots.AxesSubplot
+            Array of axes objects corresponding to the two confusion matrix plots.
+        Notes:
+        ------
+        - The function normalizes the confusion matrices by row (true label) to represent
+          proportions.
+        - The baseline confusion matrices (without resampling) are also plotted for comparison.
+        - Standard deviations of the bootstrap confusion matrices are annotated on the heatmaps
+          in red text.
+        """
+
         bootstrap_confusion_lep_1 = np.zeros((n_bootstrap, max_jets, max_jets))
         bootstrap_confusion_lep_2 = np.zeros((n_bootstrap, max_jets, max_jets))
 
@@ -584,6 +1013,33 @@ class RegressionBaseModel:
         xlims=None,
         event_weights: np.ndarray = None,
     ):
+        """
+        Compute the binned regression accuracy for a given set of predictions and truth values.
+        This function calculates the binned weighted resolution, mean deviation, and accuracy 
+        for regression predictions, grouped by bins of a specified feature. It also computes 
+        the histogram of the feature data.
+        Args:
+            truth (np.ndarray): Ground truth values. Shape: (n_samples, n_features).
+            prediction (np.ndarray): Predicted values. Shape: (n_samples, n_features).
+            feature_data (np.ndarray): Feature data used for binning. Shape: (n_samples,).
+            bins (int or sequence, optional): Number of bins or bin edges for the histogram. 
+                Default is 20.
+            xlims (tuple, optional): Range (min, max) for the feature data. If None, the range 
+                is determined automatically. Default is None.
+            event_weights (np.ndarray, optional): Weights for each event. Shape: (n_samples,). 
+                If None, all events are equally weighted. Default is None.
+        Returns:
+            tuple: A tuple containing:
+                - binned_accuracy_combined (np.ndarray): Standard deviation of the weighted 
+                  resolution in each bin. Shape: (n_features, num_bins).
+                - mean (np.ndarray): Mean of the weighted resolution in each bin. 
+                  Shape: (n_features, num_bins).
+                - binned_mean_deviation (np.ndarray): Mean deviation of the weighted resolution 
+                  in each bin. Shape: (n_features, num_bins).
+                - feature_bins (np.ndarray): Bin edges of the feature data. Shape: (num_bins + 1,).
+                - feature_hist (np.ndarray): Histogram of the feature data. Shape: (num_bins,).
+        """
+
         if xlims is None:
             feature_hist, feature_bins = np.histogram(
                 feature_data, bins=bins, density=True, weights=event_weights
@@ -741,15 +1197,15 @@ class RegressionBaseModel:
         assignment_accuracies_mean = pd.DataFrame(
             index=feature_names, columns=["mean", "std"]
         )
-        for i in range(shuffle_number):
+        
+        for feature in feature_names:
+            X_test_permutated = deepcopy(self.X_test)
+            y_test = self.y_test
 
-            for feature in feature_names:
-                X_test_permutated = deepcopy(self.X_test)
-                y_test = self.y_test
-
-                for data_type in ["jet", "lepton", "global"]:
-                    if feature in self.feature_index_dict[data_type]:
-                        feature_index = self.feature_index_dict[data_type][feature]
+            for data_type in ["jet", "lepton", "global"]:
+                if feature in self.feature_index_dict[data_type]:
+                    feature_index = self.feature_index_dict[data_type][feature]
+                    for i in range(shuffle_number):
                         mask = X_test_permutated[data_type][:, :, feature_index] != self.padding_value
                         permuted_values = np.random.permutation(
                             X_test_permutated[data_type][:, :, feature_index][mask]
@@ -764,12 +1220,12 @@ class RegressionBaseModel:
                         assignment_accuracies[i] = assignment_accuracy
                     break
 
-        assignment_accuracies_mean.loc[feature, "mean"] = np.mean(
-            assignment_baseline - assignment_accuracies
-        )
-        assignment_accuracies_mean.loc[feature, "std"] = np.std(
-            assignment_baseline - assignment_accuracies
-        )
+            assignment_accuracies_mean.loc[feature, "mean"] = np.mean(
+                assignment_baseline - assignment_accuracies
+            )
+            assignment_accuracies_mean.loc[feature, "std"] = np.std(
+                assignment_baseline - assignment_accuracies
+            )
         for i in range(self.n_regression_targets):
             regression_accuracies_dict[i].loc[feature, "mean"] = np.mean(
                 (regression_accuracies[i] - regression_baseline[i])
