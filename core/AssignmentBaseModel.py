@@ -17,7 +17,7 @@ import seaborn as sns
 from sklearn.metrics import confusion_matrix
 from tensorflow import convert_to_tensor
 
-class BaseModel:
+class AssignmentBaseModel:
     def __init__(self, data_preprocessor: DataPreprocessor):
         self.model : keras.Model = None
         self.X_train = None
@@ -610,7 +610,7 @@ class BaseModel:
         feature_data = self.X_test[data_type][:, self.feature_index_dict[data_type][feature_name]]
         prediction = np.array([np.argmax(y_pred[:,:,0], axis=1), np.argmax(y_pred[:,:,1],axis = 1)], dtype=int).T
 
-        return BaseModel.compute_binned_accuracy(
+        return AssignmentBaseModel.compute_binned_accuracy(
             np.argmax(self.y_test, axis=1),
             prediction,
             feature_data,
@@ -647,7 +647,7 @@ class BaseModel:
         import matplotlib.pyplot as plt
 
         # Use compute_binned_accuracy to get binned accuracies
-        binned_accuracy_combined, feature_bins, feature_hist = BaseModel.compute_binned_accuracy(truth, prediction, feature_data, bins=bins, xlims=xlims, event_weights = None)
+        binned_accuracy_combined, feature_bins, feature_hist = AssignmentBaseModel.compute_binned_accuracy(truth, prediction, feature_data, bins=bins, xlims=xlims, event_weights = None)
         # Compute histogram for feature counts (optionally weighted)
         centers = (feature_bins[:-1] + feature_bins[1:]) / 2
         # Bootstrapping for error bars
@@ -659,7 +659,7 @@ class BaseModel:
             truth_bs = truth[indices]
             pred_bs = prediction[indices]
             feat_bs = feature_data[indices]
-            acc_comb_boot[i], _ , _ = BaseModel.compute_binned_accuracy(
+            acc_comb_boot[i], _ , _ = AssignmentBaseModel.compute_binned_accuracy(
             truth_bs, pred_bs, feat_bs, bins=bins, xlims=(feature_bins[0], feature_bins[-1])
             )
         err_comb = np.std(acc_comb_boot, axis=0) / np.sqrt(n_bootstrap)

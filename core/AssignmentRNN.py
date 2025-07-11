@@ -1,4 +1,4 @@
-from .BaseModel import BaseModel
+from .AssignmentBaseModel import AssignmentBaseModel
 from .DataLoader import DataPreprocessor
 from .CustomObjects import TemporalSoftmax, JetMaskingLayer
 
@@ -9,7 +9,7 @@ import keras
 
 
 
-class RNNJetMatcher(BaseModel):
+class RNNJetMatcher(AssignmentBaseModel):
     def __init__(self, data_preprocessor: DataPreprocessor):
         super().__init__(data_preprocessor)
 

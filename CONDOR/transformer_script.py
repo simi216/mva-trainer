@@ -8,8 +8,8 @@ import keras
 import matplotlib.pyplot as plt
 
 from core.DataLoader import DataPreprocessor
-from core.KFoldingEvaluation import KFoldEvaluation
-from core.TransformerAnalysis import SimpleTransformer
+from core.AssignmentKFold import KFoldEvaluation
+from core.AssignmentTransformer import SimpleTransformer
 
 MAX_JETS = 4
 DIR_NAME = "/data/dust/group/atlas/ttreco/plots_trans_hpo/"

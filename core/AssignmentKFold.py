@@ -1,4 +1,4 @@
-from .BaseModel import BaseModel
+from .AssignmentBaseModel import BaseModel
 from .DataLoader import DataLoader, DataPreprocessor
 
 import numpy as np
@@ -10,7 +10,7 @@ import threading
 import copy
 
 
-class KFoldEvaluation:
+class AssignmentKFold:
     def __init__(self, model_type : type[BaseModel], data_processor : DataPreprocessor , n_folds = 5, n_splits=1, random_state = 42):
         self.model_type = model_type
         self.feature_index_dict = data_processor.feature_index_dict

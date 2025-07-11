@@ -11,10 +11,10 @@ from sklearn.metrics import confusion_matrix
 import seaborn as sns
 
 
-import core.RNNAnalysis as RNNAnalysis
+import core.AssignmentRNN as AssignmentRNN
 from core.DataLoader import DataLoader, DataPreprocessor
 from core.CustomObjects import TemporalSoftmax
-import core.KFoldingEvaluation
+import core.AssignmentKFold
 
 MAX_JETS = 4
 DIR_NAME = "plots_rnn_hpo/"
@@ -53,7 +53,7 @@ def main(argv):
     DataProcessor.normalise_data()
 
 
-    JetMatcher = core.KFoldingEvaluation.KFoldEvaluation(RNNAnalysis.RNNJetMatcher,DataProcessor,random_state = 42, n_splits = 5, n_folds = 4)
+    JetMatcher = core.AssignmentKFold.KFoldEvaluation(AssignmentRNN.RNNJetMatcher,DataProcessor,random_state = 42, n_splits = 5, n_folds = 4)
 
     JetMatcher.build_models(
         lstm_size = lstm_size,

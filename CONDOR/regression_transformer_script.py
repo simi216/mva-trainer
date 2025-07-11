@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 from core.DataLoader import DataPreprocessor
 from core.RegressionKFold import RegressionKFold
-from core.TransformerRegression import SimpleRegression, SequentialRegression
+from core.RegressiontTransformer import SimpleRegression, SequentialRegression
 
 
 MAX_JETS = 4

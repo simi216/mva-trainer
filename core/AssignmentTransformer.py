@@ -1,12 +1,12 @@
 from .DataLoader import DataPreprocessor
-from .BaseModel import BaseModel
+from .AssignmentBaseModel import AssignmentBaseModel
 from .CustomObjects import JetMaskingLayer, TemporalSoftmax
 
 from keras import layers
 import keras
 
 
-class TransformerJetMatcher(BaseModel):
+class TransformerJetMatcher(AssignmentBaseModel):
     def __init__(self, preprocessor: DataPreprocessor):
         super().__init__(preprocessor)
         self.data_preprocessor = preprocessor
@@ -197,7 +197,7 @@ class TransformerJetMatcher(BaseModel):
         )
 
 
-class SimpleTransformer(BaseModel):
+class SimpleTransformer(AssignmentBaseModel):
     def __init__(self, preprocessor: DataPreprocessor):
         super().__init__(preprocessor)
         self.data_preprocessor = preprocessor

@@ -1,93 +1,56 @@
 # ttbar-mva-trainer
 
 
+## Overview
+This repository contains a standalone analysis framework for training and evaluating machine learning models on ttbar events.
 
-## Getting started
+## Feature Overview
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+- **Preprocessing**: Data preprocessing using C++.
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+- **Data Loading**: Loading and preprocessing data using Python. The data loading and preprocessing is defined in the `core` directory.
 
-## Add your files
+- **Model Training**: Training and evaluating machine learning models using TensorFlow. 
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+- **Evaluation**: Evaluation of machine learning models using K-Fold cross-validation.
 
+- **Condor Integration**: Integration with the Condor job scheduler for distributed training and evaluation.
+
+
+## Prepocessing
+The preprocessing is done using C++ and is defined in the `preprocessing` directory. Header files for the preprocessing are located in the `preprocessing/include` directory, while the implementation files are in the `preprocessing/src` directory.
+
+The preprocessing is done using the `Preprocessor` class, which is defined in the `preprocessing/src/preprocessor.cpp` file. The `Preprocessor` class is used to preprocess the data and save it to a file.
+It uses the `reco` class, which is defined in the `preprocessing/src/reco_mc_20.cpp`. It is used to read the data from the input file and preprocess it. This class can be automatically generated using `ROOT` and the `MakeClass()` method defined on the `TTree` class. The names of the variables using in the `PreProcessor` class have to match the names of the variables in the `reco` class.
+
+The directory `preprocessing/scripts` contains scripts for running the preprocessing. The script `run_preprocessing.sh` is used to run the preprocessing on a single file. The script `merge_root_files.cpp` is used to merge the preprocessed files into a single file. The script `run_merge.sh` is used to run the merging of the preprocessed files. This mostly done to merge preprocessed files that are run sequentially using CONDOR. The script `run_preprocessing_condor.sh` is used to run the preprocessing on multiple files using Condor.
+
+The code is compiled using `Makefile` in the `preprocessing` directory. The Makefile is used to compile the code and create the executable files.
+
+The executable files are located in the `preprocessing/bin` directory. The executable files are used to run the preprocessing and merging of the preprocessed files. The `Makefile` also contains rules for cleaning the build directory and removing the executable files.
+
+## Data Loading
+To load the data for training and evaluation, the `DataPreprocessor` class is used, which is defined in the `core/DataLoader.py` file. This class is used to load the data from the preprocessed files and arange it in a format that can be used for training and evaluation. The `DataPreprocessor` class is used to load the data from the preprocessed files and arrange it in a format that can be used for training and evaluation. It also provides methods for splitting the data into training and testing sets, as well as providing k-folds of the data for cross-validation.
+
+## Model Training
+The model training is for assignment and regression tasks is descripted in `core/AssignmentBaseModel.py` and `core/RegressionBaseModel.py` respectively. The files contain the `AssignmentBaseModel` and `RegressionBaseModel` classes, which are used to train and evaluate machine learning models using TensorFlow. The `AssignmentBaseModel` class is used for training and evaluating models for assignment tasks, while the `RegressionBaseModel` class is used for training and evaluating models for combined regression and assignment tasks.
+
+To implement a model, you need to create a class that inherits from either `AssignmentBaseModel` or `RegressionBaseModel`. You can then implement the method `build_model(**kwargs)` to define the model architecture.
+
+## Evaluation
+The evaluation of the machine learning models is done using K-Fold cross-validation. The `AssignmentKFold` and `RegressionKFold` classes are defined in the `core/AssignmentKFold.py` and `core/RegressionKFold.py` files respectively and are used to evaluate the models using K-Fold cross-validation. The classes provides methods for training and evaluating arbitrary models derived from the base classes `AssignmentBaseModel` and `RegressionBaseModel`. So aslong as a custom-model is formatted to obey the in- and output-interfaces of the base classes, it can be used in the whole framework.
+
+## Dependencies
+The code is written in Python 3 and the dependencies are managed using `pip`. The required dependencies are listed in the `requirements.txt` file. To install the dependencies, you can run the following command:
+
+```bash
+pip install -r requirements.txt
 ```
-cd existing_repo
-git remote add origin https://gitlab.cern.ch/siaulich/ttbar-mva-trainer.git
-git branch -M master
-git push -uf origin master
+
+or if you want to install the dependencies in a virtual environment, you can run the following commands:
+
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
-
-## Integrate with your tools
-
-- [ ] [Set up project integrations](https://gitlab.cern.ch/siaulich/ttbar-mva-trainer/-/settings/integrations)
-
-## Collaborate with your team
-
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
