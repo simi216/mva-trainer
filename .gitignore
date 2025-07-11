@@ -1,0 +1,10 @@
+env**
+**__pycache__/
+.vscode**
+plots/**
+*.keras
+**.png
+**.pdf
+CONDOR/logs/
+CONDOR/plots**
+bin/**

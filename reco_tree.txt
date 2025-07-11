@@ -1,0 +1,745 @@
+******************************************************************************
+*Tree    :reco      : xAOD->NTuple tree                                      *
+*Entries :    19864 : Total =        26883703 bytes  File  Size =   14113204 *
+*        :          : Tree compression factor =   1.89                       *
+******************************************************************************
+*Br    0 :Ttbar_MC_W_afterFSR_from_t_eta : Ttbar_MC_W_afterFSR_from_t_eta/F  *
+*Entries :    19864 : Total  Size=      91561 bytes  File Size  =      89156 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br    1 :Ttbar_MC_W_afterFSR_from_t_m : Ttbar_MC_W_afterFSR_from_t_m/F      *
+*Entries :    19864 : Total  Size=      91353 bytes  File Size  =      81135 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.10     *
+*............................................................................*
+*Br    2 :Ttbar_MC_W_afterFSR_from_t_pdgId :                                 *
+*         | Ttbar_MC_W_afterFSR_from_t_pdgId/I                               *
+*Entries :    19864 : Total  Size=      91769 bytes  File Size  =      12993 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.88     *
+*............................................................................*
+*Br    3 :Ttbar_MC_W_afterFSR_from_t_phi : Ttbar_MC_W_afterFSR_from_t_phi/F  *
+*Entries :    19864 : Total  Size=      91561 bytes  File Size  =      89155 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br    4 :Ttbar_MC_W_afterFSR_from_t_pt : Ttbar_MC_W_afterFSR_from_t_pt/F    *
+*Entries :    19864 : Total  Size=      91457 bytes  File Size  =      87316 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br    5 :Ttbar_MC_W_afterFSR_from_tbar_eta :                                *
+*         | Ttbar_MC_W_afterFSR_from_tbar_eta/F                              *
+*Entries :    19864 : Total  Size=      91873 bytes  File Size  =      89456 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br    6 :Ttbar_MC_W_afterFSR_from_tbar_m : Ttbar_MC_W_afterFSR_from_tbar_m/F*
+*Entries :    19864 : Total  Size=      91665 bytes  File Size  =      81565 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.09     *
+*............................................................................*
+*Br    7 :Ttbar_MC_W_afterFSR_from_tbar_pdgId :                              *
+*         | Ttbar_MC_W_afterFSR_from_tbar_pdgId/I                            *
+*Entries :    19864 : Total  Size=      92081 bytes  File Size  =      13393 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.69     *
+*............................................................................*
+*Br    8 :Ttbar_MC_W_afterFSR_from_tbar_phi :                                *
+*         | Ttbar_MC_W_afterFSR_from_tbar_phi/F                              *
+*Entries :    19864 : Total  Size=      91873 bytes  File Size  =      89456 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br    9 :Ttbar_MC_W_afterFSR_from_tbar_pt :                                 *
+*         | Ttbar_MC_W_afterFSR_from_tbar_pt/F                               *
+*Entries :    19864 : Total  Size=      91769 bytes  File Size  =      87604 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   10 :Ttbar_MC_W_beforeFSR_from_t_eta : Ttbar_MC_W_beforeFSR_from_t_eta/F*
+*Entries :    19864 : Total  Size=      91665 bytes  File Size  =      89256 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   11 :Ttbar_MC_W_beforeFSR_from_t_m : Ttbar_MC_W_beforeFSR_from_t_m/F    *
+*Entries :    19864 : Total  Size=      91457 bytes  File Size  =      81235 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.10     *
+*............................................................................*
+*Br   12 :Ttbar_MC_W_beforeFSR_from_t_pdgId :                                *
+*         | Ttbar_MC_W_beforeFSR_from_t_pdgId/I                              *
+*Entries :    19864 : Total  Size=      91873 bytes  File Size  =      13093 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.83     *
+*............................................................................*
+*Br   13 :Ttbar_MC_W_beforeFSR_from_t_phi : Ttbar_MC_W_beforeFSR_from_t_phi/F*
+*Entries :    19864 : Total  Size=      91665 bytes  File Size  =      89256 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   14 :Ttbar_MC_W_beforeFSR_from_t_pt : Ttbar_MC_W_beforeFSR_from_t_pt/F  *
+*Entries :    19864 : Total  Size=      91561 bytes  File Size  =      87363 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   15 :Ttbar_MC_W_beforeFSR_from_tbar_eta :                               *
+*         | Ttbar_MC_W_beforeFSR_from_tbar_eta/F                             *
+*Entries :    19864 : Total  Size=      91977 bytes  File Size  =      89556 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   16 :Ttbar_MC_W_beforeFSR_from_tbar_m :                                 *
+*         | Ttbar_MC_W_beforeFSR_from_tbar_m/F                               *
+*Entries :    19864 : Total  Size=      91769 bytes  File Size  =      81665 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.09     *
+*............................................................................*
+*Br   17 :Ttbar_MC_W_beforeFSR_from_tbar_pdgId :                             *
+*         | Ttbar_MC_W_beforeFSR_from_tbar_pdgId/I                           *
+*Entries :    19864 : Total  Size=      92185 bytes  File Size  =      13493 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.65     *
+*............................................................................*
+*Br   18 :Ttbar_MC_W_beforeFSR_from_tbar_phi :                               *
+*         | Ttbar_MC_W_beforeFSR_from_tbar_phi/F                             *
+*Entries :    19864 : Total  Size=      91977 bytes  File Size  =      89555 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   19 :Ttbar_MC_W_beforeFSR_from_tbar_pt :                                *
+*         | Ttbar_MC_W_beforeFSR_from_tbar_pt/F                              *
+*Entries :    19864 : Total  Size=      91873 bytes  File Size  =      87571 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   20 :Ttbar_MC_Wdecay1_afterFSR_from_t_eta :                             *
+*         | Ttbar_MC_Wdecay1_afterFSR_from_t_eta/F                           *
+*Entries :    19864 : Total  Size=      92185 bytes  File Size  =      89756 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   21 :Ttbar_MC_Wdecay1_afterFSR_from_t_m :                               *
+*         | Ttbar_MC_Wdecay1_afterFSR_from_t_m/F                             *
+*Entries :    19864 : Total  Size=      91977 bytes  File Size  =      25518 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.51     *
+*............................................................................*
+*Br   22 :Ttbar_MC_Wdecay1_afterFSR_from_t_pdgId :                           *
+*         | Ttbar_MC_Wdecay1_afterFSR_from_t_pdgId/I                         *
+*Entries :    19864 : Total  Size=      92393 bytes  File Size  =      24587 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.66     *
+*............................................................................*
+*Br   23 :Ttbar_MC_Wdecay1_afterFSR_from_t_phi :                             *
+*         | Ttbar_MC_Wdecay1_afterFSR_from_t_phi/F                           *
+*Entries :    19864 : Total  Size=      92185 bytes  File Size  =      89756 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   24 :Ttbar_MC_Wdecay1_afterFSR_from_t_pt :                              *
+*         | Ttbar_MC_Wdecay1_afterFSR_from_t_pt/F                            *
+*Entries :    19864 : Total  Size=      92081 bytes  File Size  =      87986 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   25 :Ttbar_MC_Wdecay1_afterFSR_from_tbar_eta :                          *
+*         | Ttbar_MC_Wdecay1_afterFSR_from_tbar_eta/F                        *
+*Entries :    19864 : Total  Size=      92497 bytes  File Size  =      90056 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   26 :Ttbar_MC_Wdecay1_afterFSR_from_tbar_m :                            *
+*         | Ttbar_MC_Wdecay1_afterFSR_from_tbar_m/F                          *
+*Entries :    19864 : Total  Size=      92289 bytes  File Size  =      25862 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.47     *
+*............................................................................*
+*Br   27 :Ttbar_MC_Wdecay1_afterFSR_from_tbar_pdgId :                        *
+*         | Ttbar_MC_Wdecay1_afterFSR_from_tbar_pdgId/I                      *
+*Entries :    19864 : Total  Size=      92705 bytes  File Size  =      24969 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.61     *
+*............................................................................*
+*Br   28 :Ttbar_MC_Wdecay1_afterFSR_from_tbar_phi :                          *
+*         | Ttbar_MC_Wdecay1_afterFSR_from_tbar_phi/F                        *
+*Entries :    19864 : Total  Size=      92497 bytes  File Size  =      90056 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   29 :Ttbar_MC_Wdecay1_afterFSR_from_tbar_pt :                           *
+*         | Ttbar_MC_Wdecay1_afterFSR_from_tbar_pt/F                         *
+*Entries :    19864 : Total  Size=      92393 bytes  File Size  =      88241 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   30 :Ttbar_MC_Wdecay1_beforeFSR_from_t_eta :                            *
+*         | Ttbar_MC_Wdecay1_beforeFSR_from_t_eta/F                          *
+*Entries :    19864 : Total  Size=      92289 bytes  File Size  =      89856 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   31 :Ttbar_MC_Wdecay1_beforeFSR_from_t_m :                              *
+*         | Ttbar_MC_Wdecay1_beforeFSR_from_t_m/F                            *
+*Entries :    19864 : Total  Size=      92081 bytes  File Size  =      25618 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.50     *
+*............................................................................*
+*Br   32 :Ttbar_MC_Wdecay1_beforeFSR_from_t_pdgId :                          *
+*         | Ttbar_MC_Wdecay1_beforeFSR_from_t_pdgId/I                        *
+*Entries :    19864 : Total  Size=      92497 bytes  File Size  =      24687 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.65     *
+*............................................................................*
+*Br   33 :Ttbar_MC_Wdecay1_beforeFSR_from_t_phi :                            *
+*         | Ttbar_MC_Wdecay1_beforeFSR_from_t_phi/F                          *
+*Entries :    19864 : Total  Size=      92289 bytes  File Size  =      89856 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   34 :Ttbar_MC_Wdecay1_beforeFSR_from_t_pt :                             *
+*         | Ttbar_MC_Wdecay1_beforeFSR_from_t_pt/F                           *
+*Entries :    19864 : Total  Size=      92185 bytes  File Size  =      88086 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   35 :Ttbar_MC_Wdecay1_beforeFSR_from_tbar_eta :                         *
+*         | Ttbar_MC_Wdecay1_beforeFSR_from_tbar_eta/F                       *
+*Entries :    19864 : Total  Size=      92601 bytes  File Size  =      90156 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   36 :Ttbar_MC_Wdecay1_beforeFSR_from_tbar_m :                           *
+*         | Ttbar_MC_Wdecay1_beforeFSR_from_tbar_m/F                         *
+*Entries :    19864 : Total  Size=      92393 bytes  File Size  =      25962 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.46     *
+*............................................................................*
+*Br   37 :Ttbar_MC_Wdecay1_beforeFSR_from_tbar_pdgId :                       *
+*         | Ttbar_MC_Wdecay1_beforeFSR_from_tbar_pdgId/I                     *
+*Entries :    19864 : Total  Size=      92809 bytes  File Size  =      25069 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.60     *
+*............................................................................*
+*Br   38 :Ttbar_MC_Wdecay1_beforeFSR_from_tbar_phi :                         *
+*         | Ttbar_MC_Wdecay1_beforeFSR_from_tbar_phi/F                       *
+*Entries :    19864 : Total  Size=      92601 bytes  File Size  =      90156 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   39 :Ttbar_MC_Wdecay1_beforeFSR_from_tbar_pt :                          *
+*         | Ttbar_MC_Wdecay1_beforeFSR_from_tbar_pt/F                        *
+*Entries :    19864 : Total  Size=      92497 bytes  File Size  =      88341 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   40 :Ttbar_MC_Wdecay2_afterFSR_from_t_eta :                             *
+*         | Ttbar_MC_Wdecay2_afterFSR_from_t_eta/F                           *
+*Entries :    19864 : Total  Size=      92185 bytes  File Size  =      89756 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   41 :Ttbar_MC_Wdecay2_afterFSR_from_t_m :                               *
+*         | Ttbar_MC_Wdecay2_afterFSR_from_t_m/F                             *
+*Entries :    19864 : Total  Size=      91977 bytes  File Size  =      12893 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.95     *
+*............................................................................*
+*Br   42 :Ttbar_MC_Wdecay2_afterFSR_from_t_pdgId :                           *
+*         | Ttbar_MC_Wdecay2_afterFSR_from_t_pdgId/I                         *
+*Entries :    19864 : Total  Size=      92393 bytes  File Size  =      24640 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.65     *
+*............................................................................*
+*Br   43 :Ttbar_MC_Wdecay2_afterFSR_from_t_phi :                             *
+*         | Ttbar_MC_Wdecay2_afterFSR_from_t_phi/F                           *
+*Entries :    19864 : Total  Size=      92185 bytes  File Size  =      89756 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   44 :Ttbar_MC_Wdecay2_afterFSR_from_t_pt :                              *
+*         | Ttbar_MC_Wdecay2_afterFSR_from_t_pt/F                            *
+*Entries :    19864 : Total  Size=      92081 bytes  File Size  =      87916 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   45 :Ttbar_MC_Wdecay2_afterFSR_from_tbar_eta :                          *
+*         | Ttbar_MC_Wdecay2_afterFSR_from_tbar_eta/F                        *
+*Entries :    19864 : Total  Size=      92497 bytes  File Size  =      90056 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   46 :Ttbar_MC_Wdecay2_afterFSR_from_tbar_m :                            *
+*         | Ttbar_MC_Wdecay2_afterFSR_from_tbar_m/F                          *
+*Entries :    19864 : Total  Size=      92289 bytes  File Size  =      13193 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.81     *
+*............................................................................*
+*Br   47 :Ttbar_MC_Wdecay2_afterFSR_from_tbar_pdgId :                        *
+*         | Ttbar_MC_Wdecay2_afterFSR_from_tbar_pdgId/I                      *
+*Entries :    19864 : Total  Size=      92705 bytes  File Size  =      24968 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.61     *
+*............................................................................*
+*Br   48 :Ttbar_MC_Wdecay2_afterFSR_from_tbar_phi :                          *
+*         | Ttbar_MC_Wdecay2_afterFSR_from_tbar_phi/F                        *
+*Entries :    19864 : Total  Size=      92497 bytes  File Size  =      90056 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   49 :Ttbar_MC_Wdecay2_afterFSR_from_tbar_pt :                           *
+*         | Ttbar_MC_Wdecay2_afterFSR_from_tbar_pt/F                         *
+*Entries :    19864 : Total  Size=      92393 bytes  File Size  =      88260 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   50 :Ttbar_MC_Wdecay2_beforeFSR_from_t_eta :                            *
+*         | Ttbar_MC_Wdecay2_beforeFSR_from_t_eta/F                          *
+*Entries :    19864 : Total  Size=      92289 bytes  File Size  =      89856 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   51 :Ttbar_MC_Wdecay2_beforeFSR_from_t_m :                              *
+*         | Ttbar_MC_Wdecay2_beforeFSR_from_t_m/F                            *
+*Entries :    19864 : Total  Size=      92081 bytes  File Size  =      12993 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.90     *
+*............................................................................*
+*Br   52 :Ttbar_MC_Wdecay2_beforeFSR_from_t_pdgId :                          *
+*         | Ttbar_MC_Wdecay2_beforeFSR_from_t_pdgId/I                        *
+*Entries :    19864 : Total  Size=      92497 bytes  File Size  =      24740 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.64     *
+*............................................................................*
+*Br   53 :Ttbar_MC_Wdecay2_beforeFSR_from_t_phi :                            *
+*         | Ttbar_MC_Wdecay2_beforeFSR_from_t_phi/F                          *
+*Entries :    19864 : Total  Size=      92289 bytes  File Size  =      89856 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   54 :Ttbar_MC_Wdecay2_beforeFSR_from_t_pt :                             *
+*         | Ttbar_MC_Wdecay2_beforeFSR_from_t_pt/F                           *
+*Entries :    19864 : Total  Size=      92185 bytes  File Size  =      88016 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   55 :Ttbar_MC_Wdecay2_beforeFSR_from_tbar_eta :                         *
+*         | Ttbar_MC_Wdecay2_beforeFSR_from_tbar_eta/F                       *
+*Entries :    19864 : Total  Size=      92601 bytes  File Size  =      90156 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   56 :Ttbar_MC_Wdecay2_beforeFSR_from_tbar_m :                           *
+*         | Ttbar_MC_Wdecay2_beforeFSR_from_tbar_m/F                         *
+*Entries :    19864 : Total  Size=      92393 bytes  File Size  =      13293 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.77     *
+*............................................................................*
+*Br   57 :Ttbar_MC_Wdecay2_beforeFSR_from_tbar_pdgId :                       *
+*         | Ttbar_MC_Wdecay2_beforeFSR_from_tbar_pdgId/I                     *
+*Entries :    19864 : Total  Size=      92809 bytes  File Size  =      25068 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.60     *
+*............................................................................*
+*Br   58 :Ttbar_MC_Wdecay2_beforeFSR_from_tbar_phi :                         *
+*         | Ttbar_MC_Wdecay2_beforeFSR_from_tbar_phi/F                       *
+*Entries :    19864 : Total  Size=      92601 bytes  File Size  =      90156 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   59 :Ttbar_MC_Wdecay2_beforeFSR_from_tbar_pt :                          *
+*         | Ttbar_MC_Wdecay2_beforeFSR_from_tbar_pt/F                        *
+*Entries :    19864 : Total  Size=      92497 bytes  File Size  =      88360 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   60 :Ttbar_MC_b_afterFSR_from_t_eta : Ttbar_MC_b_afterFSR_from_t_eta/F  *
+*Entries :    19864 : Total  Size=      91561 bytes  File Size  =      89153 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   61 :Ttbar_MC_b_afterFSR_from_t_m : Ttbar_MC_b_afterFSR_from_t_m/F      *
+*Entries :    19864 : Total  Size=      91353 bytes  File Size  =      18374 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   4.84     *
+*............................................................................*
+*Br   62 :Ttbar_MC_b_afterFSR_from_t_pdgId :                                 *
+*         | Ttbar_MC_b_afterFSR_from_t_pdgId/I                               *
+*Entries :    19864 : Total  Size=      91769 bytes  File Size  =      12993 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.88     *
+*............................................................................*
+*Br   63 :Ttbar_MC_b_afterFSR_from_t_phi : Ttbar_MC_b_afterFSR_from_t_phi/F  *
+*Entries :    19864 : Total  Size=      91561 bytes  File Size  =      89156 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   64 :Ttbar_MC_b_afterFSR_from_t_pt : Ttbar_MC_b_afterFSR_from_t_pt/F    *
+*Entries :    19864 : Total  Size=      91457 bytes  File Size  =      87507 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   65 :Ttbar_MC_b_beforeFSR_from_t_eta : Ttbar_MC_b_beforeFSR_from_t_eta/F*
+*Entries :    19864 : Total  Size=      91665 bytes  File Size  =      89256 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   66 :Ttbar_MC_b_beforeFSR_from_t_m : Ttbar_MC_b_beforeFSR_from_t_m/F    *
+*Entries :    19864 : Total  Size=      91457 bytes  File Size  =      12693 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   7.02     *
+*............................................................................*
+*Br   67 :Ttbar_MC_b_beforeFSR_from_t_pdgId :                                *
+*         | Ttbar_MC_b_beforeFSR_from_t_pdgId/I                              *
+*Entries :    19864 : Total  Size=      91873 bytes  File Size  =      13093 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.83     *
+*............................................................................*
+*Br   68 :Ttbar_MC_b_beforeFSR_from_t_phi : Ttbar_MC_b_beforeFSR_from_t_phi/F*
+*Entries :    19864 : Total  Size=      91665 bytes  File Size  =      89256 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   69 :Ttbar_MC_b_beforeFSR_from_t_pt : Ttbar_MC_b_beforeFSR_from_t_pt/F  *
+*Entries :    19864 : Total  Size=      91561 bytes  File Size  =      87318 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   70 :Ttbar_MC_bbar_afterFSR_from_tbar_eta :                             *
+*         | Ttbar_MC_bbar_afterFSR_from_tbar_eta/F                           *
+*Entries :    19864 : Total  Size=      92185 bytes  File Size  =      89756 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   71 :Ttbar_MC_bbar_afterFSR_from_tbar_m :                               *
+*         | Ttbar_MC_bbar_afterFSR_from_tbar_m/F                             *
+*Entries :    19864 : Total  Size=      91977 bytes  File Size  =      18974 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   4.72     *
+*............................................................................*
+*Br   72 :Ttbar_MC_bbar_afterFSR_from_tbar_pdgId :                           *
+*         | Ttbar_MC_bbar_afterFSR_from_tbar_pdgId/I                         *
+*Entries :    19864 : Total  Size=      92393 bytes  File Size  =      13693 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.57     *
+*............................................................................*
+*Br   73 :Ttbar_MC_bbar_afterFSR_from_tbar_phi :                             *
+*         | Ttbar_MC_bbar_afterFSR_from_tbar_phi/F                           *
+*Entries :    19864 : Total  Size=      92185 bytes  File Size  =      89755 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   74 :Ttbar_MC_bbar_afterFSR_from_tbar_pt :                              *
+*         | Ttbar_MC_bbar_afterFSR_from_tbar_pt/F                            *
+*Entries :    19864 : Total  Size=      92081 bytes  File Size  =      88153 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   75 :Ttbar_MC_bbar_beforeFSR_from_tbar_eta :                            *
+*         | Ttbar_MC_bbar_beforeFSR_from_tbar_eta/F                          *
+*Entries :    19864 : Total  Size=      92289 bytes  File Size  =      89856 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   76 :Ttbar_MC_bbar_beforeFSR_from_tbar_m :                              *
+*         | Ttbar_MC_bbar_beforeFSR_from_tbar_m/F                            *
+*Entries :    19864 : Total  Size=      92081 bytes  File Size  =      13293 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.74     *
+*............................................................................*
+*Br   77 :Ttbar_MC_bbar_beforeFSR_from_tbar_pdgId :                          *
+*         | Ttbar_MC_bbar_beforeFSR_from_tbar_pdgId/I                        *
+*Entries :    19864 : Total  Size=      92497 bytes  File Size  =      13793 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.53     *
+*............................................................................*
+*Br   78 :Ttbar_MC_bbar_beforeFSR_from_tbar_phi :                            *
+*         | Ttbar_MC_bbar_beforeFSR_from_tbar_phi/F                          *
+*Entries :    19864 : Total  Size=      92289 bytes  File Size  =      89856 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   79 :Ttbar_MC_bbar_beforeFSR_from_tbar_pt :                             *
+*         | Ttbar_MC_bbar_beforeFSR_from_tbar_pt/F                           *
+*Entries :    19864 : Total  Size=      92185 bytes  File Size  =      87918 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   80 :Ttbar_MC_t_afterFSR_eta : Ttbar_MC_t_afterFSR_eta/F                *
+*Entries :    19864 : Total  Size=      90833 bytes  File Size  =      88456 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   81 :Ttbar_MC_t_afterFSR_m : Ttbar_MC_t_afterFSR_m/F                    *
+*Entries :    19864 : Total  Size=      90625 bytes  File Size  =      77801 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.13     *
+*............................................................................*
+*Br   82 :Ttbar_MC_t_afterFSR_pdgId : Ttbar_MC_t_afterFSR_pdgId/I            *
+*Entries :    19864 : Total  Size=      91041 bytes  File Size  =      12293 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   7.21     *
+*............................................................................*
+*Br   83 :Ttbar_MC_t_afterFSR_phi : Ttbar_MC_t_afterFSR_phi/F                *
+*Entries :    19864 : Total  Size=      90833 bytes  File Size  =      88455 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   84 :Ttbar_MC_t_afterFSR_pt : Ttbar_MC_t_afterFSR_pt/F                  *
+*Entries :    19864 : Total  Size=      90729 bytes  File Size  =      86850 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   85 :Ttbar_MC_t_beforeFSR_eta : Ttbar_MC_t_beforeFSR_eta/F              *
+*Entries :    19864 : Total  Size=      90937 bytes  File Size  =      88556 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   86 :Ttbar_MC_t_beforeFSR_m : Ttbar_MC_t_beforeFSR_m/F                  *
+*Entries :    19864 : Total  Size=      90729 bytes  File Size  =      77901 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.13     *
+*............................................................................*
+*Br   87 :Ttbar_MC_t_beforeFSR_pdgId : Ttbar_MC_t_beforeFSR_pdgId/I          *
+*Entries :    19864 : Total  Size=      91145 bytes  File Size  =      12393 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   7.16     *
+*............................................................................*
+*Br   88 :Ttbar_MC_t_beforeFSR_phi : Ttbar_MC_t_beforeFSR_phi/F              *
+*Entries :    19864 : Total  Size=      90937 bytes  File Size  =      88556 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   89 :Ttbar_MC_t_beforeFSR_pt : Ttbar_MC_t_beforeFSR_pt/F                *
+*Entries :    19864 : Total  Size=      90833 bytes  File Size  =      86850 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   90 :Ttbar_MC_tbar_afterFSR_eta : Ttbar_MC_tbar_afterFSR_eta/F          *
+*Entries :    19864 : Total  Size=      91145 bytes  File Size  =      88756 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   91 :Ttbar_MC_tbar_afterFSR_m : Ttbar_MC_tbar_afterFSR_m/F              *
+*Entries :    19864 : Total  Size=      90937 bytes  File Size  =      78156 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.13     *
+*............................................................................*
+*Br   92 :Ttbar_MC_tbar_afterFSR_pdgId : Ttbar_MC_tbar_afterFSR_pdgId/I      *
+*Entries :    19864 : Total  Size=      91353 bytes  File Size  =      12693 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   7.01     *
+*............................................................................*
+*Br   93 :Ttbar_MC_tbar_afterFSR_phi : Ttbar_MC_tbar_afterFSR_phi/F          *
+*Entries :    19864 : Total  Size=      91145 bytes  File Size  =      88753 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   94 :Ttbar_MC_tbar_afterFSR_pt : Ttbar_MC_tbar_afterFSR_pt/F            *
+*Entries :    19864 : Total  Size=      91041 bytes  File Size  =      87157 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br   95 :Ttbar_MC_tbar_beforeFSR_eta : Ttbar_MC_tbar_beforeFSR_eta/F        *
+*Entries :    19864 : Total  Size=      91249 bytes  File Size  =      88853 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   96 :Ttbar_MC_tbar_beforeFSR_m : Ttbar_MC_tbar_beforeFSR_m/F            *
+*Entries :    19864 : Total  Size=      91041 bytes  File Size  =      78256 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.13     *
+*............................................................................*
+*Br   97 :Ttbar_MC_tbar_beforeFSR_pdgId : Ttbar_MC_tbar_beforeFSR_pdgId/I    *
+*Entries :    19864 : Total  Size=      91457 bytes  File Size  =      12793 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   6.96     *
+*............................................................................*
+*Br   98 :Ttbar_MC_tbar_beforeFSR_phi : Ttbar_MC_tbar_beforeFSR_phi/F        *
+*Entries :    19864 : Total  Size=      91249 bytes  File Size  =      88856 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br   99 :Ttbar_MC_tbar_beforeFSR_pt : Ttbar_MC_tbar_beforeFSR_pt/F          *
+*Entries :    19864 : Total  Size=      91145 bytes  File Size  =      87249 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br  100 :Ttbar_MC_ttbar_afterFSR_eta : Ttbar_MC_ttbar_afterFSR_eta/F        *
+*Entries :    19864 : Total  Size=      91249 bytes  File Size  =      88841 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br  101 :Ttbar_MC_ttbar_afterFSR_m : Ttbar_MC_ttbar_afterFSR_m/F            *
+*Entries :    19864 : Total  Size=      91041 bytes  File Size  =      85997 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.03     *
+*............................................................................*
+*Br  102 :Ttbar_MC_ttbar_afterFSR_phi : Ttbar_MC_ttbar_afterFSR_phi/F        *
+*Entries :    19864 : Total  Size=      91249 bytes  File Size  =      88856 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br  103 :Ttbar_MC_ttbar_afterFSR_pt : Ttbar_MC_ttbar_afterFSR_pt/F          *
+*Entries :    19864 : Total  Size=      91145 bytes  File Size  =      87849 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.01     *
+*............................................................................*
+*Br  104 :Ttbar_MC_ttbar_beforeFSR_eta : Ttbar_MC_ttbar_beforeFSR_eta/F      *
+*Entries :    19864 : Total  Size=      91353 bytes  File Size  =      88924 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br  105 :Ttbar_MC_ttbar_beforeFSR_m : Ttbar_MC_ttbar_beforeFSR_m/F          *
+*Entries :    19864 : Total  Size=      91145 bytes  File Size  =      86158 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.03     *
+*............................................................................*
+*Br  106 :Ttbar_MC_ttbar_beforeFSR_phi : Ttbar_MC_ttbar_beforeFSR_phi/F      *
+*Entries :    19864 : Total  Size=      91353 bytes  File Size  =      88956 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br  107 :Ttbar_MC_ttbar_beforeFSR_pt : Ttbar_MC_ttbar_beforeFSR_pt/F        *
+*Entries :    19864 : Total  Size=      91249 bytes  File Size  =      87831 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.01     *
+*............................................................................*
+*Br  108 :Ttbar_MC_ttbar_fromDecay_afterFSR_eta :                            *
+*         | Ttbar_MC_ttbar_fromDecay_afterFSR_eta/F                          *
+*Entries :    19864 : Total  Size=      92289 bytes  File Size  =      89824 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br  109 :Ttbar_MC_ttbar_fromDecay_afterFSR_m :                              *
+*         | Ttbar_MC_ttbar_fromDecay_afterFSR_m/F                            *
+*Entries :    19864 : Total  Size=      92081 bytes  File Size  =      87485 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br  110 :Ttbar_MC_ttbar_fromDecay_afterFSR_phi :                            *
+*         | Ttbar_MC_ttbar_fromDecay_afterFSR_phi/F                          *
+*Entries :    19864 : Total  Size=      92289 bytes  File Size  =      89855 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br  111 :Ttbar_MC_ttbar_fromDecay_afterFSR_pt :                             *
+*         | Ttbar_MC_ttbar_fromDecay_afterFSR_pt/F                           *
+*Entries :    19864 : Total  Size=      92185 bytes  File Size  =      88281 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br  112 :Ttbar_MC_ttbar_fromDecay_beforeFSR_eta :                           *
+*         | Ttbar_MC_ttbar_fromDecay_beforeFSR_eta/F                         *
+*Entries :    19864 : Total  Size=      92393 bytes  File Size  =      89951 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br  113 :Ttbar_MC_ttbar_fromDecay_beforeFSR_m :                             *
+*         | Ttbar_MC_ttbar_fromDecay_beforeFSR_m/F                           *
+*Entries :    19864 : Total  Size=      92185 bytes  File Size  =      87220 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.03     *
+*............................................................................*
+*Br  114 :Ttbar_MC_ttbar_fromDecay_beforeFSR_phi :                           *
+*         | Ttbar_MC_ttbar_fromDecay_beforeFSR_phi/F                         *
+*Entries :    19864 : Total  Size=      92393 bytes  File Size  =      89956 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br  115 :Ttbar_MC_ttbar_fromDecay_beforeFSR_pt :                            *
+*         | Ttbar_MC_ttbar_fromDecay_beforeFSR_pt/F                          *
+*Entries :    19864 : Total  Size=      92289 bytes  File Size  =      88946 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.01     *
+*............................................................................*
+*Br  116 :actualInteractionsPerCrossing : actualInteractionsPerCrossing/F    *
+*Entries :    19864 : Total  Size=      91457 bytes  File Size  =      27545 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.23     *
+*............................................................................*
+*Br  117 :averageInteractionsPerCrossing : averageInteractionsPerCrossing/F  *
+*Entries :    19864 : Total  Size=      91561 bytes  File Size  =      27645 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.23     *
+*............................................................................*
+*Br  118 :el_IFFClass : vector<int>                                          *
+*Entries :    19864 : Total  Size=     362481 bytes  File Size  =      79390 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   4.54     *
+*............................................................................*
+*Br  119 :el_charge : vector<float>                                          *
+*Entries :    19864 : Total  Size=     362273 bytes  File Size  =      86899 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   4.14     *
+*............................................................................*
+*Br  120 :el_eta    : vector<float>                                          *
+*Entries :    19864 : Total  Size=     361961 bytes  File Size  =     163587 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   2.20     *
+*............................................................................*
+*Br  121 :el_phi    : vector<float>                                          *
+*Entries :    19864 : Total  Size=     361961 bytes  File Size  =     163557 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   2.20     *
+*............................................................................*
+*Br  122 :eventNumber : eventNumber/l                                        *
+*Entries :    19864 : Total  Size=     169049 bytes  File Size  =      57817 *
+*Baskets :      100 : Basket Size=       2048 bytes  Compression=   2.88     *
+*............................................................................*
+*Br  123 :event_electron_truth_candidates : vector<int>                      *
+*Entries :    19864 : Total  Size=     450021 bytes  File Size  =      82143 *
+*Baskets :      100 : Basket Size=       6144 bytes  Compression=   5.45     *
+*............................................................................*
+*Br  124 :event_electron_truth_idx : vector<int>                             *
+*Entries :    19864 : Total  Size=     449293 bytes  File Size  =      98284 *
+*Baskets :      100 : Basket Size=       6144 bytes  Compression=   4.55     *
+*............................................................................*
+*Br  125 :event_jet_truth_candidates : vector<int>                           *
+*Entries :    19864 : Total  Size=     767325 bytes  File Size  =      98160 *
+*Baskets :      100 : Basket Size=       9728 bytes  Compression=   7.79     *
+*............................................................................*
+*Br  126 :event_jet_truth_idx : vector<int>                                  *
+*Entries :    19864 : Total  Size=     766597 bytes  File Size  =     130209 *
+*Baskets :      100 : Basket Size=       9728 bytes  Compression=   5.87     *
+*............................................................................*
+*Br  127 :event_muon_truth_candidates : vector<int>                          *
+*Entries :    19864 : Total  Size=     449605 bytes  File Size  =      82228 *
+*Baskets :      100 : Basket Size=       6144 bytes  Compression=   5.44     *
+*............................................................................*
+*Br  128 :event_muon_truth_idx : vector<int>                                 *
+*Entries :    19864 : Total  Size=     448877 bytes  File Size  =      99944 *
+*Baskets :      100 : Basket Size=       6144 bytes  Compression=   4.47     *
+*............................................................................*
+*Br  129 :event_nLeptons : event_nLeptons/I                                  *
+*Entries :    19864 : Total  Size=      89897 bytes  File Size  =      11194 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   7.82     *
+*............................................................................*
+*Br  130 :jet_GN2v01_Continuous_quantile : vector<int>                       *
+*Entries :    19864 : Total  Size=     515377 bytes  File Size  =     139191 *
+*Baskets :      100 : Basket Size=       7168 bytes  Compression=   3.69     *
+*............................................................................*
+*Br  131 :jet_eta   : vector<float>                                          *
+*Entries :    19864 : Total  Size=     512985 bytes  File Size  =     316345 *
+*Baskets :      100 : Basket Size=       7168 bytes  Compression=   1.61     *
+*............................................................................*
+*Br  132 :jet_phi   : vector<float>                                          *
+*Entries :    19864 : Total  Size=     512985 bytes  File Size  =     316330 *
+*Baskets :      100 : Basket Size=       7168 bytes  Compression=   1.61     *
+*............................................................................*
+*Br  133 :mcChannelNumber : mcChannelNumber/i                                *
+*Entries :    19864 : Total  Size=      90001 bytes  File Size  =      11293 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   7.76     *
+*............................................................................*
+*Br  134 :mu_IFFClass : vector<int>                                          *
+*Entries :    19864 : Total  Size=     374853 bytes  File Size  =      79407 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   4.69     *
+*............................................................................*
+*Br  135 :mu_charge : vector<float>                                          *
+*Entries :    19864 : Total  Size=     374645 bytes  File Size  =      88910 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   4.19     *
+*............................................................................*
+*Br  136 :mu_eta    : vector<float>                                          *
+*Entries :    19864 : Total  Size=     374333 bytes  File Size  =     176156 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   2.11     *
+*............................................................................*
+*Br  137 :mu_phi    : vector<float>                                          *
+*Entries :    19864 : Total  Size=     374333 bytes  File Size  =     176441 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   2.11     *
+*............................................................................*
+*Br  138 :runNumber : runNumber/i                                            *
+*Entries :    19864 : Total  Size=      89377 bytes  File Size  =      10693 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   8.14     *
+*............................................................................*
+*Br  139 :el_e_NOSYS : vector<float>                                         *
+*Entries :    19864 : Total  Size=     362377 bytes  File Size  =     160301 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   2.25     *
+*............................................................................*
+*Br  140 :el_pt_NOSYS : vector<float>                                        *
+*Entries :    19864 : Total  Size=     362481 bytes  File Size  =     159465 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   2.26     *
+*............................................................................*
+*Br  141 :el_select_outputSelect_NOSYS : vector<char>                        *
+*Entries :    19864 : Total  Size=     309160 bytes  File Size  =      76576 *
+*Baskets :      100 : Basket Size=       5120 bytes  Compression=   4.01     *
+*............................................................................*
+*Br  142 :el_select_tight_NOSYS : vector<char>                               *
+*Entries :    19864 : Total  Size=     308432 bytes  File Size  =      75923 *
+*Baskets :      100 : Basket Size=       5120 bytes  Compression=   4.03     *
+*............................................................................*
+*Br  143 :jet_e_NOSYS : vector<float>                                        *
+*Entries :    19864 : Total  Size=     513401 bytes  File Size  =     307308 *
+*Baskets :      100 : Basket Size=       7168 bytes  Compression=   1.66     *
+*............................................................................*
+*Br  144 :jet_jvtEfficiency_NOSYS : vector<float>                            *
+*Entries :    19864 : Total  Size=     514649 bytes  File Size  =     155150 *
+*Baskets :      100 : Basket Size=       7168 bytes  Compression=   3.30     *
+*............................................................................*
+*Br  145 :jet_pt_NOSYS : vector<float>                                       *
+*Entries :    19864 : Total  Size=     513505 bytes  File Size  =     305444 *
+*Baskets :      100 : Basket Size=       7168 bytes  Compression=   1.67     *
+*............................................................................*
+*Br  146 :jet_select_baselineJvt_NOSYS : vector<char>                        *
+*Entries :    19864 : Total  Size=     346890 bytes  File Size  =      82194 *
+*Baskets :      100 : Basket Size=       5120 bytes  Compression=   4.19     *
+*............................................................................*
+*Br  147 :jet_select_outputSelect_NOSYS : vector<char>                       *
+*Entries :    19864 : Total  Size=     346994 bytes  File Size  =      82173 *
+*Baskets :      100 : Basket Size=       5120 bytes  Compression=   4.19     *
+*............................................................................*
+*Br  148 :mu_TTVA_effSF_tight_NOSYS : vector<float>                          *
+*Entries :    19864 : Total  Size=     376309 bytes  File Size  =     136078 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   2.75     *
+*............................................................................*
+*Br  149 :mu_e_NOSYS : vector<float>                                         *
+*Entries :    19864 : Total  Size=     374749 bytes  File Size  =     172840 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   2.15     *
+*............................................................................*
+*Br  150 :mu_isol_effSF_tight_NOSYS : vector<float>                          *
+*Entries :    19864 : Total  Size=     376309 bytes  File Size  =     113404 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   3.30     *
+*............................................................................*
+*Br  151 :mu_pt_NOSYS : vector<float>                                        *
+*Entries :    19864 : Total  Size=     374853 bytes  File Size  =     171780 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   2.17     *
+*............................................................................*
+*Br  152 :mu_reco_effSF_tight_NOSYS : vector<float>                          *
+*Entries :    19864 : Total  Size=     376309 bytes  File Size  =     137963 *
+*Baskets :      100 : Basket Size=       5632 bytes  Compression=   2.71     *
+*............................................................................*
+*Br  153 :mu_select_outputSelect_NOSYS : vector<char>                        *
+*Entries :    19864 : Total  Size=     312253 bytes  File Size  =      76798 *
+*Baskets :      100 : Basket Size=       5120 bytes  Compression=   4.03     *
+*............................................................................*
+*Br  154 :mu_select_tight_NOSYS : vector<char>                               *
+*Entries :    19864 : Total  Size=     311525 bytes  File Size  =      76072 *
+*Baskets :      100 : Basket Size=       5120 bytes  Compression=   4.06     *
+*............................................................................*
+*Br  155 :nuflows_loglik_NOSYS : nuflows_loglik_NOSYS/F                      *
+*Entries :    19864 : Total  Size=      90521 bytes  File Size  =      87241 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.01     *
+*............................................................................*
+*Br  156 :nuflows_nu_out_NOSYS : vector<float>                               *
+*Entries :    19864 : Total  Size=     766701 bytes  File Size  =     538581 *
+*Baskets :      100 : Basket Size=       9728 bytes  Compression=   1.42     *
+*............................................................................*
+*Br  157 :pass_lljets_NOSYS : pass_lljets_NOSYS/B                            *
+*Entries :    19864 : Total  Size=      30611 bytes  File Size  =      10500 *
+*Baskets :      100 : Basket Size=        512 bytes  Compression=   2.69     *
+*............................................................................*
+*Br  158 :weight_ftag_effSF_GN2v01_Continuous_NOSYS :                        *
+*         | weight_ftag_effSF_GN2v01_Continuous_NOSYS/F                      *
+*Entries :    19864 : Total  Size=      92705 bytes  File Size  =      74237 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.22     *
+*............................................................................*
+*Br  159 :weight_jvt_effSF_NOSYS : weight_jvt_effSF_NOSYS/F                  *
+*Entries :    19864 : Total  Size=      90729 bytes  File Size  =      59869 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.48     *
+*............................................................................*
+*Br  160 :weight_leptonSF_tight_NOSYS : weight_leptonSF_tight_NOSYS/F        *
+*Entries :    19864 : Total  Size=      91249 bytes  File Size  =      72703 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.22     *
+*............................................................................*
+*Br  161 :weight_mc_NOSYS : weight_mc_NOSYS/F                                *
+*Entries :    19864 : Total  Size=      90001 bytes  File Size  =      15930 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   5.50     *
+*............................................................................*
+*Br  162 :weight_pileup_NOSYS : weight_pileup_NOSYS/F                        *
+*Entries :    19864 : Total  Size=      90417 bytes  File Size  =      29392 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   3.00     *
+*............................................................................*
+*Br  163 :met_met_NOSYS : met_met_NOSYS/F                                    *
+*Entries :    19864 : Total  Size=      89793 bytes  File Size  =      85881 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br  164 :met_phi_NOSYS : met_phi_NOSYS/F                                    *
+*Entries :    19864 : Total  Size=      89793 bytes  File Size  =      87455 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.00     *
+*............................................................................*
+*Br  165 :met_significance_NOSYS : met_significance_NOSYS/F                  *
+*Entries :    19864 : Total  Size=      90729 bytes  File Size  =      86770 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.02     *
+*............................................................................*
+*Br  166 :met_sumet_NOSYS : met_sumet_NOSYS/F                                *
+*Entries :    19864 : Total  Size=      90001 bytes  File Size  =      84941 *
+*Baskets :      100 : Basket Size=       1024 bytes  Compression=   1.03     *
+*............................................................................*
