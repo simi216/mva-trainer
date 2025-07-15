@@ -8,5 +8,6 @@ plots/**
 CONDOR/logs/
 CONDOR/plots**
 bin/**
+**.out
 preprocessing/obj
 reco_tree.txt
