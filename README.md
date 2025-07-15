@@ -1,5 +1,14 @@
 # ttbar-mva-trainer
 
+## Setup
+
+The code can be run in a virtual environment. To set up the virtual environment, you can run the following commands:
+
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
 ## Overview
 This repository contains a standalone analysis framework for training and evaluating machine learning models on ttbar events.
