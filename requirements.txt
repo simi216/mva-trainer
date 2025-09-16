@@ -7,3 +7,7 @@ pandas
 uproot
 awkward
 seaborn
+ipython
+jupyters
+ipykernel
+tqdm

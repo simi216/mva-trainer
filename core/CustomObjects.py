@@ -39,7 +39,6 @@ from keras.src.api_export import keras_export
 from keras.src import activations
 from keras.src import backend
 import sklearn as sk
-import onnx
 from keras.src.trainers.data_adapters import data_adapter_utils
 from keras.src.losses import loss as loss_module
 from keras.src import tree
