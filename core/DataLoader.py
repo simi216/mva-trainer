@@ -176,12 +176,8 @@ class DataPreprocessor:
     Methods:
         apply_cut(cut_feature, cut_low=None, cut_high=None):
             Apply a cut on a specific feature based on lower and/or upper bounds.
-        compute_pairwise_features():
-            Compute pairwise features between jets and leptons.
         reorder_by_feature(reorder_feature):
             Reorder jets in each event based on a specific feature.
-        register_pairwise_features(combined_features, jet_features, lepton_features, feature_computation):
-            Register pairwise features and their computation logic.
         load_data(file_path, tree_name, max_events=None, cut_neg_weights=True):
             Load data from a file and apply cuts if specified.
         prepare_data():
@@ -254,11 +250,6 @@ class DataPreprocessor:
             data (Any): Placeholder for the loaded data.
             data_length (int): Length of the loaded data.
             padding_value (float): Value used for padding missing data. Defaults to -999.0.
-            combined_features (Any): Placeholder for combined features.
-            n_combined (int): Number of combined features.
-            comb_feature_jet_vars (Any): Placeholder for combined jet feature variables.
-            comb_feature_lep_vars (Any): Placeholder for combined lepton feature variables.
-            comb_feature_computation (Any): Placeholder for combined feature computation logic.
             load_jet_features (list[str]): Stores the jet features for loading.
             load_lepton_features (list[str]): Stores the lepton features for loading.
             feature_index_dict (dict): Dictionary mapping feature names to indices.
@@ -290,11 +281,6 @@ class DataPreprocessor:
         self.data = None
         self.data_length = None
         self.padding_value = -999.0
-        self.combined_features = None
-        self.n_combined: int = 0
-        self.comb_feature_jet_vars = None
-        self.comb_feature_lep_vars = None
-        self.comb_feature_computation = None
         self.load_jet_features = jet_features
         self.load_lepton_features = lepton_features
         self.feature_index_dict = {}
@@ -332,72 +318,6 @@ class DataPreprocessor:
             raise ValueError("cut_low must be less than cut_high.")
         self.cut_dict[cut_feature] = (cut_low, cut_high)
 
-    def compute_pairwise_features(self):
-        """
-        Computes pairwise features between leptons and jets in the dataset.
-        This method iterates over all combinations of leptons and jets up to the
-        specified maximum numbers (`max_leptons` and `max_jets`) and computes
-        new features based on the provided computation functions. The computed
-        features are stored in the dataset with appropriate naming conventions.
-        Raises:
-            ValueError: If the data has not been loaded prior to calling this method.
-        Notes:
-            - The method uses padding to handle missing values. If any of the
-              required variables for a given lepton-jet pair are missing (indicated
-              by `padding_value`), the computed feature for that pair is set to
-              `padding_value`.
-            - The computation functions for each feature are defined in
-              `comb_feature_computation`.
-        Attributes:
-            data (pd.DataFrame): The dataset containing the input features.
-            combined_features (list): List of feature names for which pairwise
-                computations are performed.
-            max_leptons (int): Maximum number of leptons to consider.
-            max_jets (int): Maximum number of jets to consider.
-            comb_feature_jet_vars (dict): Dictionary mapping feature names to the
-                list of jet-related variable names required for computation.
-            comb_feature_lep_vars (dict): Dictionary mapping feature names to the
-                list of lepton-related variable names required for computation.
-            comb_feature_computation (dict): Dictionary mapping feature names to
-                their respective computation functions.
-            padding_value (any): Value used to indicate missing data in the dataset.
-        """
-
-        if self.data is None:
-            raise ValueError(
-                "Data not loaded. Please load data using load_data() method."
-            )
-        for feature in self.combined_features:
-            for lep_index in range(self.max_leptons):
-                for jet_index in range(self.max_jets):
-                    padding_mask = (
-                        self.data[
-                            [
-                                jet_var + f"_{jet_index}"
-                                for jet_var in self.comb_feature_jet_vars[feature]
-                            ]
-                            + [
-                                lepton_var + f"_{lep_index}"
-                                for lepton_var in self.comb_feature_lep_vars[feature]
-                            ]
-                        ]
-                        != self.padding_value
-                    ).all(axis=1)
-                    self.data.loc[
-                        padding_mask, feature + f"_{lep_index}_{jet_index}"
-                    ] = self.comb_feature_computation[feature](
-                        *(
-                            self.data.loc[padding_mask, jet_var + f"_{jet_index}"]
-                            for jet_var in self.comb_feature_jet_vars[feature]
-                        ),
-                        *(
-                            self.data.loc[padding_mask, lepton_var + f"_{lep_index}"]
-                            for lepton_var in self.comb_feature_lep_vars[feature]
-                        ),
-                    )
-                    self.data.loc[
-                        ~padding_mask, feature + f"_{lep_index}_{jet_index}"
-                    ] = self.padding_value
 
     def reorder_by_feature(self, reorder_feature):
         """
@@ -450,58 +370,6 @@ class DataPreprocessor:
             ]
             self.labels[event_index] = self.labels[event_index, full_sorted_indices]
 
-    def register_pairwise_features(
-        self,
-        combined_features: list[str],
-        jet_features: dict[str, list[str]],
-        lepton_features: dict[str, list[str]],
-        feature_computation: dict[str, callable],
-    ):
-        """
-        Deprecated: This method is used to register pairwise features for computation.
-        Args:
-            combined_features (list[str]): A list of feature names to be computed as pairwise features.
-            jet_features (dict[str, list[str]]): A dictionary mapping feature names to the list of jet-related variables required for their computation.
-            lepton_features (dict[str, list[str]]): A dictionary mapping feature names to the list of lepton-related variables required for their computation.
-            feature_computation (dict[str, callable]): A dictionary mapping feature names to the callable functions used to compute them.
-        Raises:
-            ValueError: If the data is already loaded, or if any feature in `combined_features` is not found in `jet_features`,
-                        `lepton_features`, or `feature_computation`.
-        Attributes Updated:
-            comb_feature_jet_vars (dict[str, list[str]]): Stores the jet-related variables for each combined feature.
-            comb_feature_lep_vars (dict[str, list[str]]): Stores the lepton-related variables for each combined feature.
-            comb_feature_computation (dict[str, callable]): Stores the computation functions for each combined feature.
-            combined_features (list[str]): Stores the list of combined features.
-            n_combined (int): The number of combined features.
-            load_jet_features (list[str]): The updated list of jet features required for computation.
-            load_lepton_features (list[str]): The updated list of lepton features required for computation.
-        """
-
-        if self.data is not None:
-            raise ValueError(
-                "Data already loaded. Please use a different instance of the class to register new features."
-            )
-        for feature in combined_features:
-            if feature not in jet_features:
-                raise ValueError(f"Feature {feature} not found in jet_features.")
-            if feature not in lepton_features:
-                raise ValueError(f"Feature {feature} not found in lepton_features.")
-            if feature not in feature_computation:
-                raise ValueError(f"Feature {feature} not found in feature_computation.")
-        self.comb_feature_jet_vars = jet_features
-        self.comb_feature_lep_vars = lepton_features
-        self.comb_feature_computation = feature_computation
-        self.combined_features = combined_features
-        self.n_combined = len(combined_features)
-        needed_jet_features = set()
-        needed_lepton_features = set()
-        for feature in combined_features:
-            needed_jet_features.update(self.comb_feature_jet_vars[feature])
-            needed_lepton_features.update(self.comb_feature_lep_vars[feature])
-        self.load_jet_features = list(set(self.jet_features) | needed_jet_features)
-        self.load_lepton_features = list(
-            set(self.lepton_features) | needed_lepton_features
-        )
 
     def load_data(self, file_path, tree_name, max_events=None, cut_neg_weights=True):
         """
@@ -602,8 +470,7 @@ class DataPreprocessor:
         and building pairs.
         This method performs the following steps:
         1. Checks if the data is loaded. If not, raises a ValueError.
-        2. If combined features are available, computes pairwise features.
-        3. Builds pairs from the data.
+        2. Builds pairs from the data.
         Raises:
             ValueError: If the data has not been loaded prior to calling this method.
         """
@@ -612,9 +479,6 @@ class DataPreprocessor:
             raise ValueError(
                 "Data not loaded. Please load data using load_data() method."
             )
-        if self.combined_features is not None:
-            self.compute_pairwise_features()
-            print("Pairwise features computed.")
         self.build_pairs()
         # self.reorder_by_feature("dR_lep_jet")
 
@@ -628,7 +492,7 @@ class DataPreprocessor:
             ValueError: If the data has not been loaded prior to calling this method.
         Processes:
             - Lepton features: Extracts and reshapes lepton-related data.
-            - Jet features: Extracts and reshapes jet-related data, including combined features if specified.
+            - Jet features: Extracts and reshapes jet-related data
             - Global features: Extracts global features if available.
             - Non-training features: Extracts non-training features if available.
             - Event weight: Extracts event weight data if specified.
@@ -663,52 +527,21 @@ class DataPreprocessor:
             lepton_var: idx for idx, lepton_var in enumerate(self.lepton_features)
         }
 
-        if self.combined_features is not None:
-            jet_data = (
-                self.data[
-                    [
-                        jet_var + f"_{jet_index}"
-                        for jet_var in self.jet_features
-                        for jet_index in range(self.max_jets)
-                    ]
-                    + [
-                        comb_var + f"_{lep_index}_{jet_index}"
-                        for comb_var in self.combined_features
-                        for lep_index in range(self.max_leptons)
-                        for jet_index in range(self.max_jets)
-                    ]
+        jet_data = (
+            self.data[
+                [
+                    jet_var + f"_{jet_index}"
+                    for jet_var in self.jet_features
+                    for jet_index in range(self.max_jets)
                 ]
-                .to_numpy()
-                .reshape(self.data_length, -1, self.max_jets)
-                .transpose((0, 2, 1))
-            )
-            jet_indices = {
-                jet_var: idx for idx, jet_var in enumerate(self.jet_features)
-            }
-            combined_indices = {
-                comb_var: [
-                    self.n_jets + self.max_leptons * idx + i
-                    for i in range(self.max_leptons)
-                ]
-                for idx, comb_var in enumerate(self.combined_features)
-            }
-            jet_indices.update(combined_indices)
-        else:
-            jet_data = (
-                self.data[
-                    [
-                        jet_var + f"_{jet_index}"
-                        for jet_var in self.jet_features
-                        for jet_index in range(self.max_jets)
-                    ]
-                ]
-                .to_numpy()
-                .reshape(self.data_length, -1, self.max_jets)
-                .transpose((0, 2, 1))
-            )
-            jet_indices = {
-                jet_var: idx for idx, jet_var in enumerate(self.jet_features)
-            }
+            ]
+            .to_numpy()
+            .reshape(self.data_length, -1, self.max_jets)
+            .transpose((0, 2, 1))
+        )
+        jet_indices = {
+            jet_var: idx for idx, jet_var in enumerate(self.jet_features)
+        }
 
         global_data = (
             self.data[[global_var for global_var in self.global_features]]
