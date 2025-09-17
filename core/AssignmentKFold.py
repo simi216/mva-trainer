@@ -1,4 +1,4 @@
-from .AssignmentBaseModel import AssignmentBaseModel
+from .models.AssignmentBaseModel import AssignmentBaseModel
 from .DataLoader import DataLoader, DataPreprocessor
 
 import numpy as np

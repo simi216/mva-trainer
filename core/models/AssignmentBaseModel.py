@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
-from .DataLoader import DataLoader, DataPreprocessor
-from . import CustomObjects
+from ..DataLoader import DataLoader, DataPreprocessor
+from .. import CustomObjects
 
 from sklearn.model_selection import train_test_split
 import numpy as np
@@ -43,58 +43,6 @@ class AssignmentBaseModel:
         n_combined (int): Number of combined features.
         feature_index_dict (dict): Dictionary mapping feature names to indices.
         feature_data (dict): Dictionary containing feature data.
-    Methods:
-        load_data(X_train, y_train, X_test, y_test):
-            Load the training and testing data into the model.
-        compile_model(lambda_excl=0.5, *args, **kwargs):
-            Compile the model with a custom loss function and optional arguments.
-        build_model():
-            Abstract method to be implemented in subclasses for building the model.
-        summary():
-            Print the summary of the model.
-        train_model(epochs=10, batch_size=32, weight=None, *args, **kwargs):
-            Train the model with the provided data and optional weights.
-        save_model(file_path):
-            Save the model to the specified file path.
-        load_model(file_path):
-            Load a model from the specified file path.
-        predict(data):
-            Make predictions using the trained model.
-        get_model_summary():
-            Get the summary of the model.
-        plot_history():
-            Plot the training history of the model.
-        get_test_data():
-            Retrieve the test data.
-        compute_sample_weights():
-            Compute sample weights for training based on class distribution.
-        enhance_region(variable, data_type, low_cut=None, high_cut=None, factor=1.0):
-            Enhance a specific region of the data by modifying sample weights.
-        predict_indices(data, exclusive=True):
-            Predict indices for jet-lepton assignments.
-        duplicate_jets():
-            Compute the fraction of duplicate jet assignments.
-        compute_permutation_importance(shuffle_number=1):
-            Compute permutation importance for features.
-        plot_permutation_importance(shuffle_number, file_name=None):
-            Plot permutation importance for features.
-        accuracy_vs_feature(feature_name, data_type="non_training", bins=50, xlims=None):
-            Plot accuracy versus a specific feature.
-        evaluate_accuracy(data=None, predictions=None):
-            Evaluate the accuracy of the model.
-        compute_accuracy(truth, prediction):
-            Compute accuracy metrics for predictions.
-        get_binned_accuracy(feature_name, data_type="non_training", bins=20, xlims=None):
-            Compute binned accuracy for a specific feature.
-        compute_binned_accuracy(truth, prediction, feature_data, bins=20, xlims=None, event_weights=None):
-        plot_accuracy_feature(truth, prediction, feature_data, feature_name, bins=20, xlims=None, fig=None, ax=None, accuracy_color="tab:blue", label=None, event_weights=None):
-            Plot accuracy versus a feature.
-        plot_external_confusion_matrix(jet_matcher_indices, truth_index, max_jets, n_bootstrap=100, sample_weight=None):
-            Plot confusion matrix with bootstrapping.
-        plot_confusion_matrix(n_bootstrap=100, exclusive=True):
-            Plot confusion matrix for the model's predictions.
-        get_confusion_matrix(data=None, labels=None, sample_weights=None, exclusive=True):
-            Compute the confusion matrix for the model's predictions.
     """
 
     def __init__(self, data_preprocessor: DataPreprocessor):
@@ -103,27 +51,9 @@ class AssignmentBaseModel:
         Args:
             data_preprocessor (DataPreprocessor): An instance of the DataPreprocessor class
                 that provides preprocessed data and metadata required for model initialization.
-        Attributes:
-            model (keras.Model): The Keras model instance. Defaults to None.
-            X_train: Training feature data. Defaults to None.
-            X_test (np.ndarray): Testing feature data. Defaults to None.
-            y_train (np.ndarray): Training labels. Defaults to None.
-            y_test (np.ndarray): Testing labels. Defaults to None.
-            history: Training history of the model. Defaults to None.
-            sample_weights: Sample weights for training. Defaults to None.
-            class_weights: Class weights for training. Defaults to None.
-            max_leptons (int): Maximum number of leptons in the dataset.
-            max_jets (int): Maximum number of jets in the dataset.
-            global_features (list): List of global features in the dataset.
-            n_jets (int): Number of jet features.
-            n_leptons (int): Number of lepton features.
-            n_global (int): Number of global features. Defaults to 0 if no global features are provided.
-            padding_value (float): Padding value used in the dataset.
-            combined_features (list): List of combined features in the dataset.
-            n_combined (int): Number of combined features.
-            feature_index_dict (dict[str, any]): Dictionary mapping feature names to their indices.
-            feature_data (dict[str, np.ndarray]): Dictionary containing feature data. Defaults to None.
         """
+
+        config = data_preprocessor.config
 
         self.model: keras.Model = None
         self.X_train = None
@@ -133,21 +63,18 @@ class AssignmentBaseModel:
         self.history = None
         self.sample_weights = None
         self.class_weights = None
-        self.max_leptons = data_preprocessor.max_leptons
-        self.max_jets = data_preprocessor.max_jets
-        self.global_features = data_preprocessor.global_features
-        self.n_jets: int = len(data_preprocessor.jet_features)
-        self.n_leptons: int = len(data_preprocessor.lepton_features)
+        self.max_leptons = config.max_leptons
+        self.max_jets = config.max_jets
+        self.global_features = config.global_features
+        self.n_jets: int = len(config.jet_features)
+        self.n_leptons: int = len(config.lepton_features)
         self.n_global: int = (
-            len(data_preprocessor.global_features)
-            if data_preprocessor.global_features
+            len(config.global_features)
+            if config.global_features
             else 0
         )
-        self.padding_value: float = data_preprocessor.padding_value
-        self.combined_features = data_preprocessor.combined_features
-        self.n_combined: int = data_preprocessor.n_combined
+        self.padding_value: float = config.padding_value
         self.feature_index_dict: dict[str:any] = data_preprocessor.feature_index_dict
-        # self.data_preprocessor = data_preprocessor
         self.feature_data: dict[str : np.ndarray] = None
 
     def load_data(self, X_train=None, y_train=None, X_test=None, y_test=None):
@@ -720,36 +647,35 @@ class AssignmentBaseModel:
         return fig, ax
 
     def compute_permutation_importance(self, shuffle_number=1):
-        def compute_permutation_importance(self, shuffle_number=1):
-            """
-            Computes the permutation importance of features for the model.
-            This method evaluates the importance of each feature by shuffling its values
-            and measuring the impact on the model's accuracy. The importance is calculated
-            for three accuracy metrics: lepton 1, lepton 2, and combined accuracy.
-            Args:
-                shuffle_number (int, optional): The number of times to shuffle each feature
-                    for calculating the importance. Defaults to 1.
-            Returns:
-                tuple: A tuple containing three pandas DataFrames:
-                    - importance_scores_lep_1: Importance scores for lepton 1 accuracy.
-                    - importance_scores_lep_2: Importance scores for lepton 2 accuracy.
-                    - importance_scores_combined: Importance scores for combined accuracy.
-                    Each DataFrame contains the mean and standard deviation of the importance
-                    scores for each feature.
-            Raises:
-                ValueError: If the model is not built, or the test labels or feature data
-                    are not prepared.
-                ValueError: If a feature is not found in the jet, lepton, or global feature
-                    dictionaries.
-            Notes:
-                - The method assumes that the model, test data, and feature dictionaries
-                  are already prepared.
-                - The method uses the `evaluate_accuracy` function to compute the accuracy
-                  metrics before and after shuffling the features.
-                - The importance scores are calculated as the difference between the base
-                  accuracy and the accuracy after shuffling, averaged over the number of
-                  shuffles.
-            """
+        """
+        Computes the permutation importance of features for the model.
+        This method evaluates the importance of each feature by shuffling its values
+        and measuring the impact on the model's accuracy. The importance is calculated
+        for three accuracy metrics: lepton 1, lepton 2, and combined accuracy.
+        Args:
+            shuffle_number (int, optional): The number of times to shuffle each feature
+                for calculating the importance. Defaults to 1.
+        Returns:
+            tuple: A tuple containing three pandas DataFrames:
+                - importance_scores_lep_1: Importance scores for lepton 1 accuracy.
+                - importance_scores_lep_2: Importance scores for lepton 2 accuracy.
+                - importance_scores_combined: Importance scores for combined accuracy.
+                Each DataFrame contains the mean and standard deviation of the importance
+                scores for each feature.
+        Raises:
+            ValueError: If the model is not built, or the test labels or feature data
+                are not prepared.
+            ValueError: If a feature is not found in the jet, lepton, or global feature
+                dictionaries.
+        Notes:
+            - The method assumes that the model, test data, and feature dictionaries
+                are already prepared.
+            - The method uses the `evaluate_accuracy` function to compute the accuracy
+                metrics before and after shuffling the features.
+            - The importance scores are calculated as the difference between the base
+                accuracy and the accuracy after shuffling, averaged over the number of
+                shuffles.
+        """
 
         if self.model is None:
             raise ValueError(
@@ -774,7 +700,6 @@ class AssignmentBaseModel:
         importance_scores_combined = pd.DataFrame(
             index=features, columns=["mean", "std"]
         )
-        ground_truth = self.y_test.copy()
         lep_1_base_accuracy, lep_2_base_accuracy, combined_base_accuracy = (
             self.evaluate_accuracy()
         )
@@ -917,35 +842,32 @@ class AssignmentBaseModel:
     def accuracy_vs_feature(
         self, feature_name, data_type="non_training", bins=50, xlims=None
     ):
-        def accuracy_vs_feature(
-            self, feature_name, data_type="non_training", bins=50, xlims=None
-        ):
-            """
-            Plots the accuracy of the model as a function of a specific feature.
-            Parameters:
-            -----------
-            feature_name : str
-                The name of the feature for which the accuracy is to be plotted.
-            data_type : str, optional
-                The type of data to use for the feature. Must be one of 'jet', 'lepton',
-                'non_training', or 'global'. Default is "non_training".
-            bins : int, optional
-                The number of bins to use for the histogram. Default is 50.
-            xlims : tuple, optional
-                The x-axis limits for the plot in the form (xmin, xmax). Default is None.
-            Raises:
-            -------
-            ValueError
-                If the specified data_type is not found in the feature index dictionary.
-            ValueError
-                If the specified feature_name is not found in the given data_type.
-            ValueError
-                If the model has not been built.
-            Returns:
-            --------
-            matplotlib.figure.Figure
-                A plot showing the accuracy of the model as a function of the specified feature.
-            """
+        """
+        Plots the accuracy of the model as a function of a specific feature.
+        Parameters:
+        -----------
+        feature_name : str
+            The name of the feature for which the accuracy is to be plotted.
+        data_type : str, optional
+            The type of data to use for the feature. Must be one of 'jet', 'lepton',
+            'non_training', or 'global'. Default is "non_training".
+        bins : int, optional
+            The number of bins to use for the histogram. Default is 50.
+        xlims : tuple, optional
+            The x-axis limits for the plot in the form (xmin, xmax). Default is None.
+        Raises:
+        -------
+        ValueError
+            If the specified data_type is not found in the feature index dictionary.
+        ValueError
+            If the specified feature_name is not found in the given data_type.
+        ValueError
+            If the model has not been built.
+        Returns:
+        --------
+        matplotlib.figure.Figure
+            A plot showing the accuracy of the model as a function of the specified feature.
+        """
 
         if data_type not in self.feature_index_dict:
             raise ValueError(
@@ -1139,48 +1061,39 @@ class AssignmentBaseModel:
         xlims=None,
         event_weights=None,
     ):
-        def compute_binned_accuracy(
-            truth: np.ndarray,
-            prediction: np.ndarray,
-            feature_data: np.ndarray,
-            bins=20,
-            xlims=None,
-            event_weights=None,
-        ):
-            """
-            Compute the binned accuracy of predictions compared to truth values, based on a feature's distribution.
-            Parameters:
-            ----------
-            truth : np.ndarray
-                A 2D array where each row contains the true labels for two lepton predictions.
-            prediction : np.ndarray
-                A 2D array where each row contains the predicted labels for two leptons.
-            feature_data : np.ndarray
-                A 1D array of feature values used for binning.
-            bins : int, optional
-                The number of bins to divide the feature data into. Default is 20.
-            xlims : tuple, optional
-                A tuple specifying the range (min, max) of the feature data to consider for binning.
-                If None, the range is determined automatically. Default is None.
-            event_weights : np.ndarray, optional
-                A 1D array of weights for each event. If None, all events are weighted equally. Default is None.
-            Returns:
-            -------
-            binned_accuracy_combined : np.ndarray
-                A 1D array containing the accuracy for each bin.
-            feature_bins : np.ndarray
-                The edges of the bins used for the feature data.
-            feature_hist : np.ndarray
-                The histogram of the feature data, normalized to form a probability density.
-            Notes:
-            -----
-            - The function calculates the accuracy for each bin by comparing the predicted labels
-              to the true labels for both leptons.
-            - The binning is performed based on the `feature_data` array, and the accuracy is
-              weighted by `event_weights` if provided.
-            - A small epsilon (1e-9) is added to the denominator to avoid division by zero.
-            """
-
+        """
+        Compute the binned accuracy of predictions compared to truth values, based on a feature's distribution.
+        Parameters:
+        ----------
+        truth : np.ndarray
+            A 2D array where each row contains the true labels for two lepton predictions.
+        prediction : np.ndarray
+            A 2D array where each row contains the predicted labels for two leptons.
+        feature_data : np.ndarray
+            A 1D array of feature values used for binning.
+        bins : int, optional
+            The number of bins to divide the feature data into. Default is 20.
+        xlims : tuple, optional
+            A tuple specifying the range (min, max) of the feature data to consider for binning.
+            If None, the range is determined automatically. Default is None.
+        event_weights : np.ndarray, optional
+            A 1D array of weights for each event. If None, all events are weighted equally. Default is None.
+        Returns:
+        -------
+        binned_accuracy_combined : np.ndarray
+            A 1D array containing the accuracy for each bin.
+        feature_bins : np.ndarray
+            The edges of the bins used for the feature data.
+        feature_hist : np.ndarray
+            The histogram of the feature data, normalized to form a probability density.
+        Notes:
+        -----
+        - The function calculates the accuracy for each bin by comparing the predicted labels
+            to the true labels for both leptons.
+        - The binning is performed based on the `feature_data` array, and the accuracy is
+            weighted by `event_weights` if provided.
+        - A small epsilon (1e-9) is added to the denominator to avoid division by zero.
+        """
         lep_1_truth, lep_2_truth = truth[:, 0], truth[:, 1]
         lep_1_pred, lep_2_pred = prediction[:, 0], prediction[:, 1]
         if xlims is None:
@@ -1229,58 +1142,45 @@ class AssignmentBaseModel:
         label=None,
         event_weights=None,
     ):
-        def plot_accuracy_feature(
-            truth,
-            prediction,
-            feature_data,
-            feature_name,
-            bins=20,
-            xlims=None,
-            fig=None,
-            ax=None,
-            accuracy_color="tab:blue",
-            label=None,
-            event_weights=None,
-        ):
-            """
-            Plots the accuracy of predictions as a function of a given feature, with optional error bars
-            computed using bootstrapping. Also overlays a histogram of the feature counts.
-            Parameters:
-            ----------
-            truth : array-like
-                Ground truth labels for the data.
-            prediction : array-like
-                Predicted labels or probabilities for the data.
-            feature_data : array-like
-                Feature values corresponding to the data points.
-            feature_name : str
-                Name of the feature to be displayed on the x-axis.
-            bins : int, optional
-                Number of bins to divide the feature data into (default is 20).
-            xlims : tuple, optional
-                Limits for the x-axis as (min, max). If None, limits are determined automatically (default is None).
-            fig : matplotlib.figure.Figure, optional
-                Existing figure object to plot on. If None, a new figure is created (default is None).
-            ax : matplotlib.axes.Axes, optional
-                Existing axes object to plot on. If None, a new axes is created (default is None).
-            accuracy_color : str, optional
-                Color for the accuracy plot (default is "tab:blue").
-            label : str, optional
-                Label for the accuracy plot, used in the legend (default is None).
-            event_weights : array-like, optional
-                Weights for the events, used for weighted histogram computation (default is None).
-            Returns:
-            -------
-            fig : matplotlib.figure.Figure
-                The figure object containing the plot.
-            ax : matplotlib.axes.Axes
-                The axes object containing the plot.
-            Notes:
-            -----
-            - The function uses bootstrapping to compute error bars for the accuracy values.
-            - A secondary y-axis is used to display the histogram of feature counts.
-            - The function relies on `AssignmentBaseModel.compute_binned_accuracy` for accuracy computation.
-            """
+        """
+        Plots the accuracy of predictions as a function of a given feature, with optional error bars
+        computed using bootstrapping. Also overlays a histogram of the feature counts.
+        Parameters:
+        ----------
+        truth : array-like
+            Ground truth labels for the data.
+        prediction : array-like
+            Predicted labels or probabilities for the data.
+        feature_data : array-like
+            Feature values corresponding to the data points.
+        feature_name : str
+            Name of the feature to be displayed on the x-axis.
+        bins : int, optional
+            Number of bins to divide the feature data into (default is 20).
+        xlims : tuple, optional
+            Limits for the x-axis as (min, max). If None, limits are determined automatically (default is None).
+        fig : matplotlib.figure.Figure, optional
+            Existing figure object to plot on. If None, a new figure is created (default is None).
+        ax : matplotlib.axes.Axes, optional
+            Existing axes object to plot on. If None, a new axes is created (default is None).
+        accuracy_color : str, optional
+            Color for the accuracy plot (default is "tab:blue").
+        label : str, optional
+            Label for the accuracy plot, used in the legend (default is None).
+        event_weights : array-like, optional
+            Weights for the events, used for weighted histogram computation (default is None).
+        Returns:
+        -------
+        fig : matplotlib.figure.Figure
+            The figure object containing the plot.
+        ax : matplotlib.axes.Axes
+            The axes object containing the plot.
+        Notes:
+        -----
+        - The function uses bootstrapping to compute error bars for the accuracy values.
+        - A secondary y-axis is used to display the histogram of feature counts.
+        - The function relies on `AssignmentBaseModel.compute_binned_accuracy` for accuracy computation.
+        """
 
         # Use compute_binned_accuracy to get binned accuracies
         binned_accuracy_combined, feature_bins, feature_hist = (
@@ -1355,47 +1255,40 @@ class AssignmentBaseModel:
         n_bootstrap=100,
         sample_weight=None,
     ):
-        def plot_external_confusion_matrix(
-            jet_matcher_indices=None,
-            truth_index=None,
-            max_jets=None,
-            n_bootstrap=100,
-            sample_weight=None,
-        ):
-            """
-            Plots confusion matrices for two leptons using bootstrap resampling.
-            This function computes confusion matrices for two leptons (lepton 1 and lepton 2)
-            based on the provided truth and predicted indices. It uses bootstrap resampling
-            to calculate the mean and standard deviation of the confusion matrices and
-            visualizes them using heatmaps.
-            Parameters:
-            -----------
-            jet_matcher_indices : np.ndarray
-                Array of predicted indices for jets, with shape (n_samples, 2), where the
-                second dimension corresponds to the two leptons.
-            truth_index : np.ndarray
-                Array of true indices for jets, with shape (n_samples, 2), where the
-                second dimension corresponds to the two leptons.
-            max_jets : int
-                The maximum number of jet categories (used to define the size of the confusion matrix).
-            n_bootstrap : int, optional, default=100
-                The number of bootstrap resampling iterations to perform.
-            sample_weight : np.ndarray, optional, default=None
-                Array of sample weights for each data point. If None, all samples are
-                treated equally.
-            Returns:
-            --------
-            fig : matplotlib.figure.Figure
-                The figure object containing the confusion matrix plots.
-            ax : np.ndarray of matplotlib.axes._subplots.AxesSubplot
-                Array of axes objects corresponding to the two confusion matrix plots.
-            Notes:
-            ------
-            - The function normalizes the confusion matrices row-wise (true label axis).
-            - The standard deviation of the confusion matrices is displayed as red text
-              on the heatmaps.
-            - The function uses seaborn for heatmap visualization.
-            """
+        """
+        Plots confusion matrices for two leptons using bootstrap resampling.
+        This function computes confusion matrices for two leptons (lepton 1 and lepton 2)
+        based on the provided truth and predicted indices. It uses bootstrap resampling
+        to calculate the mean and standard deviation of the confusion matrices and
+        visualizes them using heatmaps.
+        Parameters:
+        -----------
+        jet_matcher_indices : np.ndarray
+            Array of predicted indices for jets, with shape (n_samples, 2), where the
+            second dimension corresponds to the two leptons.
+        truth_index : np.ndarray
+            Array of true indices for jets, with shape (n_samples, 2), where the
+            second dimension corresponds to the two leptons.
+        max_jets : int
+            The maximum number of jet categories (used to define the size of the confusion matrix).
+        n_bootstrap : int, optional, default=100
+            The number of bootstrap resampling iterations to perform.
+        sample_weight : np.ndarray, optional, default=None
+            Array of sample weights for each data point. If None, all samples are
+            treated equally.
+        Returns:
+        --------
+        fig : matplotlib.figure.Figure
+            The figure object containing the confusion matrix plots.
+        ax : np.ndarray of matplotlib.axes._subplots.AxesSubplot
+            Array of axes objects corresponding to the two confusion matrix plots.
+        Notes:
+        ------
+        - The function normalizes the confusion matrices row-wise (true label axis).
+        - The standard deviation of the confusion matrices is displayed as red text
+            on the heatmaps.
+        - The function uses seaborn for heatmap visualization.
+        """
 
         bootstrap_confusion_lep_1 = np.zeros((n_bootstrap, max_jets, max_jets))
         bootstrap_confusion_lep_2 = np.zeros((n_bootstrap, max_jets, max_jets))

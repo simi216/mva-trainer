@@ -6,7 +6,25 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tensorflow import convert_to_tensor
+from typing import Optional, Any, Union
+from enum import Enum
 
+from dataclasses import dataclass
+
+
+@dataclass
+class DataConfig:
+    jet_features: list[str]
+    lepton_features: list[str]
+    jet_truth_label: str
+    lepton_truth_label: str
+    max_leptons: int = 2
+    max_jets: int = 4
+    global_features: list[str] = None
+    non_training_features: list[str] = None
+    regression_targets: list[str] = None
+    event_weight: str = None
+    padding_value: float = -999.0
 
 class DataLoader:
     """
@@ -212,16 +230,7 @@ class DataPreprocessor:
 
     def __init__(
         self,
-        jet_features: list[str],
-        lepton_features: list[str],
-        jet_truth_label: str,
-        lepton_truth_label: str,
-        max_leptons: int = 2,
-        max_jets: int = 4,
-        global_features: list[str] = None,
-        non_training_features: list[str] = None,
-        regression_targets: list[str] = None,
-        event_weight: str = None,
+        config: DataConfig,
     ):
         """
         Initializes the DataLoader class with the specified features, labels, and configuration.
@@ -237,68 +246,24 @@ class DataPreprocessor:
             regression_targets (list[str], optional): List of regression target labels. Defaults to None.
             event_weight (str, optional): Label for the event weight. Defaults to None.
         Attributes:
-            jet_features (list[str]): Stores the jet features.
-            lepton_features (list[str]): Stores the lepton features.
-            jet_truth_label (str): Stores the jet truth label.
-            lepton_truth_label (str): Stores the lepton truth label.
-            max_leptons (int): Maximum number of leptons.
-            max_jets (int): Maximum number of jets.
-            global_features (list[str]): Stores the global features.
-            n_jets (int): Number of jet features.
-            n_leptons (int): Number of lepton features.
-            n_global (int): Number of global features.
-            data (Any): Placeholder for the loaded data.
-            data_length (int): Length of the loaded data.
-            padding_value (float): Value used for padding missing data. Defaults to -999.0.
-            load_jet_features (list[str]): Stores the jet features for loading.
-            load_lepton_features (list[str]): Stores the lepton features for loading.
-            feature_index_dict (dict): Dictionary mapping feature names to indices.
-            labels (Any): Placeholder for labels.
-            feature_data (Any): Placeholder for feature data.
-            non_training_features (list[str]): Stores the non-training features.
-            n_non_training (int): Number of non-training features.
-            event_weight_label (str): Stores the event weight label.
-            X_train (Any): Placeholder for training feature data.
-            X_test (Any): Placeholder for testing feature data.
-            y_train (Any): Placeholder for training labels.
-            y_test (Any): Placeholder for testing labels.
-            regression_targets (list[str]): Stores the regression target labels.
-            n_regression_targets (int): Number of regression targets.
-            cut_dict (dict): Dictionary for storing cut conditions.
-            data_normalisation_factors (dict): Dictionary for storing data normalization factors.
         """
 
-        self.jet_features = jet_features
-        self.lepton_features = lepton_features
-        self.jet_truth_label = jet_truth_label
-        self.lepton_truth_label = lepton_truth_label
-        self.max_leptons = max_leptons
-        self.max_jets = max_jets
-        self.global_features = global_features
-        self.n_jets: int = len(jet_features)
-        self.n_leptons: int = len(lepton_features)
-        self.n_global: int = len(global_features) if global_features else 0
+        self.config = config
+
         self.data = None
         self.data_length = None
-        self.padding_value = -999.0
-        self.load_jet_features = jet_features
-        self.load_lepton_features = lepton_features
+        self.padding_value = config.padding_value
         self.feature_index_dict = {}
         self.labels = None
         self.feature_data = None
-        self.non_training_features = non_training_features
-        self.n_non_training = len(non_training_features) if non_training_features else 0
-        self.event_weight_label = event_weight
         self.X_train = None
         self.X_test = None
         self.y_train = None
         self.y_test = None
-        self.regression_targets = regression_targets
-        self.n_regression_targets = len(regression_targets) if regression_targets else 0
         self.cut_dict = {}
         self.data_normalisation_factors = {}
 
-    def apply_cut(self, cut_feature, cut_low=None, cut_high=None):
+    def add_cut(self, cut_feature, cut_low=None, cut_high=None):
         """
         Apply a cut to a specific feature by specifying lower and/or upper bounds.
         Parameters:
@@ -317,59 +282,6 @@ class DataPreprocessor:
         if cut_low is not None and cut_high is not None and cut_low >= cut_high:
             raise ValueError("cut_low must be less than cut_high.")
         self.cut_dict[cut_feature] = (cut_low, cut_high)
-
-
-    def reorder_by_feature(self, reorder_feature):
-        """
-        Reorders the feature data and corresponding labels for each event based on the values of a specified feature.
-        This method sorts the jets in each event according to the values of the specified feature. Jets with masked
-        values (equal to the padding value) are not reordered and remain in their original positions.
-        Args:
-            reorder_feature (str): The name of the feature to use for reordering the jets.
-        Raises:
-            ValueError: If the feature data is not prepared (i.e., `self.feature_data` is None).
-            ValueError: If the specified feature is not found in the feature index dictionary (`self.feature_index_dict`).
-            ValueError: If the labels are not prepared (i.e., `self.labels` is None).
-        Notes:
-            - The method assumes that `self.feature_data` is a 3D numpy array with shape
-              (number_of_events, number_of_jets, number_of_features).
-            - The method assumes that `self.labels` is a 2D numpy array with shape
-              (number_of_events, number_of_jets).
-            - The `self.padding_value` is used to identify masked jets that should not be reordered.
-        """
-
-        if self.feature_data is None:
-            raise ValueError(
-                "Feature data not prepared. Please prepare data using prepare_data() method."
-            )
-        if reorder_feature not in self.feature_index_dict:
-            raise ValueError(
-                f"Feature {reorder_feature} not found in feature index dictionary."
-            )
-        if self.labels is None:
-            raise ValueError(
-                "Labels not prepared. Please prepare data using prepare_data() method."
-            )
-        feature_index = self.feature_index_dict[reorder_feature]
-        for event_index in range(self.feature_data.shape[0]):
-            # Extract the feature values for the jets in the current event
-            feature_values = self.feature_data[event_index, :, feature_index]
-            # Identify unmasked jets (those not equal to the padding value)
-            unmasked_indices = np.where(feature_values != self.padding_value)[0]
-            # Get the sorting indices for unmasked jets based on the feature values
-            sorted_indices = unmasked_indices[
-                np.argsort(feature_values[unmasked_indices])
-            ]
-            # Create a new ordering array that keeps masked jets in place
-            full_sorted_indices = np.arange(self.feature_data.shape[1])
-            full_sorted_indices[unmasked_indices] = sorted_indices
-
-            # Reorder the feature data and labels based on the sorted indices
-            self.feature_data[event_index] = self.feature_data[
-                event_index, full_sorted_indices
-            ]
-            self.labels[event_index] = self.labels[event_index, full_sorted_indices]
-
 
     def load_data(self, file_path, tree_name, max_events=None, cut_neg_weights=True):
         """
@@ -400,40 +312,43 @@ class DataPreprocessor:
 
         if self.data is None:
             feature_clipping = {
-                feature: self.max_jets for feature in self.load_jet_features
+                feature: self.config.max_jets for feature in self.config.jet_features
             }
             feature_clipping.update(
-                {feature: self.max_leptons for feature in self.load_lepton_features}
+                {
+                    feature: self.config.max_leptons
+                    for feature in self.config.lepton_features
+                }
             )
             (
                 feature_clipping.update(
-                    {feature: 1 for feature in self.global_features}
+                    {feature: 1 for feature in self.config.global_features}
                 )
-                if self.global_features
+                if self.config.global_features
                 else None
             )
-            feature_clipping.update({self.jet_truth_label: 6})
-            feature_clipping.update({self.lepton_truth_label: 2})
+            feature_clipping.update({self.config.jet_truth_label: 6})
+            feature_clipping.update({self.config.lepton_truth_label: 2})
             (
                 feature_clipping.update(
-                    {feature: 1 for feature in self.non_training_features}
+                    {feature: 1 for feature in self.config.non_training_features}
                 )
-                if self.non_training_features
+                if self.config.non_training_features
                 else None
             )
             (
-                feature_clipping.update({self.event_weight_label: 1})
-                if self.event_weight_label
+                feature_clipping.update({self.config.event_weight: 1})
+                if self.config.event_weight
                 else None
             )
             (
                 feature_clipping.update(
                     {
                         regression_target: 1
-                        for regression_target in self.regression_targets
+                        for regression_target in self.config.regression_targets
                     }
                 )
-                if self.regression_targets
+                if self.config.regression_targets
                 else None
             )
             DataHandle = DataLoader(feature_clipping)
@@ -456,31 +371,15 @@ class DataPreprocessor:
                         self.data = self.data[self.data[cut_feature] >= cut_low]
                     if cut_high is not None:
                         self.data = self.data[self.data[cut_feature] <= cut_high]
-            if self.event_weight_label is not None and cut_neg_weights:
-                self.data = self.data[self.data[self.event_weight_label] >= 0]
+            if self.config.event_weight is not None and cut_neg_weights:
+                self.data = self.data[self.data[self.config.event_weight] >= 0]
             self.data_length = len(self.data)
+            self.build_pairs()
+
         else:
             raise ValueError(
                 "Data already loaded. Please use a different instance of the class to load new data."
             )
-
-    def prepare_data(self):
-        """
-        Prepares the data for further processing by computing pairwise features
-        and building pairs.
-        This method performs the following steps:
-        1. Checks if the data is loaded. If not, raises a ValueError.
-        2. Builds pairs from the data.
-        Raises:
-            ValueError: If the data has not been loaded prior to calling this method.
-        """
-
-        if self.data is None:
-            raise ValueError(
-                "Data not loaded. Please load data using load_data() method."
-            )
-        self.build_pairs()
-        # self.reorder_by_feature("dR_lep_jet")
 
     def build_pairs(self):
         """
@@ -515,59 +414,68 @@ class DataPreprocessor:
             self.data[
                 [
                     lepton_var + f"_{lep_index}"
-                    for lepton_var in self.lepton_features
-                    for lep_index in range(self.max_leptons)
+                    for lepton_var in self.config.lepton_features
+                    for lep_index in range(self.config.max_leptons)
                 ]
             ]
             .to_numpy()
-            .reshape(self.data_length, -1, self.max_leptons)
+            .reshape(self.data_length, -1, self.config.max_leptons)
             .transpose((0, 2, 1))
         )
         lepton_indices = {
-            lepton_var: idx for idx, lepton_var in enumerate(self.lepton_features)
+            lepton_var: idx
+            for idx, lepton_var in enumerate(self.config.lepton_features)
         }
 
         jet_data = (
             self.data[
                 [
                     jet_var + f"_{jet_index}"
-                    for jet_var in self.jet_features
-                    for jet_index in range(self.max_jets)
+                    for jet_var in self.config.jet_features
+                    for jet_index in range(self.config.max_jets)
                 ]
             ]
             .to_numpy()
-            .reshape(self.data_length, -1, self.max_jets)
+            .reshape(self.data_length, -1, self.config.max_jets)
             .transpose((0, 2, 1))
         )
         jet_indices = {
-            jet_var: idx for idx, jet_var in enumerate(self.jet_features)
+            jet_var: idx for idx, jet_var in enumerate(self.config.jet_features)
         }
 
         global_data = (
-            self.data[[global_var for global_var in self.global_features]]
+            self.data[[global_var for global_var in self.config.global_features]]
             .to_numpy()
-            .reshape(self.data_length, 1, self.n_global)
-            if self.global_features
+            .reshape(self.data_length, 1, -1)
+            if self.config.global_features
             else None
         )
         global_indices = (
-            {global_var: idx for idx, global_var in enumerate(self.global_features)}
-            if self.global_features
+            {
+                global_var: idx
+                for idx, global_var in enumerate(self.config.global_features)
+            }
+            if self.config.global_features
             else {}
         )
         non_training_data = (
             self.data[
-                [non_training_var for non_training_var in self.non_training_features]
+                [
+                    non_training_var
+                    for non_training_var in self.config.non_training_features
+                ]
             ].to_numpy()
-            if self.non_training_features
+            if self.config.non_training_features
             else None
         )
         non_training_indices = (
             {
                 non_training_var: idx
-                for idx, non_training_var in enumerate(self.non_training_features)
+                for idx, non_training_var in enumerate(
+                    self.config.non_training_features
+                )
             }
-            if self.non_training_features
+            if self.config.non_training_features
             else {}
         )
 
@@ -577,28 +485,34 @@ class DataPreprocessor:
         feature_dict.update({"lepton": lepton_data})
         self.feature_index_dict.update({"jet": jet_indices})
         feature_dict.update({"jet": jet_data})
-        if self.global_features is not None:
+        if self.config.global_features is not None:
             self.feature_index_dict.update({"global": global_indices})
             feature_dict.update({"global": global_data})
-        if self.non_training_features is not None:
+        if self.config.non_training_features is not None:
             self.feature_index_dict.update({"non_training": non_training_indices})
             feature_dict.update({"non_training": non_training_data})
-        if self.event_weight_label is not None:
+        if self.config.event_weight is not None:
             feature_dict.update(
-                {"event_weight": self.data[self.event_weight_label].to_numpy()}
+                {"event_weight": self.data[self.config.event_weight].to_numpy()}
             )
             self.feature_index_dict.update(
-                {"event_weight": {self.event_weight_label: 0}}
+                {"event_weight": {self.config.event_weight: 0}}
             )
-        if self.regression_targets is not None:
+        if self.config.regression_targets is not None:
             feature_dict.update(
-                {"regression_targets": self.data[self.regression_targets].to_numpy()}
+                {
+                    "regression_targets": self.data[
+                        self.config.regression_targets
+                    ].to_numpy()
+                }
             )
             self.feature_index_dict.update(
                 {
                     "regression_targets": {
                         regression_target: idx
-                        for idx, regression_target in enumerate(self.regression_targets)
+                        for idx, regression_target in enumerate(
+                            self.config.regression_targets
+                        )
                     }
                 }
             )
@@ -626,7 +540,7 @@ class DataPreprocessor:
             raise ValueError(
                 "Feature Data not loaded. Please load data using load_data() method."
             )
-        if self.event_weight_label is None:
+        if self.config.event_weight is None:
             raise ValueError("Event weight label not provided.")
         event_weight = self.feature_data["event_weight"]
         if cut_neg_weights:
@@ -665,14 +579,20 @@ class DataPreprocessor:
             )
 
         jet_truth = self.data[
-            [self.jet_truth_label + f"_{0}", self.jet_truth_label + f"_{3}"]
+            [
+                self.config.jet_truth_label + f"_{0}",
+                self.config.jet_truth_label + f"_{3}",
+            ]
         ].to_numpy()
         lepton_truth = self.data[
-            [self.lepton_truth_label + f"_{0}", self.lepton_truth_label + f"_{1}"]
+            [
+                self.config.lepton_truth_label + f"_{0}",
+                self.config.lepton_truth_label + f"_{1}",
+            ]
         ].to_numpy()
 
         reco_success_mask = (jet_truth != -1).all(axis=1) & (
-            jet_truth < self.max_jets
+            jet_truth < self.config.max_jets
         ).all(axis=1)
 
         for data in self.feature_data:
@@ -682,10 +602,12 @@ class DataPreprocessor:
         jet_truth = jet_truth[reco_success_mask]
         lepton_truth = lepton_truth[reco_success_mask]
 
-        pair_truth = np.zeros((self.data_length, self.max_jets, self.max_leptons))
+        pair_truth = np.zeros(
+            (self.data_length, self.config.max_jets, self.config.max_leptons)
+        )
         for event_index in range(self.data_length):
-            for lep_index in range(self.max_leptons):
-                for jet_index in range(self.max_jets):
+            for lep_index in range(self.config.max_leptons):
+                for jet_index in range(self.config.max_jets):
                     if (
                         jet_truth[event_index, 0] == jet_index
                         and lepton_truth[event_index, 0] == lep_index
@@ -699,7 +621,7 @@ class DataPreprocessor:
                     else:
                         pair_truth[event_index, jet_index, lep_index] = 0
 
-        if self.regression_targets is not None:
+        if self.config.regression_targets is not None:
             self.labels = self.feature_data["regression_targets"]
         else:
             self.labels = pair_truth
@@ -878,7 +800,7 @@ class DataPreprocessor:
                 feature_index = self.feature_index_dict[data][feature_name]
                 if self.feature_data[data] is not None:
                     if data == "jet":
-                        for jet_index in range(self.max_jets):
+                        for jet_index in range(self.config.max_jets):
                             if isinstance(feature_index, list):
                                 for lep_index, index in enumerate(feature_index):
                                     feature_data[
@@ -889,7 +811,7 @@ class DataPreprocessor:
                                     self.feature_data[data][:, jet_index, feature_index]
                                 )
                     elif data == "lepton":
-                        for lep_index in range(self.max_leptons):
+                        for lep_index in range(self.config.max_leptons):
                             feature_data[f"{feature_name}_{lep_index}"] = (
                                 self.feature_data[data][:, lep_index, feature_index]
                             )
@@ -1050,48 +972,3 @@ class DataPreprocessor:
                     continue
                 elif data == "labels":
                     continue
-
-    def plot_feature_distribution(self, data, feature_name, file_name=None, **kwargs):
-        """
-        Plots the distribution of a specified feature from the prepared feature data.
-        Parameters:
-            data (str): The type of data to plot the feature distribution for.
-                        Must be one of "jet", "lepton", or "global".
-            feature_name (str): The name of the feature to plot.
-            file_name (str, optional): The file path to save the plot. If None, the plot is not saved. Default is None.
-            **kwargs: Additional keyword arguments to pass to `sns.histplot`.
-        Raises:
-            ValueError: If the feature data has not been prepared.
-            ValueError: If the specified data type is not found in the feature index dictionary.
-            ValueError: If the specified feature name is not found in the feature index dictionary.
-            ValueError: If the specified data type is not found in the feature data.
-        Returns:
-            tuple: A tuple containing the matplotlib figure and axes objects (fig, ax).
-        """
-
-        if self.feature_data is None:
-            raise ValueError(
-                "Feature data not prepared. Please prepare data using prepare_data() method."
-            )
-        if data not in self.feature_index_dict:
-            raise ValueError(f"Data type {data} not found in feature index dictionary.")
-        if feature_name not in self.feature_index_dict[data]:
-            raise ValueError(
-                f"Feature {feature_name} not found in feature index dictionary."
-            )
-        feature_index = self.feature_index_dict[data][feature_name]
-        if data == "jet":
-            feature_data = self.feature_data[data][:, :, feature_index]
-        elif data == "lepton":
-            feature_data = self.feature_data[data][:, :, feature_index]
-        elif data == "global":
-            feature_data = self.feature_data[data][:, feature_index]
-        else:
-            raise ValueError(f"Data type {data} not found in feature data.")
-        feature_data = feature_data[feature_data != self.padding_value]
-        fig, ax = plt.subplots(figsize=(12, 10))
-        sns.histplot(feature_data, ax=ax, **kwargs)
-        ax.set_title(f"Feature distribution for {feature_name}")
-        if file_name is not None:
-            plt.savefig(file_name)
-        return fig, ax
