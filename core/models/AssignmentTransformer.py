@@ -9,10 +9,11 @@ from ..components import (
     MLP,
     GenerateMask,
     TemporalSoftmax,
+    JetLeptonAssignment
 )
 
 
-class AssignmentTransformer(AssignmentBaseModel):
+class CrossAttentionModel(AssignmentBaseModel):
     def __init__(self, data_preprocessor):
         super().__init__(data_preprocessor)
 
@@ -86,13 +87,68 @@ class AssignmentTransformer(AssignmentBaseModel):
                 name=f"jets_self_attention_{i}",
             )(jets_attent_leptons, mask=jet_mask)
 
-            leptons_attent_jets = SelfAttentionBlock(
+        # Output layers
+        jet_assignment_probs = JetLeptonAssignment(name="jet_lepton_assignment", dim = hidden_dim)(
+            jets_attent_leptons, leptons_attent_jets, jet_mask=jet_mask
+        )
+
+        self.model = keras.Model(
+            inputs=[jet_inputs, lep_inputs, global_inputs],
+            outputs=jet_assignment_probs,
+            name="AssignmentTransformer",
+        )
+
+class FeatureConcatTransformer(AssignmentBaseModel):
+    def __init__(self, data_preprocessor):
+        super().__init__(data_preprocessor)
+
+    def build_model(self, hidden_dim, num_heads, num_layers, dropout_rate):
+        """
+        Builds the Assignment Transformer model.
+        Args:
+            hidden_dim (int): The dimensionality of the hidden layers.
+            num_heads (int): The number of attention heads.
+            num_layers (int): The number of transformer layers.
+            dropout_rate (float): The dropout rate to be applied in the model.
+        Returns:
+            keras.Model: The constructed Keras model.
+        """
+        # Input layers
+        jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
+        lep_inputs = keras.Input(shape=(self.max_leptons, self.n_leptons), name="lep_inputs")
+        global_inputs = keras.Input(shape=(1,self.n_global), name="global_inputs")
+
+        flatted_global_inputs = keras.layers.Flatten()(global_inputs)
+        flatted_lepton_inputs = keras.layers.Flatten()(lep_inputs)
+
+        # Generate masks
+        jet_mask = GenerateMask(padding_value=-999, name="jet_mask")(jet_inputs)
+
+
+        # Concat global and lepton features to each jet
+        global_repeated_jets = keras.layers.RepeatVector(self.max_jets)(flatted_global_inputs)
+        lepton_repeated_jets = keras.layers.RepeatVector(self.max_jets)(flatted_lepton_inputs)
+        jet_features = keras.layers.Concatenate(axis=-1)([jet_inputs, global_repeated_jets, lepton_repeated_jets])
+
+        # Input embedding layers
+        jet_embedding = MLP(
+            hidden_dim,
+            num_layers=3,
+            dropout_rate=dropout_rate,
+            activation="relu",
+            name="jet_embedding",
+        )(jet_features)
+
+        # Transformer layers
+        jets_transformed = jet_embedding
+        for i in range(num_layers):
+            jets_transformed = SelfAttentionBlock(
                 num_heads=num_heads,
                 key_dim=hidden_dim,
                 dropout_rate=dropout_rate,
-                name=f"leptons_self_attention_{i}",
-            )(leptons_attent_jets)
-
+                name=f"jets_self_attention_{i}",
+            )(jets_transformed, mask=jet_mask)
+        
         # Output layers
         jet_outputs = MLP(
             hidden_dim,
@@ -100,22 +156,21 @@ class AssignmentTransformer(AssignmentBaseModel):
             dropout_rate=dropout_rate,
             activation="relu",
             name="jet_outputs_mlp",
-        )(jets_attent_leptons)
+        )(jets_transformed)
 
         jet_output_embedding = MLP(
-            self.n_leptons,
-            num_layers=1,
+            self.max_leptons,
+            num_layers=2,
             dropout_rate=0.0,
             activation=None,
             name="jet_output_embedding",
         )(jet_outputs)
 
-        jet_assignment_probs = TemporalSoftmax(axis=-1, name="jet_assignment_probs")(
+        jet_assignment_probs = TemporalSoftmax(axis=1, name="jet_assignment_probs")(
             jet_output_embedding, mask=jet_mask
         )
-
         self.model = keras.Model(
             inputs=[jet_inputs, lep_inputs, global_inputs],
             outputs=jet_assignment_probs,
-            name="AssignmentTransformer",
+            name="FeatureConcatTransformer",
         )

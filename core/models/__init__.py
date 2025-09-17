@@ -1,1 +1,2 @@
-from AssignmentTransformer import AssignmentTransformer
+from .AssignmentTransformer import *
+from .AssignmentRNN import *

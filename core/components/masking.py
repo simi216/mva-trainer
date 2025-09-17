@@ -67,6 +67,7 @@ class TemporalSoftmax(keras.layers.Layer):
     def call(self, inputs, mask=None):
         if mask is not None:
             mask = tf.cast(mask, inputs.dtype)
+            mask = tf.expand_dims(mask, axis=-1)
             mask = tf.broadcast_to(mask, tf.shape(inputs))
             not_mask = 1.0 - mask
             inputs += not_mask * -1e9

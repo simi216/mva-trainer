@@ -17,7 +17,6 @@ The attention blocks include:
 import keras
 import tensorflow as tf
 from keras import layers
-from . import MLP
 
 
 import tensorflow as tf
@@ -586,6 +585,62 @@ class CrossAttentionBlock(layers.Layer):
         return (
             self.b_to_a_attention.count_params() + self.a_to_b_attention.count_params()
         )
+
+
+@keras.utils.register_keras_serializable(package="Custom", name="JetLeptonAssignment")
+class JetLeptonAssignment(layers.Layer):
+    def __init__(self, dim, use_bias=True, temperature=None, **kwargs):
+        """
+        Args:
+            dim: latent projection dimension
+            use_bias: whether to use bias in dense projections
+            temperature: optional scaling (default = sqrt(dim))
+        """
+        super().__init__(**kwargs)
+        self.dim = dim
+        self.use_bias = use_bias
+        self.temperature = temperature or tf.math.sqrt(tf.cast(dim, tf.float32))
+
+    def build(self, jets_shape, leptons_shape):
+        self.query_proj = layers.Dense(self.dim, use_bias=self.use_bias)
+        self.key_proj = layers.Dense(self.dim, use_bias=self.use_bias)
+
+    def call(self, jets, leptons, jet_mask=None):
+        """
+        Args:
+            inputs: [jets, leptons, jet_mask]
+              jets: (B, N_j, d_j)
+              leptons: (B, N_l, d_l)
+              jet_mask: (B, N_j), boolean or {0,1}
+        Returns:
+            probs: (B, N_l, N_j) assignment probabilities (softmax over jets)
+        """
+        # Project into latent space
+        queries = self.query_proj(leptons)   # (B, N_l, dim)
+        keys = self.key_proj(jets)           # (B, N_j, dim)
+
+        # Compute scaled dot product logits
+        logits = tf.einsum("bld,bjd->bjl", queries, keys)  # (B, N_j, N_l)
+        logits = logits / self.temperature
+
+        # Apply jet mask (broadcast to match (B, N_l, N_j))
+        if jet_mask is not None:
+            mask = tf.cast(jet_mask[:, :, tf.newaxis], tf.bool)  # (B, 1, N_j)
+            neg_inf = tf.constant(-1e9, dtype=logits.dtype)
+            logits = tf.where(mask, logits, neg_inf)
+
+        # Softmax over jets (for each lepton)
+        probs = tf.nn.softmax(logits, axis=1)  # (B, N_j, N_l)
+        return probs
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "dim": self.dim,
+            "use_bias": self.use_bias,
+            "temperature": self.temperature,
+        })
+        return config
 
 
 @keras.utils.register_keras_serializable(package="Custom")
