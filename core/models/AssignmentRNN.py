@@ -72,7 +72,6 @@ class FeatureConcatRNN(AssignmentBaseModel):
         jet_assignment_probs = MLP(
             self.max_leptons,
             num_layers=3,
-            dropout_rate=dropout_rate,
             activation="relu",
             name="jet_assignment_mlp",
         )(x)

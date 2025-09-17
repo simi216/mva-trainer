@@ -1405,26 +1405,25 @@ class AssignmentBaseModel:
         return fig, ax
 
     def plot_confusion_matrix(self, n_bootstrap=100, exclusive=True):
-        def plot_confusion_matrix(self, n_bootstrap=100, exclusive=True):
-            """
-            Plots the confusion matrix for the model's predictions on the test dataset.
-            This method computes the confusion matrix by comparing the predicted indices
-            with the ground truth indices from the test dataset. It supports bootstrapping
-            for uncertainty estimation and allows for exclusive matching of predictions.
-            Args:
-                n_bootstrap (int, optional): The number of bootstrap samples to use for
-                    uncertainty estimation. Defaults to 100.
-                exclusive (bool, optional): If True, uses exclusive matching for predictions.
-                    Defaults to True.
-            Returns:
-                matplotlib.figure.Figure: A figure object containing the plotted confusion matrix.
-            Notes:
-                - The method uses `predict_indices` to compute the predicted indices.
-                - The ground truth indices are derived from `y_test`.
-                - The `max_jets` attribute is used to determine the maximum number of jets.
-                - The `plot_external_confusion_matrix` method is called to generate the plot.
-                - The `event_weight` column in `X_test` is used as sample weights for the plot.
-            """
+        """
+        Plots the confusion matrix for the model's predictions on the test dataset.
+        This method computes the confusion matrix by comparing the predicted indices
+        with the ground truth indices from the test dataset. It supports bootstrapping
+        for uncertainty estimation and allows for exclusive matching of predictions.
+        Args:
+            n_bootstrap (int, optional): The number of bootstrap samples to use for
+                uncertainty estimation. Defaults to 100.
+            exclusive (bool, optional): If True, uses exclusive matching for predictions.
+                Defaults to True.
+        Returns:
+            matplotlib.figure.Figure: A figure object containing the plotted confusion matrix.
+        Notes:
+            - The method uses `predict_indices` to compute the predicted indices.
+            - The ground truth indices are derived from `y_test`.
+            - The `max_jets` attribute is used to determine the maximum number of jets.
+            - The `plot_external_confusion_matrix` method is called to generate the plot.
+            - The `event_weight` column in `X_test` is used as sample weights for the plot.
+        """
 
         jet_matcher_indices = np.argmax(
             self.predict_indices(self.X_test, exclusive=exclusive), axis=1
