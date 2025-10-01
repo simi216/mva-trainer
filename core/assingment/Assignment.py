@@ -49,6 +49,7 @@ class MLAssignerBase(JetAssignerBase):
             else 0
         )
         self.padding_value: float = config.padding_value
+        self.feature_index_dict = config.feature_index_dict
 
         super().__init__(name=name)
 
@@ -169,8 +170,6 @@ class MLAssignerBase(JetAssignerBase):
         self.model = keras.saving.load_model(file_path, custom_objects=custom_objects)
         print(f"Model loaded from {file_path}")
 
-
-    
     def predict_indices(self, data_dict):
         if self.model is None:
             raise ValueError("Model has not been built yet. Call build_model() before predict_indices().")

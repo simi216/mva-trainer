@@ -25,6 +25,68 @@ class DataConfig:
     regression_targets: list[str] = None
     event_weight: str = None
     padding_value: float = -999.0
+    feature_index_dict: dict[str, dict[str, int]] = {}
+
+    def __post_init__(self):
+        lepton_indices = {
+            lepton_var: idx
+            for idx, lepton_var in enumerate(self.lepton_features)
+        }
+
+        jet_indices = {
+            jet_var: idx for idx, jet_var in enumerate(self.jet_features)
+        }
+
+        global_indices = (
+            {
+                global_var: idx
+                for idx, global_var in enumerate(self.global_features)
+            }
+            if self.global_features
+            else {}
+        )
+        non_training_indices = (
+            {
+                non_training_var: idx
+                for idx, non_training_var in enumerate(
+                    self.non_training_features
+                )
+            }
+            if self.non_training_features
+            else {}
+        )
+
+        feature_dict = {}
+
+        self.feature_index_dict.update({"lepton": lepton_indices})
+        self.feature_index_dict.update({"jet": jet_indices})
+        if self.config.global_features is not None:
+            self.feature_index_dict.update({"global": global_indices})
+        if self.config.non_training_features is not None:
+            self.feature_index_dict.update({"non_training": non_training_indices})
+        if self.config.event_weight is not None:
+            self.feature_index_dict.update(
+                {"event_weight": {self.config.event_weight: 0}}
+            )
+        if self.config.regression_targets is not None:
+            feature_dict.update(
+                {
+                    "regression_targets": self.data[
+                        self.config.regression_targets
+                    ].to_numpy()
+                }
+            )
+            self.feature_index_dict.update(
+                {
+                    "regression_targets": {
+                        regression_target: idx
+                        for idx, regression_target in enumerate(
+                            self.config.regression_targets
+                        )
+                    }
+                }
+            )
+
 
 class DataLoader:
     """
