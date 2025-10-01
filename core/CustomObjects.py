@@ -392,16 +392,6 @@ class DataNormalizationLayer(keras.layers.Layer):
             "std": self.std.numpy().tolist(),
         }
 
-    @classmethod
-    def from_config(cls, config):
-        axis = config.pop("axis")
-        mean = tf.constant(config.pop("mean"))
-        std = tf.constant(config.pop("std"))
-        instance = cls(data=tf.zeros_like(mean), axis=axis, **config)
-        instance.mean = mean
-        instance.std = std
-        return instance
-
 @keras.utils.register_keras_serializable()
 class SplitLayer(keras.layers.Layer):
     def __init__(self, split_size, axis=-1, **kwargs):

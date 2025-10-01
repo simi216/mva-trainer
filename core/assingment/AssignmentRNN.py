@@ -2,7 +2,7 @@ import keras
 import tensorflow as tf
 
 
-from .AssignmentBaseModel import AssignmentBaseModel
+from .Assignment import MLAssignerBase, DataConfig
 from ..components import (
     MultiHeadAttentionBlock,
     SelfAttentionBlock,
@@ -13,9 +13,9 @@ from ..components import (
 )
 
 
-class FeatureConcatRNN(AssignmentBaseModel):
-    def __init__(self, data_preprocessor):
-        super().__init__(data_preprocessor)
+class FeatureConcatRNN(MLAssignerBase):
+    def __init__(self, config : DataConfig, name="RNN"):
+        super().__init__(config, name)
 
     def build_model(self, hidden_dim, num_layers, dropout_rate, recurrent_type="lstm"):
         jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
@@ -72,7 +72,6 @@ class FeatureConcatRNN(AssignmentBaseModel):
         jet_assignment_probs = MLP(
             self.max_leptons,
             num_layers=3,
-            activation="relu",
             name="jet_assignment_mlp",
         )(x)
 

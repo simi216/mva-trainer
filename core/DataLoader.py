@@ -25,9 +25,8 @@ class DataConfig:
     regression_targets: list[str] = None
     event_weight: str = None
     padding_value: float = -999.0
-    feature_index_dict: dict[str, dict[str, int]] = {}
 
-    def __post_init__(self):
+    def get_feature_index_dict(self):
         lepton_indices = {
             lepton_var: idx
             for idx, lepton_var in enumerate(self.lepton_features)
@@ -56,36 +55,30 @@ class DataConfig:
             else {}
         )
 
-        feature_dict = {}
+        feature_index_dict = {}
 
-        self.feature_index_dict.update({"lepton": lepton_indices})
-        self.feature_index_dict.update({"jet": jet_indices})
-        if self.config.global_features is not None:
-            self.feature_index_dict.update({"global": global_indices})
-        if self.config.non_training_features is not None:
-            self.feature_index_dict.update({"non_training": non_training_indices})
-        if self.config.event_weight is not None:
-            self.feature_index_dict.update(
-                {"event_weight": {self.config.event_weight: 0}}
+        feature_index_dict.update({"lepton": lepton_indices})
+        feature_index_dict.update({"jet": jet_indices})
+        if self.global_features is not None:
+            feature_index_dict.update({"global": global_indices})
+        if self.non_training_features is not None:
+            feature_index_dict.update({"non_training": non_training_indices})
+        if self.event_weight is not None:
+            feature_index_dict.update(
+                {"event_weight": {self.event_weight: 0}}
             )
-        if self.config.regression_targets is not None:
-            feature_dict.update(
-                {
-                    "regression_targets": self.data[
-                        self.config.regression_targets
-                    ].to_numpy()
-                }
-            )
-            self.feature_index_dict.update(
+        if self.regression_targets is not None:
+            feature_index_dict.update(
                 {
                     "regression_targets": {
                         regression_target: idx
                         for idx, regression_target in enumerate(
-                            self.config.regression_targets
+                            self.regression_targets
                         )
                     }
                 }
             )
+        return feature_index_dict
 
 
 class DataLoader:
@@ -174,7 +167,7 @@ class DataLoader:
             ]
             if missing_branches:
                 raise ValueError(
-                    f"The following branches are missing in the tree {tree_name}: {missing_branches}"
+                    f"The following branches are missing in the tree {tree_name}: {missing_branches}. Available branches: {file[tree_name].keys()}"
                 )
             if max_events is not None:
                 data = file[tree_name].arrays(
@@ -315,13 +308,9 @@ class DataPreprocessor:
         self.data = None
         self.data_length = None
         self.padding_value = config.padding_value
-        self.feature_index_dict = {}
+        self.feature_index_dict = config.get_feature_index_dict()
         self.labels = None
         self.feature_data = None
-        self.X_train = None
-        self.X_test = None
-        self.y_train = None
-        self.y_test = None
         self.cut_dict = {}
         self.data_normalisation_factors = {}
 
@@ -447,20 +436,18 @@ class DataPreprocessor:
         """
         Builds and organizes feature data into structured arrays for training and evaluation.
         This method processes the loaded data to create structured arrays for different feature types
-        (lepton, jet, global, non-training, event weight, and regression targets). It also updates
-        feature index dictionaries to map feature names to their respective indices.
+        (lepton, jet, global, non-training, event weight, and regression targets) based on the existing
+        `feature_index_dict`. It assumes that `feature_index_dict` is already populated.
         Raises:
             ValueError: If the data has not been loaded prior to calling this method.
         Processes:
             - Lepton features: Extracts and reshapes lepton-related data.
-            - Jet features: Extracts and reshapes jet-related data
+            - Jet features: Extracts and reshapes jet-related data.
             - Global features: Extracts global features if available.
             - Non-training features: Extracts non-training features if available.
             - Event weight: Extracts event weight data if specified.
             - Regression targets: Extracts regression target data if specified.
         Updates:
-            - `self.feature_index_dict`: A dictionary mapping feature categories (e.g., "lepton", "jet")
-              to their respective feature indices.
             - `self.feature_data`: A dictionary containing the processed feature data arrays.
         Notes:
             - Clears the original data (`self.data`) after processing to save memory.
@@ -472,112 +459,73 @@ class DataPreprocessor:
                 "Data not loaded. Please load data using load_data() method."
             )
 
-        lepton_data = (
-            self.data[
-                [
-                    lepton_var + f"_{lep_index}"
-                    for lepton_var in self.config.lepton_features
-                    for lep_index in range(self.config.max_leptons)
-                ]
-            ]
-            .to_numpy()
-            .reshape(self.data_length, -1, self.config.max_leptons)
-            .transpose((0, 2, 1))
-        )
-        lepton_indices = {
-            lepton_var: idx
-            for idx, lepton_var in enumerate(self.config.lepton_features)
-        }
-
-        jet_data = (
-            self.data[
-                [
-                    jet_var + f"_{jet_index}"
-                    for jet_var in self.config.jet_features
-                    for jet_index in range(self.config.max_jets)
-                ]
-            ]
-            .to_numpy()
-            .reshape(self.data_length, -1, self.config.max_jets)
-            .transpose((0, 2, 1))
-        )
-        jet_indices = {
-            jet_var: idx for idx, jet_var in enumerate(self.config.jet_features)
-        }
-
-        global_data = (
-            self.data[[global_var for global_var in self.config.global_features]]
-            .to_numpy()
-            .reshape(self.data_length, 1, -1)
-            if self.config.global_features
-            else None
-        )
-        global_indices = (
-            {
-                global_var: idx
-                for idx, global_var in enumerate(self.config.global_features)
-            }
-            if self.config.global_features
-            else {}
-        )
-        non_training_data = (
-            self.data[
-                [
-                    non_training_var
-                    for non_training_var in self.config.non_training_features
-                ]
-            ].to_numpy()
-            if self.config.non_training_features
-            else None
-        )
-        non_training_indices = (
-            {
-                non_training_var: idx
-                for idx, non_training_var in enumerate(
-                    self.config.non_training_features
-                )
-            }
-            if self.config.non_training_features
-            else {}
-        )
-
         feature_dict = {}
 
-        self.feature_index_dict.update({"lepton": lepton_indices})
-        feature_dict.update({"lepton": lepton_data})
-        self.feature_index_dict.update({"jet": jet_indices})
-        feature_dict.update({"jet": jet_data})
-        if self.config.global_features is not None:
-            self.feature_index_dict.update({"global": global_indices})
-            feature_dict.update({"global": global_data})
-        if self.config.non_training_features is not None:
-            self.feature_index_dict.update({"non_training": non_training_indices})
-            feature_dict.update({"non_training": non_training_data})
-        if self.config.event_weight is not None:
-            feature_dict.update(
-                {"event_weight": self.data[self.config.event_weight].to_numpy()}
+        # Process lepton features
+        if "lepton" in self.feature_index_dict:
+            lepton_features = self.feature_index_dict["lepton"]
+            lepton_data = (
+                self.data[
+                    [
+                        f"{lepton_var}_{lep_index}"
+                        for lepton_var in lepton_features
+                        for lep_index in range(self.config.max_leptons)
+                    ]
+                ]
+                .to_numpy()
+                .reshape(self.data_length, -1, self.config.max_leptons)
+                .transpose((0, 2, 1))
             )
-            self.feature_index_dict.update(
-                {"event_weight": {self.config.event_weight: 0}}
+            feature_dict["lepton"] = lepton_data
+
+        # Process jet features
+        if "jet" in self.feature_index_dict:
+            jet_features = self.feature_index_dict["jet"]
+            jet_data = (
+                self.data[
+                    [
+                        f"{jet_var}_{jet_index}"
+                        for jet_var in jet_features
+                        for jet_index in range(self.config.max_jets)
+                    ]
+                ]
+                .to_numpy()
+                .reshape(self.data_length, -1, self.config.max_jets)
+                .transpose((0, 2, 1))
             )
-        if self.config.regression_targets is not None:
-            feature_dict.update(
-                {
-                    "regression_targets": self.data[
-                        self.config.regression_targets
-                    ].to_numpy()
-                }
+            feature_dict["jet"] = jet_data
+
+        # Process global features
+        if "global" in self.feature_index_dict:
+            global_features = self.feature_index_dict["global"]
+            global_data = (
+                self.data[[global_var for global_var in global_features]]
+                .to_numpy()
+                .reshape(self.data_length, 1, -1)
             )
-            self.feature_index_dict.update(
-                {
-                    "regression_targets": {
-                        regression_target: idx
-                        for idx, regression_target in enumerate(
-                            self.config.regression_targets
-                        )
-                    }
-                }
-            )
+            feature_dict["global"] = global_data
+
+        # Process non-training features
+        if "non_training" in self.feature_index_dict:
+            non_training_features = self.feature_index_dict["non_training"]
+            non_training_data = self.data[
+                [non_training_var for non_training_var in non_training_features]
+            ].to_numpy()
+            feature_dict["non_training"] = non_training_data
+
+        # Process event weight
+        if "event_weight" in self.feature_index_dict:
+            event_weight_feature = list(self.feature_index_dict["event_weight"].keys())[0]
+            feature_dict["event_weight"] = self.data[event_weight_feature].to_numpy()
+
+        # Process regression targets
+        if "regression_targets" in self.feature_index_dict:
+            regression_targets = self.feature_index_dict["regression_targets"]
+            regression_data = self.data[
+                [regression_target for regression_target in regression_targets]
+            ].to_numpy()
+            feature_dict["regression_targets"] = regression_data
+
         self.feature_data = feature_dict
 
         self.build_labels()
@@ -733,28 +681,7 @@ class DataPreprocessor:
                     test_size=test_size,
                     random_state=random_state,
                 )
-        self.X_train = X_train
-        self.X_test = X_test
-        self.y_train = y_train
-        self.y_test = y_test
-
-    def get_data(self):
-        """
-        Retrieves the training and testing datasets.
-        This method ensures that the data is split into training and testing sets
-        before returning them. If the data has not been split yet, it calls the
-        `split_data` method to perform the split.
-        Returns:
-            tuple: A tuple containing four elements:
-                - X_train (array-like): Features for the training set.
-                - y_train (array-like): Labels for the training set.
-                - X_test (array-like): Features for the testing set.
-                - y_test (array-like): Labels for the testing set.
-        """
-
-        if self.X_train is None or self.X_test is None:
-            self.split_data()
-        return self.X_train, self.y_train, self.X_test, self.y_test
+        return X_train, y_train, X_test, y_test
 
     def create_k_folds(
         self, n_folds: int = 5, n_splits: int = 1, random_state: int = 42
