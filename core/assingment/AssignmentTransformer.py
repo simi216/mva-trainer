@@ -154,6 +154,7 @@ class FeatureConcatTransformer(MLAssignerBase):
                 key_dim=hidden_dim,
                 dropout_rate=dropout_rate,
                 name=f"jets_self_attention_{i}",
+                pre_ln=True,
             )(jets_transformed, mask=jet_mask)
 
 

@@ -3,59 +3,84 @@ import keras
 
 @keras.utils.register_keras_serializable()
 class AssignmentLoss(keras.losses.Loss):
-    """
-    A custom loss function for assignment problems, combining cross-entropy loss 
-    with a soft exclusion penalty to enforce constraints on the sum of probabilities.
-    Attributes:
-        lambda_excl (float): Weight for the exclusion penalty term. Default is 0.0.
-        name (str): Name of the loss function. Default is "assignment_loss".
-    Methods:
-        call(y_true, y_pred, sample_weight=None):
-            Computes the total loss as the sum of cross-entropy loss and the 
-            weighted exclusion penalty.
-    Args:
-        lambda_excl (float, optional): Weight for the exclusion penalty term. 
-            Controls the strength of the penalty for violating the sum of probabilities constraint. 
-            Default is 0.0.
-        name (str, optional): Name of the loss function. Default is "assignment_loss".
-        **kwargs: Additional keyword arguments passed to the base class.
-    Call Args:
-        y_true (Tensor): Ground truth tensor of shape (batch_size, num_jets, 2), 
-            where the second dimension represents one-hot encoded targets.
-        y_pred (Tensor): Predicted tensor of shape (batch_size, num_jets, 2,), 
-            where the second dimension represents softmax outputs.
-        sample_weight (Tensor, optional): Optional tensor of shape (batch_size,) 
-            representing weights for each sample in the batch.
-        Tensor: A tensor of shape (batch_size,) representing the per-sample loss.
-    """
-    def __init__(self, lambda_excl=0.0, name="assignment_loss", **kwargs):
+    def __init__(self, lambda_excl=0.0, epsilon=1e-7, 
+                 name="assignment_loss", **kwargs):
         super().__init__(name=name, **kwargs)
         self.lambda_excl = lambda_excl
-
+        self.epsilon = epsilon
+    
     def call(self, y_true, y_pred, sample_weight=None):
         """
-        Computes the total loss as the sum of cross-entropy loss and the 
-        weighted exclusion penalty.
+        Computes assignment loss with proper masking and sample weighting.
+        
         Args:
-            y_true (Tensor): Ground truth tensor of shape (batch_size, num_jets, 2), 
-                where the second dimension represents one-hot encoded targets.
-            y_pred (Tensor): Predicted tensor of shape (batch_size, num_jets, 2,), 
-                where the second dimension represents softmax outputs.
-            sample_weight (Tensor, optional): Optional tensor of shape (batch_size,) 
-                representing weights for each sample in the batch.
+            y_true: (batch_size, num_jets, 2) - one-hot encoded targets
+            y_pred: (batch_size, num_jets, 2) - predicted probabilities
+            sample_weight: (batch_size,) - optional per-sample weights
+        
         Returns:
-            Tensor of shape (batch_size,) — per-sample loss
+            loss: (batch_size,) - per-sample loss
         """
-        # Cross-entropy loss per lepton, summed over lepton dim
-        cross_entropy = keras.losses.categorical_crossentropy(y_true, y_pred, axis=1)
-        ce_loss = tf.reduce_mean(cross_entropy, axis=-1)  # shape: (batch_size,)
-
-        # Exclusion penalty: penalize if sum of probabilities over jets deviates from 1
-        sum_probs = tf.reduce_sum(y_pred, axis=-1)  # shape: (batch_size, num_jets)
-        exclusion_penalty = tf.reduce_sum((tf.nn.relu(sum_probs - 1.0)) ** 2, axis=-1)  # shape: (batch_size,)
-        excl_loss = self.lambda_excl * exclusion_penalty  # shape: (batch_size,)
-        total_loss = ce_loss + excl_loss  # shape: (batch_size,)
+        # Detect mask: jets where probabilities sum to ~0 are masked
+        sum_probs = tf.reduce_sum(y_pred, axis=-1)  # (batch, jets)
+        mask = tf.cast(sum_probs > self.epsilon, y_pred.dtype)  # (batch, jets)
+        mask_expanded = mask[..., tf.newaxis]  # (batch, jets, 1)
+        
+        # Count valid jets per sample for normalization
+        num_valid = tf.maximum(tf.reduce_sum(mask, axis=-1), 1.0)  # (batch,)
+        
+        # ============ Cross-Entropy Loss ============
+        # Ensure y_true is also masked (safety)
+        y_true_masked = y_true * mask_expanded
+        
+        # Clip predictions to prevent log(0)
+        y_pred_safe = tf.clip_by_value(y_pred, self.epsilon, 1.0)
+        
+        # Replace masked positions with dummy value (won't affect loss since y_true is 0 there)
+        y_pred_masked = tf.where(
+            mask_expanded > 0,
+            y_pred_safe,
+            tf.ones_like(y_pred_safe)  # log(1) = 0, so no contribution
+        )
+        
+        # Compute cross-entropy
+        ce = -y_true_masked * tf.math.log(y_pred_masked)  # (batch, jets, 2)
+        
+        # Sum over jets and leptons, then normalize by number of valid jets
+        ce_total = tf.reduce_sum(ce, axis=[1, 2])  # (batch,)
+        ce_loss = ce_total / num_valid  # (batch,)
+        
+        # ============ Exclusion Penalty ============
+        if self.lambda_excl > 0:
+            # Penalize when sum of probabilities > 1 (jet assigned to both leptons)
+            penalty_per_jet = tf.nn.relu(sum_probs - 1.0) ** 2  # (batch, jets)
+            
+            # Apply mask: only penalize valid jets
+            exclusion_penalty = tf.reduce_sum(penalty_per_jet * mask, axis=-1)  # (batch,)
+            
+            # Normalize by number of valid jets
+            exclusion_penalty = exclusion_penalty / num_valid  # (batch,)
+            
+            excl_loss = self.lambda_excl * exclusion_penalty
+        else:
+            excl_loss = 0.0
+        
+        # ============ Total Loss ============
+        total_loss = ce_loss + excl_loss  # (batch,)
+        
+        # ============ Apply Sample Weights ============
         if sample_weight is not None:
             sample_weight = tf.cast(sample_weight, total_loss.dtype)
-            total_loss = total_loss * sample_weight
+            # Ensure sample_weight has correct shape
+            sample_weight = tf.reshape(sample_weight, [-1])  # (batch,)
+            total_loss = total_loss * sample_weight  # (batch,)
+        
         return total_loss
+    
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "lambda_excl": self.lambda_excl,
+            "epsilon": self.epsilon
+        })
+        return config

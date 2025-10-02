@@ -1,21 +1,24 @@
 executable = /afs/desy.de/user/a/aulich/mva_trainer/CONDOR/submitCondor.sh
-universe = vanilla
+universe   = vanilla
 
-# $(script) will be substituted when you queue
-arguments = "python3 scripts/train_rnn_script.py"
+# run python with the script path as argument (submit-variable 'script' defined by queue)
+arguments  = "python3 $(script)"
 
-error  = /afs/desy.de/user/a/aulich/mva_trainer/CONDOR/logs/$(script).$(ProcId).err
-log    = /afs/desy.de/user/a/aulich/mva_trainer/CONDOR/logs/$(script).$(ProcId).log
-output = /afs/desy.de/user/a/aulich/mva_trainer/CONDOR/logs/$(script).$(ProcId).out
+# use $BASENAME(script) to strip directories from the queued value
+error  = /afs/desy.de/user/a/aulich/mva_trainer/CONDOR/logs/$(Cluster).$BASENAME(script).err
+output = /afs/desy.de/user/a/aulich/mva_trainer/CONDOR/logs/$(Cluster).$BASENAME(script).out
+log    = /afs/desy.de/user/a/aulich/mva_trainer/CONDOR/logs/$(Cluster).$BASENAME(script).log
 
 RequestCPUs    = 8
-#RequestGPUs    = 1
+RequestGPUs    = 1
 RequestMemory  = 20000
 +RequestRuntime = 100000
 +MaxRuntime     = 100000
 
 transfer_executable = False
 should_transfer_files = False
-checkpoint = True
 
-queue 1
+queue script from (
+    scripts/train_rnn_script.py
+    scripts/train_transformer_script.py
+)

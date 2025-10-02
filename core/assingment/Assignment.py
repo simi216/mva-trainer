@@ -210,7 +210,7 @@ class MLAssignerBase(JetAssignerBase):
         self.model = keras.saving.load_model(file_path, custom_objects=custom_objects)
         print(f"Model loaded from {file_path}")
 
-    def predict_indices(self, data_dict, batch_size=512):
+    def predict_indices(self, data_dict, batch_size=512, exclusive = True):
         if self.model is None:
             raise ValueError(
                 "Model has not been built yet. Call build_model() before predict_indices()."
@@ -218,7 +218,23 @@ class MLAssignerBase(JetAssignerBase):
         predictions = self.model.predict(
             [data_dict["jet"], data_dict["lepton"], data_dict["global"]], batch_size=batch_size
         )
-        return predictions
+        if not exclusive:
+            return predictions
+        else:
+            exclusive_predictions = np.zeros_like(predictions)
+            for i in range(predictions.shape[0]):
+                for lep_idx in range(predictions.shape[2]):
+                    flat_idx = np.argmax(predictions[i].flatten())
+                    jet_idx = flat_idx // predictions.shape[2]
+                    lep_idx = flat_idx % predictions.shape[2]
+                    exclusive_predictions[i, jet_idx, lep_idx] = 1
+                    predictions[i, jet_idx, :] = -1  # Invalidate this jet for further
+                    predictions[i, :, lep_idx] = -1  # Invalidate this lepton for further
+            return exclusive_predictions
+
+
+
+
 
     def export_to_onnx(self, onnx_file_path="model.onnx"):
         if self.model is None:
