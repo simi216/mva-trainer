@@ -1,6 +1,8 @@
 from .DataLoader import DataPreprocessor
 from .AssignmentBaseModel import AssignmentBaseModel
 from .CustomObjects import JetMaskingLayer, TemporalSoftmax
+from .components import MLP, SelfAttentionBlock, masking
+
 
 from keras import layers
 import keras
@@ -211,7 +213,7 @@ class FeatureConcatTransformer(AssignmentBaseModel):
         flatted_lepton_inputs = keras.layers.Flatten()(lep_inputs)
 
         # Generate masks
-        jet_mask = JetMaskingLayer(padding_value=-999, name="jet_mask")(jet_inputs)
+        jet_mask = masking.GenerateMask(padding_value=-999, name="jet_mask")(jet_inputs)
 
 
         # Concat global and lepton features to each jet
@@ -248,7 +250,7 @@ class FeatureConcatTransformer(AssignmentBaseModel):
             name="jet_output_embedding",
         )(jets_transformed)
 
-        jet_assignment_probs = TemporalSoftmax(axis=1, name="jet_assignment_probs")(
+        jet_assignment_probs = masking.TemporalSoftmax(axis=1, name="jet_assignment_probs")(
             jet_output_embedding, mask=jet_mask
         )
         self.model = keras.Model(
