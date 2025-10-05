@@ -156,11 +156,7 @@ class TransformerJetMatcher(AssignmentBaseModel):
                 kernel_regularizer=keras.regularizers.l2(regularization_lambda),
                 name=f"output_layer_lep_1_{i+1}",
             )(lep_1_head)
-            lep_1_head = layers.Dropout(
-                rate=dropout_rate, name=f"output_layer_lep_1_{i+1}_dropout"
-            )(lep_1_head)
-
-        lep_1_head = layers.Dense(1, activation="sigmoid", name="output")(lep_1_head)
+        lep_1_head = layers.Dense(1, activation="linear", name="output")(lep_1_head)
         lep_1_output = TemporalSoftmax(name="temporal_softmax")(
             lep_1_head, mask=jet_mask_reshaped
         )
@@ -174,10 +170,7 @@ class TransformerJetMatcher(AssignmentBaseModel):
                 kernel_regularizer=keras.regularizers.l2(regularization_lambda),
                 name=f"output_layer_lep_2_{i+1}",
             )(lep_2_head)
-            lep_2_head = layers.Dropout(
-                rate=dropout_rate, name=f"output_layer_lep_2_{i+1}_dropout"
-            )(lep_2_head)
-        lep_2_head = layers.Dense(1, activation="sigmoid", name="output_lep_2")(
+        lep_2_head = layers.Dense(1, activation="linear", name="output_lep_2")(
             lep_2_head
         )
         lep_2_output = TemporalSoftmax(name="temporal_softmax_lep_2")(
@@ -197,115 +190,69 @@ class TransformerJetMatcher(AssignmentBaseModel):
         )
 
 
-class SimpleTransformer(AssignmentBaseModel):
-    def __init__(self, preprocessor: DataPreprocessor):
-        super().__init__(preprocessor)
-        self.data_preprocessor = preprocessor
-        print("New SimpleTransformer model initialized.")
+class FeatureConcatTransformer(AssignmentBaseModel):
+    def build_model(self, hidden_dim, num_heads, num_layers, dropout_rate):
+        """
+        Builds the Assignment Transformer model.
+        Args:
+            hidden_dim (int): The dimensionality of the hidden layers.
+            num_heads (int): The number of attention heads.
+            num_layers (int): The number of transformer layers.
+            dropout_rate (float): The dropout rate to be applied in the model.
+        Returns:
+            keras.Model: The constructed Keras model.
+        """
+        # Input layers
+        jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
+        lep_inputs = keras.Input(shape=(self.max_leptons, self.n_leptons), name="lep_inputs")
+        global_inputs = keras.Input(shape=(1,self.n_global), name="global_inputs")
 
-    def build_model(
-        self,
-        hidden_size=32,
-        attention_stacks=3,
-        attention_heads=8,
-        ff_layers=2,
-        dropout_rate=0.1,
-        regularization_lambda=0.001,
-    ):
-        # Define input shapes
-        jet_input = keras.Input(shape=(self.max_jets, self.n_jets), name="jet")
-        lepton_input = keras.Input(
-            shape=(self.max_leptons, self.n_leptons), name="lepton"
-        )
-        global_input = keras.Input(shape=(1, self.n_global), name="global")
+        flatted_global_inputs = keras.layers.Flatten()(global_inputs)
+        flatted_lepton_inputs = keras.layers.Flatten()(lep_inputs)
 
-        jet_mask = JetMaskingLayer(padding_value=self.padding_value, name="jet_mask")(
-            jet_input
-        )
-        jet_mask_reshaped = layers.Reshape(
-            (self.max_jets, 1), name="jet_mask_reshaped"
-        )(jet_mask)
-        jet_mask_flatted = layers.Flatten(name="jet_mask_flatted")(jet_mask_reshaped)
+        # Generate masks
+        jet_mask = JetMaskingLayer(padding_value=-999, name="jet_mask")(jet_inputs)
 
-        # Concatenate inputs
-        lepton_input_repeated = layers.RepeatVector(self.max_jets)(
-            layers.Reshape((self.max_leptons * self.n_leptons,))(lepton_input)
-        )
-        global_input_repeated = layers.RepeatVector(self.max_jets)(
-            layers.Reshape((self.n_global,))(global_input)
-        )
-        concatenated_inputs = layers.Concatenate(axis=-1, name="concatenated_inputs")(
-            [jet_input, lepton_input_repeated, global_input_repeated]
-        )
 
-        # Embedding layers
-        for i in range(3):
-            concatenated_inputs = layers.Dense(
-                hidden_size,
-                activation="relu",
-                kernel_regularizer=keras.regularizers.l2(regularization_lambda),
-                name=f"embedding_layer_{i+1}",
-            )(concatenated_inputs)
-            concatenated_inputs = layers.Dropout(
-                rate=dropout_rate, name=f"embedding_layer_{i+1}_dropout"
-            )(concatenated_inputs)
+        # Concat global and lepton features to each jet
+        global_repeated_jets = keras.layers.RepeatVector(self.max_jets)(flatted_global_inputs)
+        lepton_repeated_jets = keras.layers.RepeatVector(self.max_jets)(flatted_lepton_inputs)
+        jet_features = keras.layers.Concatenate(axis=-1)([jet_inputs, global_repeated_jets, lepton_repeated_jets])
 
-        # Transformer blocks
-        transformer_output = concatenated_inputs
-        for i in range(attention_stacks):
-            transformer_residual = transformer_output
-            transformer_output = layers.MultiHeadAttention(
-                num_heads=attention_heads,
-                key_dim=hidden_size,
-                name=f"attention_block_{i+1}",
-                kernel_regularizer=keras.regularizers.l2(regularization_lambda),
-            )(
-                transformer_output,
-                transformer_output,
-                attention_mask=jet_mask,
-            )
-            transformer_output = layers.Dropout(
-                rate=dropout_rate, name=f"attention_block_{i+1}_dropout"
-            )(transformer_output)
-            transformer_output = layers.LayerNormalization(
-                name=f"attention_block_{i+1}_norm"
-            )(transformer_output)
-            transformer_output = layers.Add(name=f"attention_block_{i+1}_add")(
-                [transformer_output, transformer_residual]
-            )
-            # Feed-forward network
-            for j in range(ff_layers):
-                transformer_output = layers.Dense(
-                    hidden_size,
-                    activation="relu",
-                    name=f"ff_layer_{i+1}_{j+1}",
-                    kernel_regularizer=keras.regularizers.l2(regularization_lambda),
-                )(transformer_output)
-                transformer_output = layers.Dropout(
-                    rate=dropout_rate, name=f"ff_layer_{i+1}_{j+1}_dropout"
-                )(transformer_output)
-            transformer_output = layers.LayerNormalization(
-                name=f"ff_layer_{i+1}_norm_ff"
-            )(transformer_output)
+        # Input embedding layers
+        jet_embedding = MLP(
+            hidden_dim,
+            num_layers=3,
+            dropout_rate=dropout_rate,
+            activation="relu",
+            name="jet_embedding",
+        )(jet_features)
+
+        # Transformer layers
+        jets_transformed = jet_embedding
+        for i in range(num_layers):
+            jets_transformed = SelfAttentionBlock(
+                num_heads=num_heads,
+                key_dim=hidden_dim,
+                dropout_rate=dropout_rate,
+                name=f"jets_self_attention_{i}",
+                pre_ln=True,
+            )(jets_transformed, mask=jet_mask)
+
+
         # Output layers
-        output = transformer_output
-        for i in range(ff_layers):
-            output = layers.Dense(
-                hidden_size,
-                activation="relu",
-                name=f"output_layer_{i+1}",
-                kernel_regularizer=keras.regularizers.l2(regularization_lambda),
-            )(output)
-            output = layers.Dropout(
-                rate=dropout_rate, name=f"output_layer_{i+1}_dropout"
-            )(output)
-        output = layers.Dense(2, activation="sigmoid", name="output")(output)
-        final_output = TemporalSoftmax(name="temporal_softmax")(
-            output, mask=jet_mask_reshaped
+        jet_output_embedding = MLP(
+            self.max_leptons,
+            num_layers=3,
+            activation=None,
+            name="jet_output_embedding",
+        )(jets_transformed)
+
+        jet_assignment_probs = TemporalSoftmax(axis=1, name="jet_assignment_probs")(
+            jet_output_embedding, mask=jet_mask
         )
-        # Create the model
         self.model = keras.Model(
-            inputs=[jet_input, lepton_input, global_input],
-            outputs=final_output,
-            name="SimpleTransformer",
+            inputs=[jet_inputs, lep_inputs, global_inputs],
+            outputs=jet_assignment_probs,
+            name="FeatureConcatTransformer",
         )
