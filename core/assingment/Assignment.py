@@ -8,6 +8,7 @@ import core.components as components
 import core.utils as utils
 import tf2onnx
 import onnx
+from core.components import onnx_support
 
 class JetAssignerBase(ABC):
     def __init__(self,config : DataConfig, name="jet_assigner"):
@@ -170,11 +171,40 @@ class MLAssignerBase(JetAssignerBase):
             )
         self.model.save(file_path)
 
+    def save_structure(self, file_path="model_structure.txt"):
+        """
+        Saves the model's structure to a text file.
+
+        This method writes the summary of the Keras model to a specified text file.
+        It is useful for documenting the architecture of the model without saving
+        the entire model weights and configuration.
+
+        Args:
+            file_path (str): The file path where the model structure will be saved.
+                             Defaults to "model_structure.txt".
+
+        Raises:
+            ValueError: If the model has not been built (i.e., `self.model` is None).
+
+        Side Effects:
+            - Writes the model's structure to the specified text file.
+            - Prints a confirmation message indicating the structure has been saved.
+
+        Example:
+            self.save_structure("my_model_structure.txt")
+        """
+
+        if self.model is None:
+            raise ValueError(
+                "Model not built. Please build the model using build_model() method."
+            )
+
         def myprint(s):
-            with open(file_path.replace(".keras", "_structure.txt"), "a") as f:
+            with open(file_path, "a") as f:
                 print(s, file=f)
 
         self.model.summary(print_fn=myprint)
+        print(f"Model structure saved to {file_path}")
 
 
     def load_model(self, file_path):
@@ -210,40 +240,168 @@ class MLAssignerBase(JetAssignerBase):
         self.model = keras.saving.load_model(file_path, custom_objects=custom_objects)
         print(f"Model loaded from {file_path}")
 
-    def predict_indices(self, data_dict, batch_size=512, exclusive = True):
+    def predict_indices(self, data : dict[str:np.ndarray], exclusive=True):
+        """
+        Predicts the indices of jets and leptons based on the model's predictions.
+        This method processes the predictions from the model and returns a one-hot
+        encoded array indicating the associations between jets and leptons.
+        Args:
+            data (dict): A dictionary containing input data for prediction. It should
+                include keys "jet" and "lepton", and optionally "global" if global
+                features are used by the model.
+            exclusive (bool, optional): If True, ensures exclusive assignments between
+                jets and leptons, where each jet is assigned to at most one lepton and
+                vice versa. Defaults to True.
+        Returns:
+            np.ndarray: A one-hot encoded array of shape (batch_size, max_jets, 2),
+            where the last dimension represents the association between jets and
+            leptons. The value 1 indicates an association, and 0 indicates no association.
+        Raises:
+            ValueError: If the model is not built (i.e., `self.model` is None).
+        Notes:
+            - If `exclusive` is True, the method ensures that each jet is assigned
+              to at most one lepton and each lepton is assigned to at most one jet.
+            - If `exclusive` is False, the method assigns jets and leptons based on
+              the maximum prediction probabilities independently for each class.
+        """
+
         if self.model is None:
             raise ValueError(
-                "Model has not been built yet. Call build_model() before predict_indices()."
+                "Model not built. Please build the model using build_model() method."
             )
-        predictions = self.model.predict(
-            [data_dict["jet"], data_dict["lepton"], data_dict["global"]], batch_size=batch_size
-        )
-        if not exclusive:
-            return predictions
+        if self.global_features is not None:
+            predictions = self.model.predict(
+                [data["jet"], data["lepton"], data["global"]], verbose=0
+            )
         else:
-            exclusive_predictions = np.zeros_like(predictions)
+            predictions = self.model.predict([data["jet"], data["lepton"]], verbose=0)
+        one_hot = self.generate_one_hot_encoding(predictions, exclusive)
+        return one_hot
+
+    def generate_one_hot_encoding(self, predictions, exclusive):
+        """
+        Generates a one-hot encoded array from the model's predictions.
+        This method processes the raw predictions from the model and converts them
+        into a one-hot encoded format, indicating the associations between jets and leptons.
+        Args:
+            predictions (np.ndarray): The raw predictions from the model, typically
+                of shape (batch_size, max_jets, max_leptons).
+            exclusive (bool): If True, ensures exclusive assignments between jets
+                and leptons
+        Returns:
+            np.ndarray: A one-hot encoded array of shape (batch_size, max_jets, 2),
+            where the last dimension represents the association between jets and
+            leptons. The value 1 indicates an association, and 0 indicates no association.
+        """
+        if exclusive:
+            one_hot = np.zeros((predictions.shape[0], self.max_jets, 2), dtype=int)
             for i in range(predictions.shape[0]):
-                for lep_idx in range(predictions.shape[2]):
-                    flat_idx = np.argmax(predictions[i].flatten())
-                    jet_idx = flat_idx // predictions.shape[2]
-                    lep_idx = flat_idx % predictions.shape[2]
-                    exclusive_predictions[i, jet_idx, lep_idx] = 1
-                    predictions[i, jet_idx, :] = -1  # Invalidate this jet for further
-                    predictions[i, :, lep_idx] = -1  # Invalidate this lepton for further
-            return exclusive_predictions
-
-
-
-
+                probs = predictions[i].copy()
+                for _ in range(self.max_leptons):
+                    jet_index, lepton_index = np.unravel_index(
+                        np.argmax(probs), probs.shape
+                    )
+                    one_hot[i, jet_index, lepton_index] = 1
+                    probs[jet_index, :] = 0
+                    probs[:, lepton_index] = 0
+        else:
+            one_hot[
+                np.arange(predictions.shape[0]), np.argmax(predictions[:, :, 0], axis=1), 0
+            ] = 1
+            one_hot[
+                np.arange(predictions.shape[0]), np.argmax(predictions[:, :, 1], axis=1), 1
+            ] = 1
+        return one_hot
 
     def export_to_onnx(self, onnx_file_path="model.onnx"):
+        """
+        Exports the current Keras model to onnx format.
+        
+        The model is wrapped to take a flattened input tensor and split it into the original inputs.
+
+        Saves a .txt file with model input names and positions for reference.
+
+        Args:
+            onnx_file_path (str): The file path where the ONNX model will be saved.
+                                  Must end with ".onnx". Defaults to "model.onnx".
+        Raises:
+            ValueError: If the model has not been built (i.e., `self.model` is None).
+            ValueError: If the provided file path does not end with ".onnx".
+        """
         if self.model is None:
             raise ValueError(
-                "Model has not been built yet. Call build_model() before export_to_onnx()."
+                "Model not built. Please build the model using build_model() method."
             )
-        spec = (tf.TensorSpec((None, self.max_jets, self.n_jets), tf.float32, name="jet_inputs"), 
-                tf.TensorSpec((None, self.max_leptons, self.n_leptons), tf.float32, name="lep_inputs"),
-                tf.TensorSpec((None, 1, self.n_global), tf.float32, name="global_inputs") if self.n_global > 0 else None)
-        model_proto, _ = tf2onnx.convert.from_keras(self.model, input_signature=spec, opset=13)
-        onnx.save(model_proto, onnx_file_path)
-        print(f"Model exported to {onnx_file_path}")
+        if ".onnx" not in onnx_file_path:
+            raise ValueError(
+                "File path must end with .onnx. Please provide a valid file path."
+            )
+
+        # Define input shapes
+        jet_shape = (self.max_jets, self.n_jets)
+        lep_shape = (self.max_leptons, self.n_leptons)
+        input_shapes = [jet_shape, lep_shape]
+        if self.n_global > 0:
+            global_shape = (1,self.n_global)
+            input_shapes.append(global_shape)
+
+        # Create a new model that takes a flat input and splits it
+        flat_input_size = sum(np.prod(shape) for shape in input_shapes)
+        flat_input = keras.Input(shape=(flat_input_size,), name="flat_input")
+
+        split_layer = onnx_support.SplitInputsLayer(input_shapes)
+        split_inputs = split_layer(flat_input)
+
+        if self.n_global > 0:
+            jet_input, lep_input, global_input = split_inputs
+            
+            model_outputs = self.model([jet_input, lep_input, global_input])
+        else:
+            jet_input, lep_input = split_inputs
+            model_outputs = self.model([jet_input, lep_input])
+
+        wrapped_model = keras.Model(inputs=flat_input, outputs=model_outputs)
+
+        # Convert to ONNX
+        spec = (tf.TensorSpec((None, flat_input_size), tf.float32, name="flat_input"),)
+        onnx_model, _ = tf2onnx.convert.from_keras(
+            wrapped_model,
+            input_signature=spec,
+            opset=13,
+            output_path=onnx_file_path,
+        )
+        print(f"ONNX model saved to {onnx_file_path}")
+
+        # Save input names and positions to a text file
+        input_info_path = onnx_file_path.replace(".onnx", "_input_info.txt")
+        feature_index_dict = self.config.get_feature_index_dict()
+        flat_feature_index_dict = {}
+
+        for feature_type, features in feature_index_dict.items():
+            if feature_type == "jet":
+                for i, feature in enumerate(features):
+                    for j in range(self.max_jets):
+                        flat_index = j * self.n_jets + i
+                        flat_feature_index_dict[flat_index] = f"jet_{j}_{feature}"
+            elif feature_type == "lepton":
+                for i, feature in enumerate(features):
+                    for j in range(self.max_leptons):
+                        flat_index = (
+                            self.max_jets * self.n_jets + j * self.n_leptons + i
+                        )
+                        flat_feature_index_dict[flat_index] = f"lepton_{j}_{feature}"
+            elif feature_type == "global":
+                for i, feature in enumerate(features):
+                    flat_index = self.max_jets * self.n_jets + self.max_leptons * self.n_leptons + i
+                    flat_feature_index_dict[flat_index] = f"global_{feature}"
+    
+        inputs_list = [None] * flat_input_size
+        for idx, name in flat_feature_index_dict.items():
+            inputs_list[idx] = name
+
+
+        with open(input_info_path, "w") as f:
+            f.write("Flat Input Index Mapping:\n")
+            for idx, feature in enumerate(inputs_list):
+                f.write(f"Index {idx}: {feature}\n")
+        print(f"Input info saved to {input_info_path}")

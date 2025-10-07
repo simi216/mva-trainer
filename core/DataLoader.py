@@ -361,76 +361,81 @@ class DataPreprocessor:
         - Clears the DataLoader instance after loading data to save memory.
         """
 
-        if self.data is None:
-            feature_clipping = {
-                feature: self.config.max_jets for feature in self.config.jet_features
-            }
-            feature_clipping.update(
-                {
-                    feature: self.config.max_leptons
-                    for feature in self.config.lepton_features
-                }
-            )
-            (
-                feature_clipping.update(
-                    {feature: 1 for feature in self.config.global_features}
-                )
-                if self.config.global_features
-                else None
-            )
-            feature_clipping.update({self.config.jet_truth_label: 6})
-            feature_clipping.update({self.config.lepton_truth_label: 2})
-            (
-                feature_clipping.update(
-                    {feature: 1 for feature in self.config.non_training_features}
-                )
-                if self.config.non_training_features
-                else None
-            )
-            (
-                feature_clipping.update({self.config.event_weight: 1})
-                if self.config.event_weight
-                else None
-            )
-            (
-                feature_clipping.update(
-                    {
-                        regression_target: 1
-                        for regression_target in self.config.regression_targets
-                    }
-                )
-                if self.config.regression_targets
-                else None
-            )
-            DataHandle = DataLoader(feature_clipping)
-            DataHandle.load_data(file_path, tree_name, max_events=max_events)
-            self.data = DataHandle.get_data()
-            DataHandle = None  # Clear the DataLoader instance to save memory
-            if self.cut_dict:
-                for cut_feature, (cut_low, cut_high) in self.cut_dict.items():
-                    if cut_feature not in self.data.columns:
-                        raise ValueError(
-                            f"Cut feature {cut_feature} not found in data."
-                        )
-                    print(
-                        f"Applying cut on feature {cut_feature}: low={cut_low}, high={cut_high}"
-                    )
-                    print(
-                        f"{self.data[cut_feature].min()} <= {cut_feature} <= {self.data[cut_feature].max()}"
-                    )
-                    if cut_low is not None:
-                        self.data = self.data[self.data[cut_feature] >= cut_low]
-                    if cut_high is not None:
-                        self.data = self.data[self.data[cut_feature] <= cut_high]
-            if self.config.event_weight is not None and cut_neg_weights:
-                self.data = self.data[self.data[self.config.event_weight] >= 0]
-            self.data_length = len(self.data)
-            self.build_pairs()
-
-        else:
+        if self.data is not None:
             raise ValueError(
                 "Data already loaded. Please use a different instance of the class to load new data."
             )
+
+        feature_clipping = {
+            feature: self.config.max_jets for feature in self.config.jet_features
+        }
+        feature_clipping.update(
+            {
+                feature: self.config.max_leptons
+                for feature in self.config.lepton_features
+            }
+        )
+        (
+            feature_clipping.update(
+                {feature: 1 for feature in self.config.global_features}
+            )
+            if self.config.global_features
+            else None
+        )
+        feature_clipping.update({self.config.jet_truth_label: 6})
+        feature_clipping.update({self.config.lepton_truth_label: 2})
+        (
+            feature_clipping.update(
+                {feature: 1 for feature in self.config.non_training_features}
+            )
+            if self.config.non_training_features
+            else None
+        )
+        (
+            feature_clipping.update({self.config.event_weight: 1})
+            if self.config.event_weight
+            else None
+        )
+        (
+            feature_clipping.update(
+                {
+                    regression_target: 1
+                    for regression_target in self.config.regression_targets
+                }
+            )
+            if self.config.regression_targets
+            else None
+        )
+        DataHandle = DataLoader(feature_clipping)
+        DataHandle.load_data(file_path, tree_name, max_events=max_events)
+        self.data = DataHandle.get_data()
+        del DataHandle
+        self.apply_feature_cuts()
+        self.filter_negative_weights(cut_neg_weights)
+        self.data_length = len(self.data)
+        self.build_pairs()
+
+    def filter_negative_weights(self, cut_neg_weights):
+        if self.config.event_weight is not None and cut_neg_weights:
+            self.data = self.data[self.data[self.config.event_weight] >= 0]
+
+    def apply_feature_cuts(self):
+        if self.cut_dict:
+            for cut_feature, (cut_low, cut_high) in self.cut_dict.items():
+                if cut_feature not in self.data.columns:
+                    raise ValueError(
+                            f"Cut feature {cut_feature} not found in data."
+                        )
+                print(
+                        f"Applying cut on feature {cut_feature}: low={cut_low}, high={cut_high}"
+                    )
+                print(
+                        f"{self.data[cut_feature].min()} <= {cut_feature} <= {self.data[cut_feature].max()}"
+                    )
+                if cut_low is not None:
+                    self.data = self.data[self.data[cut_feature] >= cut_low]
+                if cut_high is not None:
+                    self.data = self.data[self.data[cut_feature] <= cut_high]
 
     def build_pairs(self):
         """
@@ -587,7 +592,6 @@ class DataPreprocessor:
             raise ValueError(
                 "Data not loaded. Please load data using load_data() method."
             )
-
         jet_truth = self.data[
             [
                 self.config.jet_truth_label + f"_{0}",
@@ -637,7 +641,7 @@ class DataPreprocessor:
             self.labels = pair_truth
         self.feature_data["labels"] = pair_truth
 
-    def split_data(self, test_size=0.2, random_state=42):
+    def split_data(self, test_size=0.2, random_state=42) -> tuple[dict[str:np.ndarray], np.ndarray, dict[str:np.ndarray], np.ndarray]:
         """
         Splits the feature data and labels into training and testing sets.
         This method uses scikit-learn's `train_test_split` to divide the data into

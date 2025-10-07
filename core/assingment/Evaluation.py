@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
 from typing import Union
+from copy import deepcopy
 
 from .Assignment import JetAssignerBase, MLAssignerBase
 
@@ -81,7 +82,7 @@ class MLEvaluatorBase:
             feature_idx = self.feature_index_dict["jet"][feature]
             scores = []
             for _ in range(num_repeats):
-                X_permuted = self.X_test.copy()
+                X_permuted = deepcopy(self.X_test)
                 X_permuted["jet"][:, :, feature_idx] = np.random.permutation(
                     X_permuted["jet"][:, :, feature_idx]
                 )
@@ -96,7 +97,7 @@ class MLEvaluatorBase:
             feature_idx = self.feature_index_dict["lepton"][feature]
             scores = []
             for _ in range(num_repeats):
-                X_permuted = self.X_test.copy()
+                X_permuted = deepcopy(self.X_test)
                 X_permuted["lepton"][:, :, feature_idx] = np.random.permutation(
                     X_permuted["lepton"][:, :, feature_idx]
                 )
@@ -111,7 +112,7 @@ class MLEvaluatorBase:
                 feature_idx = self.feature_index_dict["global"][feature]
                 scores = []
                 for _ in range(num_repeats):
-                    X_permuted = self.X_test.copy()
+                    X_permuted = deepcopy(self.X_test)
                     X_permuted["global"][:,:, feature_idx] = np.random.permutation(
                         X_permuted["global"][:,:, feature_idx]
                     )
@@ -129,10 +130,11 @@ class MLEvaluatorBase:
         features = list(importances.keys())
         scores = list(importances.values())
 
-        plt.figure(figsize=(10, 6))
-        plt.barh(features, scores)
-        plt.xlabel("Importance Score")
-        plt.title("Feature Importance based on Permutation Importance")
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.barh(features, scores, color="skyblue")
+        ax.set_xlabel("Importance Score")
+        ax.set_title("Feature Importance based on Permutation Importance")
+        plt.gca().invert_yaxis()
         plt.show()
 
 

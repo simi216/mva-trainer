@@ -66,7 +66,7 @@ class MultiHeadAttentionBlock(layers.Layer):
 
         # Feedforward network
         self.ffn_dense_1 = layers.Dense(
-            self.ff_dim, activation="gelu", name="ffn_dense_1"
+            self.ff_dim, activation="relu", name="ffn_dense_1"
         )
         self.ffn_dense_2 = layers.Dense(key_dim, name="ffn_dense_2")
         self.ffn_dropout = layers.Dropout(dropout_rate, name="ffn_dropout_1")
