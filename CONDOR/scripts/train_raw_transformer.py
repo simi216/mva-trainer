@@ -9,7 +9,7 @@ from importlib import reload
 import keras
 import matplotlib.pyplot as plt
 MAX_JETS = 6
-ROOT_DIR = f"/afs/desy.de/user/a/aulich/mva_trainer/"
+ROOT_DIR = f"/afs/desy.de/user/a/aulich/mva-trainer/"
 PLOTS_DIR = ROOT_DIR + "plots/"
 MODEL_DIR = ROOT_DIR + "models/"
 MODEL_NAME = "Raw_Transformer_Assignment"
@@ -39,7 +39,7 @@ config = DataConfig(jet_features=["ordered_jet_pt","ordered_jet_eta", "ordered_j
                                 event_weight="weight_mc_NOSYS")
 
 DataProcessor = DataPreprocessor(config)
-DataProcessor.load_data("../../DATA/full_training.root", "reco", max_events=1000000)
+DataProcessor.load_data("/data/dust/group/atlas/ttreco/full_training.root", "reco", max_events=4000000)
 DataProcessor.normalise_data()
 X_train,y_train, X_val, y_val = DataProcessor.split_data(test_size=0.1, random_state=42)
 
