@@ -5,3 +5,4 @@ source ~/mva-trainer/venv/bin/activate
 
 echo "Command: $@"
 eval "$@"
+

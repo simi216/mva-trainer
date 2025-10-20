@@ -6,10 +6,6 @@ import keras
 import matplotlib.pyplot as plt
 from sklearn.metrics import ConfusionMatrixDisplay
 
-sys.path.append("..") # Ensure the parent directory is in the path
-import core.assingment as Models
-from core.DataLoader import DataPreprocessor, DataConfig
-import core
 
 def parse_args():
     """Parse command line arguments for hyperparameter tuning."""
@@ -49,6 +45,7 @@ def parse_args():
                         default='/data/dust/group/atlas/ttreco/full_training.root',
                         help='Path to training data')
     
+    
     return parser.parse_args()
 
 def setup_directories(root_dir, model_name):
@@ -65,6 +62,13 @@ def main():
     # Parse arguments
     args = parse_args()
     
+    sys.path.append(args.root_dir) # Ensure root directory is in the path
+    import core.assingment as Models
+    from core.DataLoader import DataPreprocessor, DataConfig
+    import core
+
+
+
     # Create model name with hyperparameters
     MODEL_NAME = f"Raw_Transformer_Assignment_h{args.hidden_dim}_l{args.num_layers}_heads{args.num_heads}"
     

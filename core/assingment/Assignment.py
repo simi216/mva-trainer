@@ -258,11 +258,6 @@ class MLAssignerBase(JetAssignerBase):
             leptons. The value 1 indicates an association, and 0 indicates no association.
         Raises:
             ValueError: If the model is not built (i.e., `self.model` is None).
-        Notes:
-            - If `exclusive` is True, the method ensures that each jet is assigned
-              to at most one lepton and each lepton is assigned to at most one jet.
-            - If `exclusive` is False, the method assigns jets and leptons based on
-              the maximum prediction probabilities independently for each class.
         """
 
         if self.model is None:
