@@ -148,7 +148,7 @@ class JetAssignmentEvaluator:
             self.assigners = assigners
 
         self.X_test = X_test
-        self.y_test = y_test
+        self.y_test = np.argmax(y_test, axis=-2)
         configs = [assigner.config for assigner in self.assigners]
         config_1 = configs[0]
         for config in configs[1:]:
@@ -158,6 +158,7 @@ class JetAssignmentEvaluator:
                 )
 
         self.config = config_1
+        self.feature_index_dict = config_1.get_feature_index_dict()
 
     def evaluate_all(self):
         results = {}
@@ -205,21 +206,25 @@ class JetAssignmentEvaluator:
         xlims=None,
         fig=None,
         ax=None,
-        accuracy_color="tab:blue",
+        color_map = None,
         label=None,
-        event_weights=None,
     ):
         if feature_data_type not in self.X_test:
             raise ValueError(
                 f"Feature data type '{feature_data_type}' not found in test data."
             )
-        if feature_name not in self.X_test[feature_data_type]:
+        if feature_name not in self.feature_index_dict[feature_data_type]:
             raise ValueError(
                 f"Feature name '{feature_name}' not found in test data for type '{feature_data_type}'."
             )
-        feature_data = self.X_test[feature_data_type][feature_name]
-        if event_weights is None:
-            event_weights = np.ones(len(feature_data))
+        if self.X_test[feature_data_type].ndim == 2:
+            feature_data = self.X_test[feature_data_type][:, self.feature_index_dict[feature_data_type][feature_name]]
+        elif self.X_test[feature_data_type].ndim == 3:
+            feature_data = self.X_test[feature_data_type][:, self.feature_index_dict[feature_data_type][feature_name], 0]
+        else:
+            raise ValueError(
+                f"Feature data for type '{feature_data_type}' has unsupported number of dimensions: {self.X_test[feature_data_type].ndim}"
+            )
         if fig is None or ax is None:
             fig, ax = plt.subplots(figsize=(8, 6))
         if xlims is not None:
@@ -231,6 +236,9 @@ class JetAssignmentEvaluator:
         )
         bin_centers = 0.5 * (bins[:-1] + bins[1:])
         binned_accuracies = {}
+        event_weights = self.X_test.get("event_weight", np.ones(feature_data.shape[0]))
+
+        
         for assigner in self.assigners:
             predictions = assigner.predict_indices(self.X_test)
             predicted_indices = np.argmax(predictions, axis=-2)
@@ -245,13 +253,15 @@ class JetAssignmentEvaluator:
         ax.set_xlabel(feature_name)
         ax.set_ylabel("Accuracy")
         ax.set_ylim(0, 1)
-        for assigner_name, binned_accuracy in binned_accuracies.items():
-            ax.plot(
+        ax.set_xlim(bins[0], bins[-1])
+        color_map = plt.get_cmap('tab10') if color_map is None else color_map
+        for index, (assigner_name, binned_accuracy) in enumerate(binned_accuracies.items()):
+            ax.scatter(
                 bin_centers,
                 binned_accuracy,
                 marker="o",
                 label=assigner_name,
-                color=accuracy_color,
+                color=color_map(index),
             )
         if label is not None:
             ax.legend(title=label)

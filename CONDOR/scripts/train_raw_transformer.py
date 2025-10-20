@@ -40,7 +40,7 @@ config = DataConfig(jet_features=["ordered_jet_pt","ordered_jet_eta", "ordered_j
 
 DataProcessor = DataPreprocessor(config)
 DataProcessor.load_data("/data/dust/group/atlas/ttreco/full_training.root", "reco", max_events=4000000)
-DataProcessor.normalise_data()
+#DataProcessor.normalise_data()
 X_train,y_train, X_val, y_val = DataProcessor.split_data(test_size=0.1, random_state=42)
 
 TransformerMatcher = Models.FeatureConcatTransformer(config, name="Transformer")
@@ -48,10 +48,11 @@ TransformerMatcher = Models.FeatureConcatTransformer(config, name="Transformer")
 
 TransformerMatcher.build_model(
     num_heads=8,
-    hidden_dim=128,
-    num_layers=8,
+    hidden_dim=64,
+    num_layers=7,
     dropout_rate=0.1
 )
+TransformerMatcher.adapt_normalization_layers(X_train)
 
 TransformerMatcher.compile_model(
     loss = core.utils.AssignmentLoss(lambda_excl=0), optimizer=keras.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-4), metrics=[core.utils.AssignmentAccuracy()]

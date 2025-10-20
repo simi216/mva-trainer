@@ -1,5 +1,6 @@
 import keras
 import tensorflow as tf
+import numpy as np
 
 
 from . import MLAssignerBase
@@ -33,17 +34,23 @@ class CrossAttentionModel(MLAssignerBase):
         lep_inputs = keras.Input(shape=(self.max_leptons, self.n_leptons), name="lep_inputs")
         global_inputs = keras.Input(shape=(1,self.n_global), name="global_inputs")
 
-        flatted_global_inputs = keras.layers.Flatten()(global_inputs)
+        # Normalise inputs
+        normed_jet_inputs = keras.layers.LayerNormalization(name="jet_input_normalization")(jet_inputs)
+        normed_lep_inputs = keras.layers.LayerNormalization(name="lep_input_normalization")(lep_inputs)
+        normed_global_inputs = keras.layers.LayerNormalization(name="global_input_normalization")(global_inputs)
+
+
+        flatted_global_inputs = keras.layers.Flatten()(normed_global_inputs)
 
         # Generate masks
         jet_mask = GenerateMask(padding_value=-999, name="jet_mask")(jet_inputs)
 
         # Add global features to jets and leptons
         global_repeated_jets = keras.layers.RepeatVector(self.max_jets)(flatted_global_inputs)
-        jet_features = keras.layers.Concatenate(axis=-1)([jet_inputs, global_repeated_jets])
+        jet_features = keras.layers.Concatenate(axis=-1)([normed_jet_inputs, global_repeated_jets])
 
         global_repeated_leps = keras.layers.RepeatVector(self.max_leptons)(flatted_global_inputs)
-        lep_features = keras.layers.Concatenate(axis=-1)([lep_inputs, global_repeated_leps])
+        lep_features = keras.layers.Concatenate(axis=-1)([normed_lep_inputs, global_repeated_leps])
 
         # Input embedding layers
         jet_embedding = MLP(
@@ -125,8 +132,14 @@ class FeatureConcatTransformer(MLAssignerBase):
         lep_inputs = keras.Input(shape=(self.max_leptons, self.n_leptons), name="lep_inputs")
         global_inputs = keras.Input(shape=(1,self.n_global), name="global_inputs")
 
-        flatted_global_inputs = keras.layers.Flatten()(global_inputs)
-        flatted_lepton_inputs = keras.layers.Flatten()(lep_inputs)
+        # Normalise inputs
+        normed_jet_inputs = keras.layers.Normalization(name="jet_input_normalization")(jet_inputs)
+        normed_lep_inputs = keras.layers.Normalization(name="lep_input_normalization")(lep_inputs)
+        normed_global_inputs = keras.layers.Normalization(name="global_input_normalization")(global_inputs)
+
+
+        flatted_global_inputs = keras.layers.Flatten()(normed_global_inputs)
+        flatted_lepton_inputs = keras.layers.Flatten()(normed_lep_inputs)
 
         # Generate masks
         jet_mask = GenerateMask(padding_value=-999, name="jet_mask")(jet_inputs)
@@ -135,7 +148,7 @@ class FeatureConcatTransformer(MLAssignerBase):
         # Concat global and lepton features to each jet
         global_repeated_jets = keras.layers.RepeatVector(self.max_jets)(flatted_global_inputs)
         lepton_repeated_jets = keras.layers.RepeatVector(self.max_jets)(flatted_lepton_inputs)
-        jet_features = keras.layers.Concatenate(axis=-1)([jet_inputs, global_repeated_jets, lepton_repeated_jets])
+        jet_features = keras.layers.Concatenate(axis=-1)([normed_jet_inputs, global_repeated_jets, lepton_repeated_jets])
 
         # Input embedding layers
         jet_embedding = MLP(
@@ -174,3 +187,25 @@ class FeatureConcatTransformer(MLAssignerBase):
             outputs=jet_assignment_probs,
             name="FeatureConcatTransformer",
         )
+
+    def adapt_normalization_layers(self, data : dict):
+        """
+        Adapts the normalization layers using the provided data.
+        Args:
+            data (dict): A dictionary containing the input data for adaptation.
+        """
+        jet_data = data["jet"]  # shape: (num_events, n_jets, n_features)
+        jet_mask = np.any(jet_data != self.padding_value, axis=-1)  # (num_events, n_jets)
+        # select all valid jets and flatten over events and jets
+        unpadded_jet_data = jet_data[jet_mask].reshape(-1, 1, self.n_jets)  # shape: (num_valid_jets, n_features)
+        lep_data = data["lepton"]
+        global_data = data["global"]
+
+        for layer in self.model.layers:
+            if isinstance(layer, keras.layers.Normalization):
+                if layer.name == "jet_input_normalization":
+                    layer.adapt(unpadded_jet_data)
+                elif layer.name == "lep_input_normalization":
+                    layer.adapt(lep_data)
+                elif layer.name == "global_input_normalization":
+                    layer.adapt(global_data)

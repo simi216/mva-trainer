@@ -12,8 +12,8 @@ log    = /afs/desy.de/user/a/aulich/mva-trainer/CONDOR/logs/$(Cluster).$BASENAME
 RequestCPUs    = 8
 RequestGPUs    = 1
 RequestMemory  = 20000
-+RequestRuntime = 100000
-+MaxRuntime     = 100000
++RequestRuntime = 400000
++MaxRuntime     = 400000
 
 transfer_executable = False
 should_transfer_files = False
