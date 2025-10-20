@@ -26,7 +26,7 @@ class BaselineAssigner(JetAssignerBase):
         Args:
             data_dict (dict): A dictionary containing input data for the model.
         Returns:
-            np.ndarray: A 3D array of shape (num_events, max_leptons, max_jets) representing the comparison feature.
+            np.ndarray: A 3D array of shape (num_events, max_jets,max_leptons) representing the comparison feature.
         """
         raise NotImplementedError("This method should be implemented with actual logic.")
 
@@ -38,7 +38,7 @@ class BaselineAssigner(JetAssignerBase):
         Args:
             data_dict (dict): A dictionary containing input data for the model.
         Returns:
-            np.ndarray: A 3D boolean array of shape (num_events, max_leptons, max_jets) indicating viable jets.
+            np.ndarray: A 3D boolean array of shape (num_events, max_jets, max_leptons) indicating viable jets.
         """
         padding_value =self.config.padding_value
         jet_mask = (data_dict["jet"] != padding_value).all(axis=-1)  # Shape: (num_events, max_jets)
@@ -51,7 +51,7 @@ class BaselineAssigner(JetAssignerBase):
         Args:
             data_dict (dict): A dictionary containing input data for the model.
         Returns:
-            np.ndarray: A 3D array of shape (num_events, max_leptons, max_jets) representing the predicted indices.
+            np.ndarray: A 3D array of shape (num_events, max_jets,max_leptons) representing the predicted indices.
         """
         comparison_feature = self.compute_comparison_feature(data_dict)
         viable_jets_mask = self.get_viable_jets_mask(data_dict)
@@ -59,7 +59,7 @@ class BaselineAssigner(JetAssignerBase):
         predicted_indices = np.zeros((num_events, self.max_jets,self.max_leptons))
         for i in range(num_events):
             for j in range(self.max_leptons):
-                valid_indices = np.where(viable_jets_mask[i, j])[0]
+                valid_indices = np.where(viable_jets_mask[i,:, j])[0]
                 if valid_indices.size > 0:
                     if self.mode == "min":
                         best_jet_index = valid_indices[np.argmin(comparison_feature[i, valid_indices,j])]
@@ -91,7 +91,7 @@ class DeltaRAssigner(BaselineAssigner):
         Args:
             data_dict (dict): A dictionary containing input data for the model.
         Returns:
-            np.ndarray: A 3D array of shape (num_events, max_leptons, max_jets) representing the Delta R values.
+            np.ndarray: A 3D array of shape (num_events, max_jets, max_leptons) representing the Delta R values.
         """
         leptons = data_dict["lepton"]
         jets = data_dict["jet"]
@@ -159,18 +159,18 @@ class LeptonJetMassAssigner(BaselineAssigner):
         Args:
             data_dict (dict): A dictionary containing input data for the model.
         Returns:
-            np.ndarray: A 3D array of shape (num_events, max_leptons, max_jets) representing the Delta R values.
+            np.ndarray: A 3D array of shape (num_events, max_jets,max_leptons) representing the Delta R values.
         """
         leptons = data_dict["lepton"]
         jets = data_dict["jet"]
-        lepton_energy = leptons[:, :, self.feature_index_dict["lepton"]["lep_e"]][:, :, np.newaxis]
-        lepton_pt = leptons[:, :, self.feature_index_dict["lepton"]["lep_pt"]][:, :, np.newaxis]
-        lepton_eta = leptons[:, :, self.feature_index_dict["lepton"]["lep_eta"]][:, :, np.newaxis]
-        lepton_phi = leptons[:, :, self.feature_index_dict["lepton"]["lep_phi"]][:, :, np.newaxis]
-        jet_energy = jets[:, :, self.feature_index_dict["jet"]["ordered_jet_e"]][:, np.newaxis, :]
-        jet_pt = jets[:, :, self.feature_index_dict["jet"]["ordered_jet_pt"]][:, np.newaxis, :]
-        jet_eta = jets[:, :, self.feature_index_dict["jet"]["ordered_jet_eta"]][:, np.newaxis, :]
-        jet_phi = jets[:, :, self.feature_index_dict["jet"]["ordered_jet_phi"]][:, np.newaxis, :]
+        lepton_energy = leptons[:, :, self.feature_index_dict["lepton"]["lep_e"]][:, np.newaxis, :]
+        lepton_pt = leptons[:, :, self.feature_index_dict["lepton"]["lep_pt"]][:, np.newaxis, :]
+        lepton_eta = leptons[:, :, self.feature_index_dict["lepton"]["lep_eta"]][:, np.newaxis, :]
+        lepton_phi = leptons[:, :, self.feature_index_dict["lepton"]["lep_phi"]][:, np.newaxis, :]
+        jet_energy = jets[:, :, self.feature_index_dict["jet"]["ordered_jet_e"]][:, :, np.newaxis]
+        jet_pt = jets[:, :, self.feature_index_dict["jet"]["ordered_jet_pt"]][:, :, np.newaxis]
+        jet_eta = jets[:, :, self.feature_index_dict["jet"]["ordered_jet_eta"]][:, :, np.newaxis]
+        jet_phi = jets[:, :, self.feature_index_dict["jet"]["ordered_jet_phi"]][:, :, np.newaxis]
         lep_px, lep_py, lep_pz, lep_e = four_vector_from_pt_eta_phi_e(
             lepton_pt, lepton_eta, lepton_phi, lepton_energy
         )

@@ -16,7 +16,9 @@ def parse_args():
                         help='Hidden dimension size for the transformer')
     parser.add_argument('--num_layers', type=int, required=True,
                         help='Number of transformer layers')
-    
+    parser.add_argument('--architecture', type=str, default='FeatureConcatTransformer',
+                        help='Model architecture to use (default: FeatureConcatTransformer)')
+
     # Optional hyperparameters with defaults
     parser.add_argument('--num_heads', type=int, default=8,
                         help='Number of attention heads (default: 8)')
@@ -26,7 +28,7 @@ def parse_args():
                         help='Learning rate (default: 1e-4)')
     parser.add_argument('--weight_decay', type=float, default=1e-4,
                         help='Weight decay (default: 1e-4)')
-    parser.add_argument('--batch_size', type=int, default=128,
+    parser.add_argument('--batch_size', type=int, default=1028,
                         help='Batch size (default: 128)')
     parser.add_argument('--epochs', type=int, default=50,
                         help='Number of epochs (default: 50)')
@@ -70,7 +72,7 @@ def main():
 
 
     # Create model name with hyperparameters
-    MODEL_NAME = f"Raw_Transformer_Assignment_h{args.hidden_dim}_l{args.num_layers}_heads{args.num_heads}"
+    MODEL_NAME = f"{args.architecture}_h{args.hidden_dim}_l{args.num_layers}_heads{args.num_heads}"
     
     # Setup directories
     PLOTS_DIR, MODEL_DIR = setup_directories(args.root_dir, MODEL_NAME)
@@ -110,20 +112,31 @@ def main():
     
     # Build model
     print("Building model...")
-    TransformerMatcher = Models.FeatureConcatTransformer(config, name="Transformer")
-    TransformerMatcher.build_model(
-        num_heads=args.num_heads,
-        hidden_dim=args.hidden_dim,
-        num_layers=args.num_layers,
-        dropout_rate=args.dropout_rate
-    )
+    if args.architecture == "FeatureConcatTransformer":
+        Model = Models.FeatureConcatTransformer(config, name="Transformer")
+        Model.build_model(
+            num_heads=args.num_heads,
+            hidden_dim=args.hidden_dim,
+            num_layers=args.num_layers,
+            dropout_rate=args.dropout_rate
+        )
+    elif args.architecture == "FeatureConcatRNN":
+        Model = Models.FeatureConcatRNN(config, name="RNN")
+        Model.build_model(
+            hidden_dim=args.hidden_dim,
+            num_layers=args.num_layers,
+            dropout_rate=args.dropout_rate,
+            recurrent_type="lstm"
+        )
+    else:
+        raise ValueError(f"Unknown architecture: {args.architecture}")
     
     # Adapt normalization and compile
     print("Adapting normalization layers...")
-    TransformerMatcher.adapt_normalization_layers(X_train)
+    Model.adapt_normalization_layers(X_train)
     
     print("Compiling model...")
-    TransformerMatcher.compile_model(
+    Model.compile_model(
         loss=core.utils.AssignmentLoss(lambda_excl=0),
         optimizer=keras.optimizers.AdamW(
             learning_rate=args.learning_rate,
@@ -133,12 +146,12 @@ def main():
     )
     
     # Count trainable parameters
-    trainable_params = sum([np.prod(var.shape) for var in TransformerMatcher.model.trainable_variables])
+    trainable_params = sum([np.prod(var.shape) for var in Model.model.trainable_variables])
     print(f"Total trainable parameters: {trainable_params:,}")
     
     # Train model
     print("Training model...")
-    history = TransformerMatcher.train_model(
+    history = Model.train_model(
         epochs=args.epochs,
         X_train=X_train,
         y_train=y_train,
@@ -157,14 +170,14 @@ def main():
     onnx_path = os.path.join(MODEL_DIR, f"{MODEL_NAME}.onnx")
     
     print(f"Saving model to {model_path}...")
-    TransformerMatcher.save_model(model_path)
+    Model.save_model(model_path)
     
     print(f"Exporting to ONNX: {onnx_path}...")
-    TransformerMatcher.export_to_onnx(onnx_path)
+    Model.export_to_onnx(onnx_path)
     
     # Make predictions and create confusion matrix
     print("Generating predictions and confusion matrix...")
-    pred_val = TransformerMatcher.predict_indices(X_val)
+    pred_val = Model.predict_indices(X_val)
     
     fig, ax = plt.subplots(figsize=(8, 8))
     ConfusionMatrixDisplay.from_predictions(

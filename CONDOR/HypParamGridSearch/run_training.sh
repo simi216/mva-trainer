@@ -26,9 +26,10 @@ cd /afs/desy.de/user/a/aulich/mva-trainer/CONDOR/HypParamGridSearch || exit 1
 #mkdir -p logs
 
 # Run the Python script with the hyperparameters
-python train_transformer_hyperparameter.py \
+python train_hyperparameter.py \
     --hidden_dim "$hidden_dim" \
     --num_layers "$num_layers" \
+    --architecture FeatureConcatTransformer \
     --num_heads 8 \
     --dropout_rate 0.1 \
     --learning_rate 1e-4 \

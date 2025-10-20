@@ -467,10 +467,7 @@ class JetAssignmentEvaluator:
                     fmt='x',
                     label=assigner.get_name(),
                     color=color_map(index),
-                    capsize=3,
-                    linewidth=1.5,
                     linestyle='None',
-                    markersize=8,
                 )
             else:
                 predictions = assigner.predict_indices(self.X_test)

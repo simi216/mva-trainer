@@ -903,8 +903,19 @@ class DataPreprocessor:
         else:
             raise ValueError(f"Data type {dataType} not found in feature data.")
 
+    def get_all_feature_data(self, feature_type: str) -> np.ndarray:
+        if self.feature_data is None:
+            raise ValueError(
+                "Feature data not prepared. Please prepare data using prepare_data() method."
+            )
+        if feature_type in self.feature_data:
+            return self.feature_data[feature_type]
+        else:
+            raise ValueError(f"Feature type {feature_type} not found in feature data.")
+
     def normalise_data(self):
         """
+        Legacy method for data normalisation.
         Normalises the feature data by subtracting the mean and dividing by the standard deviation
         for each feature type (lepton, jet, global) while ignoring padding values. The normalisation
         factors (mean and standard deviation) are stored for each feature type.
