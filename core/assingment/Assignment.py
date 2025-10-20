@@ -399,9 +399,9 @@ class MLAssignerBase(JetAssignerBase):
         for idx, name in flat_feature_index_dict.items():
             inputs_list[idx] = name
 
-
-        with open(input_info_path, "w") as f:
-            f.write("Flat Input Index Mapping:\n")
-            for idx, feature in enumerate(inputs_list):
-                f.write(f"Index {idx}: {feature}\n")
-        print(f"Input info saved to {input_info_path}")
+        if False:        
+            with open(input_info_path, "w") as f:
+                f.write("Flat Input Index Mapping:\n")
+                for idx, feature in enumerate(inputs_list):
+                    f.write(f"Index {idx}: {feature}\n")
+            print(f"Input info saved to {input_info_path}")

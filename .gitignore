@@ -3,6 +3,7 @@ venv**
 .vscode**
 plots/**
 *.keras
+*.onnx
 **.png
 **.pdf
 CONDOR/logs/
