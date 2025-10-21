@@ -9,6 +9,8 @@ plots/**
 CONDOR/logs/
 CONDOR/plots**
 CONDOR/HypParamGridSearch/logs/
+CONDOR/PreProcessing/logs/
+CONDOR/PreProcessing/*.txt
 bin/**
 **.out
 preprocessing/obj

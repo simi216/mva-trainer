@@ -314,6 +314,45 @@ class DataPreprocessor:
         self.cut_dict = {}
         self.data_normalisation_factors = {}
 
+
+    def add_custom_feature(self, function, name: str):
+        """
+        Adds a new feature to the dataset by applying a specified function.
+        Parameters:
+            function (callable): A function that takes the current feature data as input and returns the new feature data.
+            name (str): The name of the new feature to be added.
+        Raises:
+            ValueError: If feature data has not been loaded.
+        Updates:
+            self.feature_data: Adds the new feature data under the specified name.
+        """
+
+        if self.feature_data is None:
+            raise ValueError(
+                "Feature Data not loaded. Please load data using load_data() method."
+            )
+        new_feature_data = function(self.feature_data)
+        if new_feature_data.shape[0] != self.data_length:
+            raise ValueError(
+                "The new feature data must have the same number of events as the existing data."
+            )
+        if new_feature_data.ndim == 1:
+            new_feature_data = new_feature_data.reshape(-1, 1)
+        feature_index = 0
+        if "custom" not in self.feature_data.keys():
+            self.feature_data["custom"] = new_feature_data
+        else:
+            feature_index = self.feature_data["custom"].shape[1] - 1
+            self.feature_data["custom"] = np.concatenate(
+                (self.feature_data["custom"], new_feature_data), axis=1
+            )
+        self.feature_index_dict.setdefault("custom", {})[name] = (
+            self.feature_data["custom"].shape[1] - 1
+        ) if self.feature_data["custom"].shape[1] == 1 else list(
+            range(feature_index, feature_index + self.feature_data["custom"].shape[1])
+        )
+
+
     def add_cut(self, cut_feature, cut_low=None, cut_high=None):
         """
         Apply a cut to a specific feature by specifying lower and/or upper bounds.
@@ -782,78 +821,6 @@ class DataPreprocessor:
 
         return folded_data
 
-    def plot_feature_correlation(self):
-        if self.feature_data is None:
-            raise ValueError(
-                "Feature data not prepared. Please prepare data using prepare_data() method."
-            )
-        feature_data = pd.DataFrame()
-        for data in self.feature_data:
-            for feature_name in self.feature_index_dict[data]:
-                feature_index = self.feature_index_dict[data][feature_name]
-                if self.feature_data[data] is not None:
-                    if data == "jet":
-                        for jet_index in range(self.config.max_jets):
-                            if isinstance(feature_index, list):
-                                for lep_index, index in enumerate(feature_index):
-                                    feature_data[
-                                        f"{feature_name}_{lep_index}_{jet_index}"
-                                    ] = self.feature_data[data][:, jet_index, index]
-                            else:
-                                feature_data[f"{feature_name}_{jet_index}"] = (
-                                    self.feature_data[data][:, jet_index, feature_index]
-                                )
-                    elif data == "lepton":
-                        for lep_index in range(self.config.max_leptons):
-                            feature_data[f"{feature_name}_{lep_index}"] = (
-                                self.feature_data[data][:, lep_index, feature_index]
-                            )
-                    elif data == "global":
-                        feature_data[f"{feature_name}"] = self.feature_data[data][
-                            :, feature_index
-                        ]
-                    else:
-                        continue
-        feature_data = feature_data.replace(self.padding_value, np.nan)
-        corr = feature_data.corr()
-        fig, ax = plt.subplots(figsize=(12, 10))
-        sns.heatmap(
-            corr,
-            annot=False,
-            fmt=".2f",
-            cmap="coolwarm",
-            ax=ax,
-            center=0,
-            cbar_kws={"ticks": np.linspace(-1, 1, 11)},
-        )
-        return fig, ax
-
-    def enhance_feature_value(self, feature_name, enhancement_value):
-        """
-        Enhances the value of a specific feature in the feature data for samples with a label of 1.
-        Parameters:
-            feature_name (str): The name of the feature to enhance.
-            enhancement_value (float): The value to set for the specified feature in samples with a label of 1.
-        Raises:
-            ValueError: If the feature data has not been prepared using the `prepare_data()` method.
-            ValueError: If the specified feature name is not found in the feature index dictionary.
-        Notes:
-            - This method modifies the feature data in place.
-            - This can be used for debbugging or testing purposes to artificially enhance the feature values for specific samples.
-        """
-
-        if self.feature_data is None:
-            raise ValueError(
-                "Feature data not prepared. Please prepare data using prepare_data() method."
-            )
-        if feature_name not in self.feature_index_dict:
-            raise ValueError(
-                f"Feature {feature_name} not found in feature index dictionary."
-            )
-        feature_index = self.feature_index_dict[feature_name]
-        self.feature_data[:, :, feature_index] = np.where(
-            self.labels == 1, enhancement_value, self.feature_data[:, :, feature_index]
-        )
 
     def get_labels(self):
         if self.labels is None:
@@ -890,16 +857,17 @@ class DataPreprocessor:
         if dataType in self.feature_index_dict:
             if dataType == "jet":
 
-                return self.feature_data[dataType][:, :, feature_index]
+                return self.feature_data[dataType][:, :, feature_index].copy()
             elif dataType == "lepton":
-                return self.feature_data[dataType][:, :, feature_index]
+                return self.feature_data[dataType][:, :, feature_index].copy()
             elif dataType == "global":
-                return self.feature_data[dataType][:, :, feature_index]
+                return self.feature_data[dataType][:, :, feature_index].copy()
             elif dataType == "non_training":
-                return self.feature_data[dataType][:, feature_index]
+                return self.feature_data[dataType][:, feature_index].copy()
             elif dataType == "event_weight":
                 return self.get_event_weight()
-
+            elif dataType == "custom":
+                return self.feature_data[dataType][:, feature_index].copy()
         else:
             raise ValueError(f"Data type {dataType} not found in feature data.")
 
@@ -909,7 +877,7 @@ class DataPreprocessor:
                 "Feature data not prepared. Please prepare data using prepare_data() method."
             )
         if feature_type in self.feature_data:
-            return self.feature_data[feature_type]
+            return self.feature_data[feature_type].copy()
         else:
             raise ValueError(f"Feature type {feature_type} not found in feature data.")
 

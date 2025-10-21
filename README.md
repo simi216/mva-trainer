@@ -21,7 +21,7 @@ This repository contains a standalone analysis framework for training and evalua
 
 - **Model Training**: Training and evaluating machine learning models using TensorFlow. 
 
-- **Evaluation**: Evaluation of machine learning models using K-Fold cross-validation.
+- **Evaluation**: Evaluation of machine learning models with various metrics and visualizations.
 
 - **Condor Integration**: Integration with the Condor job scheduler for distributed training and evaluation.
 
@@ -42,12 +42,15 @@ The executable files are located in the `preprocessing/bin` directory. The execu
 To load the data for training and evaluation, the `DataPreprocessor` class is used, which is defined in the `core/DataLoader.py` file. This class is used to load the data from the preprocessed files and arange it in a format that can be used for training and evaluation. The `DataPreprocessor` class is used to load the data from the preprocessed files and arrange it in a format that can be used for training and evaluation. It also provides methods for splitting the data into training and testing sets, as well as providing k-folds of the data for cross-validation.
 
 ## Model Training
-The model training is for assignment and regression tasks is descripted in `core/AssignmentBaseModel.py` and `core/RegressionBaseModel.py` respectively. The files contain the `AssignmentBaseModel` and `RegressionBaseModel` classes, which are used to train and evaluate machine learning models using TensorFlow. The `AssignmentBaseModel` class is used for training and evaluating models for assignment tasks, while the `RegressionBaseModel` class is used for training and evaluating models for combined regression and assignment tasks.
 
-To implement a model, you need to create a class that inherits from either `AssignmentBaseModel` or `RegressionBaseModel`. You can then implement the method `build_model(**kwargs)` to define the model architecture.
+
+
 
 ## Evaluation
-The evaluation of the machine learning models is done using K-Fold cross-validation. The `AssignmentKFold` and `RegressionKFold` classes are defined in the `core/AssignmentKFold.py` and `core/RegressionKFold.py` files respectively and are used to evaluate the models using K-Fold cross-validation. The classes provides methods for training and evaluating arbitrary models derived from the base classes `AssignmentBaseModel` and `RegressionBaseModel`. So aslong as a custom-model is formatted to obey the in- and output-interfaces of the base classes, it can be used in the whole framework.
+
+
+
+
 
 ## Dependencies
 The code is written in Python 3 and the dependencies are managed using `pip`. The required dependencies are listed in the `requirements.txt` file. To install the dependencies, you can run the following command:
