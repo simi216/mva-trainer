@@ -8,7 +8,7 @@ from copy import deepcopy
 from .Assignment import JetAssignerBase, MLAssignerBase
 
 
-class MLEvaluatorBase:
+class MLAssignerEvaluatorBase:
     """Base evaluator for ML-based jet assignment models."""
     
     def __init__(self, assigner: MLAssignerBase, X_test, y_test):
@@ -23,17 +23,6 @@ class MLEvaluatorBase:
         self.n_met: int = assigner.n_met
         self.padding_value: float = assigner.padding_value
         self.feature_index_dict = assigner.feature_index_dict
-
-    def evaluate(self):
-        """Evaluate the model on test data."""
-        if self.X_test is None or self.y_test is None:
-            raise ValueError(
-                "Test data not loaded. Please load test data before evaluation."
-            )
-
-        results = self.model.evaluate(self.X_test, self.y_test, verbose=2)
-        print("Test Loss and Metrics:", results)
-        return results
 
     def plot_training_history(self):
         """Plot training and validation loss/accuracy over epochs."""
@@ -171,15 +160,15 @@ class JetAssignmentEvaluator:
         
         # Validate that all assigners have the same configuration
         configs = [assigner.config for assigner in self.assigners]
-        config_1 = configs[0]
+        select_config = configs[0]
         for config in configs[1:]:
-            if config != config_1:
+            if config != select_config:
                 raise ValueError(
                     "All assigners must have the same DataConfig for consistent evaluation."
                 )
 
-        self.config = config_1
-        self.feature_index_dict = config_1.get_feature_index_dict()
+        self.config = select_config
+        self.feature_index_dict = select_config.get_feature_index_dict()
 
     def evaluate_all(self) -> dict:
         """

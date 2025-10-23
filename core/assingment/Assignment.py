@@ -1,28 +1,28 @@
 import tensorflow as tf
 import keras
 import numpy as np
-import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
-from core.DataLoader import DataPreprocessor, DataConfig
+from core.DataLoader import DataConfig
 import core.components as components
 import core.utils as utils
 import tf2onnx
-import onnx
 from core.components import onnx_support
 
 from core.components import GenerateMask, InputPtEtaPhiELayer, InputMetPhiLayer
 
-class JetAssignerBase(ABC):
-    def __init__(self,config : DataConfig, name="jet_assigner"):
+
+class BaseUtilityModel(ABC):
+    def __init__(self, config: DataConfig, name="base_utility_model"):
         self.name = name
         self.config = config
 
+    def get_name(self):
+        return self.name
+
+class JetAssignerBase(BaseUtilityModel, ABC):
     @abstractmethod
     def predict_indices(self, data_dict):
         pass
-
-    def get_name(self):
-        return self.name
 
     def evaluate_accuracy(self, data_dict, true_labels, per_event=False):
         """
@@ -45,18 +45,14 @@ class JetAssignerBase(ABC):
             accuracy = np.mean(correct_predictions)
         return accuracy
 
-class MLAssignerBase(JetAssignerBase):
+class MLBase(BaseUtilityModel, ABC):
     def __init__(self, config: DataConfig, name="ml_assigner"):
-        self.name = name
         """
         Initializes the AssignmentBaseModel class.
         Args:
             data_preprocessor (DataPreprocessor): An instance of the DataPreprocessor class
                 that provides preprocessed data and metadata required for model initialization.
         """
-
-        self.config = config
-
         self.model: keras.Model = None
         self.X_train = None
         self.y_train: np.ndarray = None
@@ -68,13 +64,15 @@ class MLAssignerBase(JetAssignerBase):
         self.met_features = config.met_features
         self.n_jets: int = len(config.jet_features)
         self.n_leptons: int = len(config.lepton_features)
-        self.n_met: int = (
-            len(config.met_features) if config.met_features else 0
-        )
+        self.n_met: int = len(config.met_features) if config.met_features else 0
         self.padding_value: float = config.padding_value
         self.feature_index_dict = config.get_feature_index_dict()
 
-        super().__init__(config=config,name=name)
+        super().__init__(config=config, name=name)
+
+    @abstractmethod
+    def build_model(self, input_as_four_vector=True, **kwargs):
+        pass
 
     def load_training_data(
         self, X_train, y_train, sample_weights=None, class_weights=None
@@ -115,25 +113,38 @@ class MLAssignerBase(JetAssignerBase):
             else:
                 self.X_train["met_inputs"] = met_data
 
-
     def _prepare_inputs(self, input_as_four_vector):
         jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
-        lep_inputs = keras.Input(shape=(self.max_leptons, self.n_leptons), name="lep_inputs")
-        met_inputs = keras.Input(shape=(1,self.n_met), name="met_inputs")
+        lep_inputs = keras.Input(
+            shape=(self.max_leptons, self.n_leptons), name="lep_inputs"
+        )
+        met_inputs = keras.Input(shape=(1, self.n_met), name="met_inputs")
 
         # Normalise inputs
         if input_as_four_vector:
-            transformed_jet_inputs = InputPtEtaPhiELayer(name="jet_input_transform")(jet_inputs)
-            transformed_lep_inputs = InputPtEtaPhiELayer(name="lep_input_transform")(lep_inputs)
-            transformed_met_inputs = InputMetPhiLayer(name="met_input_transform")(met_inputs)
+            transformed_jet_inputs = InputPtEtaPhiELayer(name="jet_input_transform")(
+                jet_inputs
+            )
+            transformed_lep_inputs = InputPtEtaPhiELayer(name="lep_input_transform")(
+                lep_inputs
+            )
+            transformed_met_inputs = InputMetPhiLayer(name="met_input_transform")(
+                met_inputs
+            )
         else:
             transformed_jet_inputs = jet_inputs
             transformed_lep_inputs = lep_inputs
             transformed_met_inputs = met_inputs
 
-        normed_jet_inputs = keras.layers.Normalization(name="jet_input_normalization")(transformed_jet_inputs)
-        normed_lep_inputs = keras.layers.Normalization(name="lep_input_normalization")(transformed_lep_inputs)
-        normed_met_inputs = keras.layers.Normalization(name="met_input_normalization")(transformed_met_inputs)
+        normed_jet_inputs = keras.layers.Normalization(name="jet_input_normalization")(
+            transformed_jet_inputs
+        )
+        normed_lep_inputs = keras.layers.Normalization(name="lep_input_normalization")(
+            transformed_lep_inputs
+        )
+        normed_met_inputs = keras.layers.Normalization(name="met_input_normalization")(
+            transformed_met_inputs
+        )
         # Generate masks
         jet_mask = GenerateMask(padding_value=-999, name="jet_mask")(jet_inputs)
 
@@ -144,36 +155,22 @@ class MLAssignerBase(JetAssignerBase):
         }
         return normed_jet_inputs, normed_lep_inputs, normed_met_inputs, jet_mask
 
-    def _build_model_base(self, jet_assignment_probs, **kwargs):
-        if self.n_met > 0:
-            self.model = keras.Model(
-                inputs=[self.inputs["jet_inputs"], self.inputs["lep_inputs"], self.inputs["met_inputs"]],
-                outputs=jet_assignment_probs,
-                **kwargs,
-            )
-        else:
-            self.model = keras.Model(
-                inputs=[self.inputs["jet_inputs"], self.inputs["lep_inputs"]],
-                outputs=jet_assignment_probs,
-                **kwargs,
-            )
-
-
-
-    def compile_model(self, loss, optimizer, metrics=None):
-        if self.model is None:
-            raise ValueError(
-                "Model has not been built yet. Call build_model() before compile_model()."
-            )
-        self.model.compile(loss=loss, optimizer=optimizer, metrics=metrics)
-
-    def train_model(self, X_train, y_train, epochs, batch_size, sample_weights = None, validation_split=0.2, callbacks=None):
+    def train_model(
+        self,
+        X_train,
+        y_train,
+        epochs,
+        batch_size,
+        sample_weights=None,
+        validation_split=0.2,
+        callbacks=None,
+    ):
         if self.model is None:
             raise ValueError(
                 "Model has not been built yet. Call build_model() before train_model()."
             )
 
-        self.load_training_data(X_train, y_train, sample_weights = sample_weights)
+        self.load_training_data(X_train, y_train, sample_weights=sample_weights)
 
         if self.history is not None:
             print("Warning: Overwriting existing training history.")
@@ -253,7 +250,6 @@ class MLAssignerBase(JetAssignerBase):
         self.model.summary(print_fn=myprint)
         print(f"Model structure saved to {file_path}")
 
-
     def load_model(self, file_path):
         """
         Loads a pre-trained Keras model from the specified file path.
@@ -287,74 +283,6 @@ class MLAssignerBase(JetAssignerBase):
         self.model = keras.saving.load_model(file_path, custom_objects=custom_objects)
         print(f"Model loaded from {file_path}")
 
-    def predict_indices(self, data : dict[str:np.ndarray], exclusive=True):
-        """
-        Predicts the indices of jets and leptons based on the model's predictions.
-        This method processes the predictions from the model and returns a one-hot
-        encoded array indicating the associations between jets and leptons.
-        Args:
-            data (dict): A dictionary containing input data for prediction. It should
-                include keys "jet" and "lepton", and optionally "met" if met
-                features are used by the model.
-            exclusive (bool, optional): If True, ensures exclusive assignments between
-                jets and leptons, where each jet is assigned to at most one lepton and
-                vice versa. Defaults to True.
-        Returns:
-            np.ndarray: A one-hot encoded array of shape (batch_size, max_jets, 2),
-            where the last dimension represents the association between jets and
-            leptons. The value 1 indicates an association, and 0 indicates no association.
-        Raises:
-            ValueError: If the model is not built (i.e., `self.model` is None).
-        """
-
-        if self.model is None:
-            raise ValueError(
-                "Model not built. Please build the model using build_model() method."
-            )
-        if self.met_features is not None:
-            predictions = self.model.predict(
-                [data["jet"], data["lepton"], data["met"]], verbose=0
-            )
-        else:
-            predictions = self.model.predict([data["jet"], data["lepton"]], verbose=0)
-        one_hot = self.generate_one_hot_encoding(predictions, exclusive)
-        return one_hot
-
-    def generate_one_hot_encoding(self, predictions, exclusive):
-        """
-        Generates a one-hot encoded array from the model's predictions.
-        This method processes the raw predictions from the model and converts them
-        into a one-hot encoded format, indicating the associations between jets and leptons.
-        Args:
-            predictions (np.ndarray): The raw predictions from the model, typically
-                of shape (batch_size, max_jets, max_leptons).
-            exclusive (bool): If True, ensures exclusive assignments between jets
-                and leptons
-        Returns:
-            np.ndarray: A one-hot encoded array of shape (batch_size, max_jets, 2),
-            where the last dimension represents the association between jets and
-            leptons. The value 1 indicates an association, and 0 indicates no association.
-        """
-        if exclusive:
-            one_hot = np.zeros((predictions.shape[0], self.max_jets, 2), dtype=int)
-            for i in range(predictions.shape[0]):
-                probs = predictions[i].copy()
-                for _ in range(self.max_leptons):
-                    jet_index, lepton_index = np.unravel_index(
-                        np.argmax(probs), probs.shape
-                    )
-                    one_hot[i, jet_index, lepton_index] = 1
-                    probs[jet_index, :] = 0
-                    probs[:, lepton_index] = 0
-        else:
-            one_hot[
-                np.arange(predictions.shape[0]), np.argmax(predictions[:, :, 0], axis=1), 0
-            ] = 1
-            one_hot[
-                np.arange(predictions.shape[0]), np.argmax(predictions[:, :, 1], axis=1), 1
-            ] = 1
-        return one_hot
-    
     def adapt_normalization_layers(self, data: dict):
         """
         Adapts the normalization layers in a functional model.
@@ -367,7 +295,9 @@ class MLAssignerBase(JetAssignerBase):
         unpadded_jet_data = jet_data[jet_mask]
         num_jets = unpadded_jet_data.shape[0]
         num_events = num_jets // self.max_jets
-        unpadded_jet_data = unpadded_jet_data[:num_events * self.max_jets, :].reshape((num_events, self.max_jets, self.n_jets))
+        unpadded_jet_data = unpadded_jet_data[: num_events * self.max_jets, :].reshape(
+            (num_events, self.max_jets, self.n_jets)
+        )
         lep_data = data["lepton"][:num_events, :, :]
         met_data = data["met"][:num_events, :, :]
 
@@ -384,8 +314,10 @@ class MLAssignerBase(JetAssignerBase):
             # Build a submodel from inputs -> pre-normalization outputs
             submodel = keras.Model(
                 inputs=model.inputs,
-                outputs=inbound_tensors if len(inbound_tensors) > 1 else inbound_tensors[0],
-                name=f"pre_{target_layer_name}_model"
+                outputs=(
+                    inbound_tensors if len(inbound_tensors) > 1 else inbound_tensors[0]
+                ),
+                name=f"pre_{target_layer_name}_model",
             )
             return submodel
 
@@ -395,26 +327,37 @@ class MLAssignerBase(JetAssignerBase):
                 submodel = get_pre_norm_submodel(self.model, layer.name)
 
                 if layer.name == "jet_input_normalization":
-                    transformed = submodel({"jet_inputs": unpadded_jet_data,
-                                            "lep_inputs": lep_data,
-                                            "met_inputs": met_data})
+                    transformed = submodel(
+                        {
+                            "jet_inputs": unpadded_jet_data,
+                            "lep_inputs": lep_data,
+                            "met_inputs": met_data,
+                        }
+                    )
                     layer.adapt(transformed)
                 elif layer.name == "lep_input_normalization":
-                    transformed = submodel({"jet_inputs": unpadded_jet_data,
-                                            "lep_inputs": lep_data,
-                                            "met_inputs": met_data})
+                    transformed = submodel(
+                        {
+                            "jet_inputs": unpadded_jet_data,
+                            "lep_inputs": lep_data,
+                            "met_inputs": met_data,
+                        }
+                    )
                     layer.adapt(transformed)
                 elif layer.name == "met_input_normalization":
-                    transformed = submodel({"jet_inputs": unpadded_jet_data,
-                                            "lep_inputs": lep_data,
-                                            "met_inputs": met_data})
+                    transformed = submodel(
+                        {
+                            "jet_inputs": unpadded_jet_data,
+                            "lep_inputs": lep_data,
+                            "met_inputs": met_data,
+                        }
+                    )
                     layer.adapt(transformed)
-
 
     def export_to_onnx(self, onnx_file_path="model.onnx"):
         """
         Exports the current Keras model to onnx format.
-        
+
         The model is wrapped to take a flattened input tensor and split it into the original inputs.
 
         Saves a .txt file with model input names and positions for reference.
@@ -440,7 +383,7 @@ class MLAssignerBase(JetAssignerBase):
         lep_shape = (self.max_leptons, self.n_leptons)
         input_shapes = [jet_shape, lep_shape]
         if self.n_met > 0:
-            met_shape = (1,self.n_met)
+            met_shape = (1, self.n_met)
             input_shapes.append(met_shape)
 
         # Create a new model that takes a flat input and splits it
@@ -452,7 +395,7 @@ class MLAssignerBase(JetAssignerBase):
 
         if self.n_met > 0:
             jet_input, lep_input, met_input = split_inputs
-            
+
             model_outputs = self.model([jet_input, lep_input, met_input])
         else:
             jet_input, lep_input = split_inputs
@@ -490,16 +433,117 @@ class MLAssignerBase(JetAssignerBase):
                         flat_feature_index_dict[flat_index] = f"lepton_{j}_{feature}"
             elif feature_type == "met":
                 for i, feature in enumerate(features):
-                    flat_index = self.max_jets * self.n_jets + self.max_leptons * self.n_leptons + i
+                    flat_index = (
+                        self.max_jets * self.n_jets
+                        + self.max_leptons * self.n_leptons
+                        + i
+                    )
                     flat_feature_index_dict[flat_index] = f"met_{feature}"
-    
+
         inputs_list = [None] * flat_input_size
         for idx, name in flat_feature_index_dict.items():
             inputs_list[idx] = name
 
-        if False:        
-            with open(input_info_path, "w") as f:
-                f.write("Flat Input Index Mapping:\n")
-                for idx, feature in enumerate(inputs_list):
-                    f.write(f"Index {idx}: {feature}\n")
-            print(f"Input info saved to {input_info_path}")
+
+class MLAssignerBase(JetAssignerBase, MLBase):
+    def __init__(self, config: DataConfig, name="ml_assigner"):
+        super(MLBase).__init__(config=config, name=name)
+        super(JetAssignerBase).__init__(config=config, name=name)
+
+
+    def _build_model_base(self, jet_assignment_probs, **kwargs):
+        if self.n_met > 0:
+            self.model = keras.Model(
+                inputs=[
+                    self.inputs["jet_inputs"],
+                    self.inputs["lep_inputs"],
+                    self.inputs["met_inputs"],
+                ],
+                outputs=jet_assignment_probs,
+                **kwargs,
+            )
+        else:
+            self.model = keras.Model(
+                inputs=[self.inputs["jet_inputs"], self.inputs["lep_inputs"]],
+                outputs=jet_assignment_probs,
+                **kwargs,
+            )
+
+    def compile_model(self, loss, optimizer, metrics=None):
+        if self.model is None:
+            raise ValueError(
+                "Model has not been built yet. Call build_model() before compile_model()."
+            )
+        self.model.compile(loss=loss, optimizer=optimizer, metrics=metrics)
+
+    def generate_one_hot_encoding(self, predictions, exclusive):
+        """
+        Generates a one-hot encoded array from the model's predictions.
+        This method processes the raw predictions from the model and converts them
+        into a one-hot encoded format, indicating the associations between jets and leptons.
+        Args:
+            predictions (np.ndarray): The raw predictions from the model, typically
+                of shape (batch_size, max_jets, max_leptons).
+            exclusive (bool): If True, ensures exclusive assignments between jets
+                and leptons
+        Returns:
+            np.ndarray: A one-hot encoded array of shape (batch_size, max_jets, 2),
+            where the last dimension represents the association between jets and
+            leptons. The value 1 indicates an association, and 0 indicates no association.
+        """
+        if exclusive:
+            one_hot = np.zeros((predictions.shape[0], self.max_jets, 2), dtype=int)
+            for i in range(predictions.shape[0]):
+                probs = predictions[i].copy()
+                for _ in range(self.max_leptons):
+                    jet_index, lepton_index = np.unravel_index(
+                        np.argmax(probs), probs.shape
+                    )
+                    one_hot[i, jet_index, lepton_index] = 1
+                    probs[jet_index, :] = 0
+                    probs[:, lepton_index] = 0
+        else:
+            one_hot[
+                np.arange(predictions.shape[0]),
+                np.argmax(predictions[:, :, 0], axis=1),
+                0,
+            ] = 1
+            one_hot[
+                np.arange(predictions.shape[0]),
+                np.argmax(predictions[:, :, 1], axis=1),
+                1,
+            ] = 1
+        return one_hot
+
+    def predict_indices(self, data: dict[str : np.ndarray], exclusive=True):
+        """
+        Predicts the indices of jets and leptons based on the model's predictions.
+        This method processes the predictions from the model and returns a one-hot
+        encoded array indicating the associations between jets and leptons.
+        Args:
+            data (dict): A dictionary containing input data for prediction. It should
+                include keys "jet" and "lepton", and optionally "met" if met
+                features are used by the model.
+            exclusive (bool, optional): If True, ensures exclusive assignments between
+                jets and leptons, where each jet is assigned to at most one lepton and
+                vice versa. Defaults to True.
+        Returns:
+            np.ndarray: A one-hot encoded array of shape (batch_size, max_jets, 2),
+            where the last dimension represents the association between jets and
+            leptons. The value 1 indicates an association, and 0 indicates no association.
+        Raises:
+            ValueError: If the model is not built (i.e., `self.model` is None).
+        """
+
+        if self.model is None:
+            raise ValueError(
+                "Model not built. Please build the model using build_model() method."
+            )
+        if self.met_features is not None:
+            predictions = self.model.predict(
+                [data["jet"], data["lepton"], data["met"]], verbose=0
+            )
+        else:
+            predictions = self.model.predict([data["jet"], data["lepton"]], verbose=0)
+        one_hot = self.generate_one_hot_encoding(predictions, exclusive)
+        return one_hot

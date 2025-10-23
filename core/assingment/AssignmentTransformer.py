@@ -8,11 +8,8 @@ from ..components import (
     MultiHeadAttentionBlock,
     SelfAttentionBlock,
     MLP,
-    GenerateMask,
     TemporalSoftmax,
     JetLeptonAssignment,
-    InputPtEtaPhiELayer,
-    InputMetPhiLayer,
 )
 
 

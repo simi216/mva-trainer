@@ -4,12 +4,8 @@ import tensorflow as tf
 
 from .Assignment import MLAssignerBase, DataConfig
 from ..components import (
-    MultiHeadAttentionBlock,
-    SelfAttentionBlock,
     MLP,
-    GenerateMask,
     TemporalSoftmax,
-    JetLeptonAssignment,
 )
 
 
