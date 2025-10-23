@@ -160,9 +160,10 @@ class ReconstructionEvaluator:
                 raise ValueError(
                     "All reconstructors must have the same DataConfig for consistent evaluation."
                 )
+        self.config = select_config
+
         self.compute_all_model_predictions()
 
-        self.config = select_config
         self.feature_index_dict = select_config.feature_indices
     
     def compute_all_model_predictions(self):
@@ -197,7 +198,7 @@ class ReconstructionEvaluator:
         true_indices = np.argmax(true_labels, axis=-2)
         if per_event:
             correct_predictions = np.all(predicted_indices == true_indices, axis=-1)
-            accuracy = np.mean(correct_predictions, axis = -1)
+            accuracy = correct_predictions
         else:
             correct_predictions = np.all(predicted_indices == true_indices, axis=-1)
             accuracy = np.mean(correct_predictions)
