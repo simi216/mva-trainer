@@ -125,7 +125,7 @@ def main():
             dropout_rate=args.dropout_rate,
             input_as_four_vector=True
         )
-    elif args.architecutre == "CrossAttentionTransformer":
+    elif args.architecture == "CrossAttentionTransformer":
         Model = Models.CrossAttentionModel(config, name="RNN")
         Model.build_model(
             hidden_dim=args.hidden_dim,
