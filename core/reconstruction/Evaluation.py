@@ -137,8 +137,8 @@ class MLEvaluator:
         plt.show()
 
 
-class JetAssignmentEvaluator:
-    """Evaluator for comparing multiple jet assignment algorithms."""
+class ReconstructionEvaluator:
+    """Evaluator for comparing event reconstruction methods."""
 
     def __init__(
         self, reconstructors: Union[list[EventReconstructorBase], EventReconstructorBase], X_test, y_test
@@ -150,6 +150,7 @@ class JetAssignmentEvaluator:
 
         self.X_test = X_test
         self.y_test = y_test
+        self.model_predictions = []
 
         # Validate that all reconstructors have the same configuration
         configs = [reconstructor.config for reconstructor in self.reconstructors]
@@ -159,30 +160,52 @@ class JetAssignmentEvaluator:
                 raise ValueError(
                     "All reconstructors must have the same DataConfig for consistent evaluation."
                 )
+        self.compute_all_model_predictions()
 
         self.config = select_config
         self.feature_index_dict = select_config.feature_indices
-
-    def evaluate_all_assignment_accuracies(self) -> dict:
-        """
-        Evaluate accuracy for all reconstructors.
-
-        Returns:
-            Dictionary mapping reconstructor names to accuracy scores
-        """
-        results = {}
-        true_indices = np.argmax(self.y_test["assignment_labels"], axis=-2)  
+    
+    def compute_all_model_predictions(self):
+        """Compute predictions for all reconstructors."""
         for reconstructor in self.reconstructors:
-            predictions = reconstructor.predict_indices(self.X_test)
-            predicted_indices = np.argmax(predictions, axis=-2)
-            accuracy = np.mean(predicted_indices == true_indices)
-            results[reconstructor.get_name()] = accuracy
-            print(f"Accuracy for {reconstructor.get_name()}: {accuracy:.4f}")
-        return results
+            assignment_predictions = reconstructor.predict_indices(self.X_test)
+            if self.config.has_regression_targets:
+                regression_predictions = reconstructor.reconstruct_neutrinos(self.X_test)
+                self.model_predictions.append(
+                    {
+                        "assignment": assignment_predictions,
+                        "regression": regression_predictions,
+                    }
+                )
+            else:
+                self.model_predictions.append(
+                    {"assignment": assignment_predictions}
+                )
+
+    def evaluate_accuracy(self, true_labels, predictions, per_event: bool = True) -> float:
+        """
+        Evaluates the accuracy of the model on the provided true labels and predictions.
+
+        Args:
+            true_labels (np.ndarray): The true assignment labels to compare against the model's predictions.
+            predictions (np.ndarray): The model's predicted assignment probabilities.
+            per_event (bool): If True, computes accuracy per event; otherwise, computes overall accuracy.
+        Returns:
+            
+        """
+        predicted_indices = np.argmax(predictions, axis=-2)
+        true_indices = np.argmax(true_labels, axis=-2)
+        if per_event:
+            correct_predictions = np.all(predicted_indices == true_indices, axis=-1)
+            accuracy = np.mean(correct_predictions, axis = -1)
+        else:
+            correct_predictions = np.all(predicted_indices == true_indices, axis=-1)
+            accuracy = np.mean(correct_predictions)
+        return accuracy
 
     def _bootstrap_accuracy(
         self,
-        reconstructor: EventReconstructorBase,
+        reconstructor_index: int,
         n_bootstrap: int = 1000,
         confidence: float = 0.95,
     ) -> Tuple[float, float, float]:
@@ -190,29 +213,27 @@ class JetAssignmentEvaluator:
         Compute accuracy with bootstrap confidence intervals.
 
         Args:
-            reconstructor: Jet reconstructor to evaluate
+            reconstructor_index: Index of the reconstructor in self.reconstructors
             n_bootstrap: Number of bootstrap samples
             confidence: Confidence level for intervals
 
         Returns:
             Tuple of (mean_accuracy, lower_bound, upper_bound)
         """
-        predictions = reconstructor.predict_indices(self.X_test)
-        predicted_indices = np.argmax(predictions, axis=-2)
+        predictions = self.model_predictions[reconstructor_index]["assignment"]
+        accuracy_data = self.evaluate_accuracy(
+            self.y_test["assignment_labels"], predictions, per_event=True
+        ).astype(float)
 
-        n_samples = len(self.y_test)
-        bootstrap_accuracies = []
+        n_samples = len(accuracy_data)
+        bootstrap_accuracies = np.zeros(n_bootstrap)
 
-        for _ in range(n_bootstrap):
+        for i in range(n_bootstrap):
             # Resample with replacement
             indices = np.random.randint(0, n_samples, size=n_samples)
-            bootstrap_predictions = predicted_indices[indices]
-            bootstrap_y_test = self.y_test[indices]
+            bootstrap_accuracy = accuracy_data[indices]
+            bootstrap_accuracies[i] = np.mean(bootstrap_accuracy)
 
-            accuracy = np.mean(bootstrap_predictions == bootstrap_y_test)
-            bootstrap_accuracies.append(accuracy)
-
-        bootstrap_accuracies = np.array(bootstrap_accuracies)
         mean_accuracy = np.mean(bootstrap_accuracies)
 
         # Compute confidence intervals
@@ -309,7 +330,7 @@ class JetAssignmentEvaluator:
 
     def _bootstrap_binned_accuracy(
         self,
-        reconstructor: EventReconstructorBase,
+        reconstructor_index: int,
         binning_mask: np.ndarray,
         event_weights: np.ndarray,
         n_bootstrap: int = 1000,
@@ -319,7 +340,7 @@ class JetAssignmentEvaluator:
         Compute binned accuracy with bootstrap confidence intervals.
 
         Args:
-            reconstructor: Jet reconstructor to evaluate
+            reconstructor_index: Index of the reconstructor in self.reconstructors
             binning_mask: Boolean mask for binning
             event_weights: Event weights
             n_bootstrap: Number of bootstrap samples
@@ -328,36 +349,35 @@ class JetAssignmentEvaluator:
         Returns:
             Tuple of (mean_accuracies, lower_bounds, upper_bounds) arrays
         """
-        predictions = reconstructor.predict_indices(self.X_test)
-        predicted_indices = np.argmax(predictions, axis=-2)
-        true_indices = np.argmax(self.y_test["assignment_labels"], axis=-2)
-        accuracy_data = np.all(predicted_indices == true_indices, axis=-1).astype(float)
+        predictions = self.model_predictions[reconstructor_index]["assignment"]
+        accuracy_data = self.evaluate_accuracy(
+            self.y_test["assignment_labels"], predictions, per_event=True
+        ).astype(float)
 
         n_samples = len(accuracy_data)
         n_bins = binning_mask.shape[0]
-        bootstrap_accuracies = np.zeros((n_bootstrap, n_bins))
+        bootstrap_binned_accuracies = np.zeros((n_bootstrap, n_bins))
 
         for i in range(n_bootstrap):
             # Resample with replacement
             indices = np.random.randint(0, n_samples, size=n_samples)
             bootstrap_accuracy = accuracy_data[indices]
             bootstrap_weights = event_weights[indices]
-            bootstrap_mask = binning_mask[:, indices]
 
-            binned_acc = self._compute_binned_accuracy(
-                bootstrap_mask, bootstrap_accuracy, bootstrap_weights
+            binned_accuracy = self._compute_binned_accuracy(
+                binning_mask, bootstrap_accuracy, bootstrap_weights
             )
-            bootstrap_accuracies[i] = binned_acc
+            bootstrap_binned_accuracies[i] = binned_accuracy
 
-        mean_accuracies = np.nanmean(bootstrap_accuracies, axis=0)
+        mean_accuracies = np.mean(bootstrap_binned_accuracies, axis=0)
 
         # Compute confidence intervals
         alpha = 1 - confidence
         lower_percentile = (alpha / 2) * 100
         upper_percentile = (1 - alpha / 2) * 100
 
-        lower_bounds = np.nanpercentile(bootstrap_accuracies, lower_percentile, axis=0)
-        upper_bounds = np.nanpercentile(bootstrap_accuracies, upper_percentile, axis=0)
+        lower_bounds = np.percentile(bootstrap_binned_accuracies, lower_percentile, axis=0)
+        upper_bounds = np.percentile(bootstrap_binned_accuracies, upper_percentile, axis=0)
 
         return mean_accuracies, lower_bounds, upper_bounds
 
@@ -440,7 +460,7 @@ class JetAssignmentEvaluator:
         for index, reconstructor in enumerate(self.reconstructors):
             if show_errorbar:
                 mean_acc, lower, upper = self._bootstrap_binned_accuracy(
-                    reconstructor, binning_mask, event_weights, n_bootstrap, confidence
+                    index, binning_mask, event_weights, n_bootstrap, confidence
                 )
                 errors_lower = mean_acc - lower
                 errors_upper = upper - mean_acc
@@ -455,11 +475,9 @@ class JetAssignmentEvaluator:
                     linestyle="None",
                 )
             else:
-                predictions = reconstructor.predict_indices(self.X_test)
-                predicted_indices = np.argmax(predictions, axis=-2)
-                true_indices = np.argmax(self.y_test["assignment_labels"], axis=-2)
-                accuracy_data = np.all(
-                    predicted_indices == true_indices, axis=-1
+                predictions = self.model_predictions[index]["assignment"]
+                accuracy_data = self.evaluate_accuracy(
+                    self.y_test["assignment_labels"], predictions, per_event=True
                 ).astype(float)
                 binned_accuracy = self._compute_binned_accuracy(
                     binning_mask, accuracy_data, event_weights
