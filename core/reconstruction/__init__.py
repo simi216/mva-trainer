@@ -1,4 +1,4 @@
-from .Assignment import *
+from .Reconstruction import *
 from .Evaluation import *
 from .BaselineMethods import *
 from .AssignmentRNN import *

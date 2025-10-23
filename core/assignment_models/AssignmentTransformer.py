@@ -3,8 +3,8 @@ import tensorflow as tf
 import numpy as np
 
 
-from . import MLAssignerBase
-from ..components import (
+from core.reconstruction import MLReconstructorBase
+from core.components import (
     MultiHeadAttentionBlock,
     SelfAttentionBlock,
     MLP,
@@ -13,8 +13,10 @@ from ..components import (
 )
 
 
-class CrossAttentionModel(MLAssignerBase):
+class CrossAttentionModel(MLReconstructorBase):
     def __init__(self, config, name="CrossAttentionModel"):
+        if not config.has_regression_targets:
+            raise ValueError("CrossAttentionModel requires regression targets in the config.")
         super().__init__(config, name=name)
 
     def build_model(
@@ -119,8 +121,10 @@ class CrossAttentionModel(MLAssignerBase):
         self._build_model_base(jet_assignment_probs, name="CrossAttentionModel")
 
 
-class FeatureConcatTransformer(MLAssignerBase):
+class FeatureConcatTransformer(MLReconstructorBase):
     def __init__(self, config, name="FeatureConcatTransformer"):
+        if not config.has_regression_targets:
+            raise ValueError("FeatureConcatTransformer requires regression targets in the config.")
         super().__init__(config, name=name)
 
     def build_model(

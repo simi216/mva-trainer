@@ -2,15 +2,18 @@ import keras
 import tensorflow as tf
 
 
-from .Assignment import MLAssignerBase, DataConfig
-from ..components import (
+from core.reconstruction import MLReconstructorBase
+from core.Configs import DataConfig
+from core.components import (
     MLP,
     TemporalSoftmax,
 )
 
 
-class FeatureConcatRNN(MLAssignerBase):
+class FeatureConcatRNN(MLReconstructorBase):
     def __init__(self, config : DataConfig, name="RNN"):
+        if config.has_regression_targets:
+            raise ValueError("FeatureConcatRNN does not support regression targets.")
         super().__init__(config, name)
 
     def build_model(self, hidden_dim, num_layers, dropout_rate, recurrent_type="lstm",input_as_four_vector=True):

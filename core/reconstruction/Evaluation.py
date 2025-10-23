@@ -5,13 +5,13 @@ import seaborn as sns
 from typing import Union, Optional, Tuple
 from copy import deepcopy
 
-from .Assignment import JetAssignerBase, MLAssignerBase
+from . import EventReconstructorBase, MLReconstructorBase
 
 
-class MLAssignerEvaluatorBase:
+class MLEvaluator:
     """Base evaluator for ML-based jet assignment models."""
 
-    def __init__(self, assigner: MLAssignerBase, X_test, y_test):
+    def __init__(self, assigner: MLReconstructorBase, X_test, y_test):
         self.assigner = assigner
         self.X_test = X_test
         self.y_test = y_test
@@ -145,15 +145,15 @@ class JetAssignmentEvaluator:
     """Evaluator for comparing multiple jet assignment algorithms."""
 
     def __init__(
-        self, assigners: Union[list[JetAssignerBase], JetAssignerBase], X_test, y_test
+        self, assigners: Union[list[EventReconstructorBase], EventReconstructorBase], X_test, y_test
     ):
-        if isinstance(assigners, JetAssignerBase):
+        if isinstance(assigners, EventReconstructorBase):
             self.assigners = [assigners]
         else:
             self.assigners = assigners
 
         self.X_test = X_test
-        self.y_test = np.argmax(y_test, axis=-2)
+        self.y_test = y_test
 
         # Validate that all assigners have the same configuration
         configs = [assigner.config for assigner in self.assigners]
@@ -185,7 +185,7 @@ class JetAssignmentEvaluator:
 
     def _bootstrap_accuracy(
         self,
-        assigner: JetAssignerBase,
+        assigner: EventReconstructorBase,
         n_bootstrap: int = 1000,
         confidence: float = 0.95,
     ) -> Tuple[float, float, float]:
@@ -312,7 +312,7 @@ class JetAssignmentEvaluator:
 
     def _bootstrap_binned_accuracy(
         self,
-        assigner: JetAssignerBase,
+        assigner: EventReconstructorBase,
         binning_mask: np.ndarray,
         event_weights: np.ndarray,
         n_bootstrap: int = 1000,

@@ -1,10 +1,10 @@
-from . import JetAssignerBase
+from core.reconstruction import EventReconstructorBase
 from core.DataLoader import DataConfig
 import numpy as np
 from core.utils.tools import four_vector_from_pt_eta_phi_e, compute_mass_from_four_vector
 
 
-class BaselineAssigner(JetAssignerBase):
+class BaselineAssigner(EventReconstructorBase):
     def __init__(self, config: DataConfig, name="baseline_assigner", mode = "min"):
         super().__init__(config, name)
         """Initializes the BaselineAssigner class.
@@ -14,6 +14,8 @@ class BaselineAssigner(JetAssignerBase):
         """
         if mode not in ["min", "max"]:
             raise ValueError("Mode must be either 'min' or 'max'.")
+        if config.has_regression_targets:
+            raise ValueError("BaselineAssigner does not support regression targets.")
         self.mode = mode
         self.max_leptons = config.max_leptons
         self.max_jets = config.max_jets

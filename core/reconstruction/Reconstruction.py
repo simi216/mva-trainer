@@ -6,9 +6,12 @@ from core.DataLoader import DataConfig
 from core.base_classes import BaseUtilityModel, MLWrapperBase, KerasModelWrapper
 
 
-class JetAssignerBase(BaseUtilityModel, ABC):
+class EventReconstructorBase(BaseUtilityModel, ABC):
     @abstractmethod
     def predict_indices(self, data_dict):
+        pass
+
+    def reconstruct_neutrinos(self, data_dict):
         pass
 
     def evaluate_accuracy(self, data_dict, true_labels, per_event=False):
@@ -31,28 +34,58 @@ class JetAssignerBase(BaseUtilityModel, ABC):
             correct_predictions = np.all(predicted_indices == true_indices, axis=-1)
             accuracy = np.mean(correct_predictions)
         return accuracy
+    
+    def evaluate_regression(self, data_dict, true_values):
+        """
+        Evaluates the regression performance of the model on the provided data and true values.
 
-class MLAssignerBase(JetAssignerBase, MLWrapperBase):
+        Args:
+            data_dict (dict): A dictionary containing input data for the model.
+            true_values (np.ndarray): The true regression target values to compare against the model's predictions.
+        Returns:
+            float: The mean squared error of the model's regression predictions.
+        """
+        regression_predictions = self.reconstruct_neutrinos(data_dict)
+        mse = np.mean((regression_predictions - true_values) ** 2)
+        return mse
+
+
+class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
     def __init__(self, config: DataConfig, name="ml_assigner"):
         super().__init__(config=config, name=name)
 
 
-    def _build_model_base(self, jet_assignment_probs, **kwargs):
+    def _build_model_base(self, jet_assignment_probs, regression_output = None, **kwargs):
         jet_assignment_probs.name = "jet_assignment_probs"
-
-        if self.n_met > 0:
+        if self.config.has_regression_targets and regression_output is not None:
+            regression_output.name = "regression_output"
             self.model = KerasModelWrapper(
                 inputs=[
                     self.inputs["jet_inputs"],
                     self.inputs["lep_inputs"],
                     self.inputs["met_inputs"],
                 ],
-                outputs=jet_assignment_probs,
+                outputs={
+                    "jet_assignment_probs": jet_assignment_probs,
+                    "regression_output": regression_output,
+                },
                 **kwargs,
+            )
+        elif self.config.has_regression_targets and regression_output is None:
+            raise ValueError(
+                "Regression targets are specified in the config, but regression_output is None."
+            )
+        elif not self.config.has_regression_targets and regression_output is not None:
+            raise Warning(
+                "Regression targets are not specified in the config, but regression_output is provided. Ignoring regression_output."
             )
         else:
             self.model = KerasModelWrapper(
-                inputs=[self.inputs["jet_inputs"], self.inputs["lep_inputs"]],
+                inputs=[
+                    self.inputs["jet_inputs"],
+                    self.inputs["lep_inputs"],
+                    self.inputs["met_inputs"],
+                ],
                 outputs=jet_assignment_probs,
                 **kwargs,
             )

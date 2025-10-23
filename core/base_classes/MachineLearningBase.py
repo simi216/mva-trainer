@@ -60,7 +60,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         jet_data = None
         for key in self.X_train.keys():
             if "jet" in key:
-                jet_data = self.X_train[key]
+                jet_data = self.X_train.pop(key)
                 break
 
         if jet_data is None:
@@ -71,7 +71,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         lepton_data = None
         for key in self.X_train.keys():
             if "lepton" in key:
-                lepton_data = self.X_train[key]
+                lepton_data = self.X_train.pop(key)
                 break
         if lepton_data is None:
             raise ValueError("Lepton data not found in X_train.")
@@ -81,12 +81,16 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             met_data = None
             for key in self.X_train.keys():
                 if "met" in key:
-                    met_data = self.X_train[key]
+                    met_data = self.X_train.pop(key)
                     break
             if met_data is None:
                 raise ValueError("met data not found in X_train.")
             else:
                 self.X_train["met_inputs"] = met_data
+
+        if "assignment_labels" not in self.y_train:
+            raise ValueError("Assignment labels not found in y_train.")
+        self.y_train = self.y_train["assignment_labels"]
 
     def _prepare_inputs(self, input_as_four_vector):
         jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")

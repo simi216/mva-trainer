@@ -63,7 +63,7 @@ def main():
     args = parse_args()
     
     sys.path.append(args.root_dir) # Ensure root directory is in the path
-    import core.assingment as Models
+    import core.reconstruction as Models
     from core.DataLoader import DataPreprocessor, DataConfig
     import core
 
