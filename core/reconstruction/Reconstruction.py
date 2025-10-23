@@ -34,7 +34,7 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
             correct_predictions = np.all(predicted_indices == true_indices, axis=-1)
             accuracy = np.mean(correct_predictions)
         return accuracy
-    
+
     def evaluate_regression(self, data_dict, true_values):
         """
         Evaluates the regression performance of the model on the provided data and true values.
@@ -54,8 +54,7 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
     def __init__(self, config: DataConfig, name="ml_assigner"):
         super().__init__(config=config, name=name)
 
-
-    def _build_model_base(self, jet_assignment_probs, regression_output = None, **kwargs):
+    def _build_model_base(self, jet_assignment_probs, regression_output=None, **kwargs):
         jet_assignment_probs.name = "jet_assignment_probs"
         if self.config.has_regression_targets and regression_output is not None:
             regression_output.name = "regression_output"
@@ -165,6 +164,8 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
                 [data["jet"], data["lepton"], data["met"]], verbose=0
             )["jet_assignment_probs"]
         else:
-            predictions = self.model.predict_dict([data["jet"], data["lepton"]], verbose=0)["jet_assignment_probs"]
+            predictions = self.model.predict_dict(
+                [data["jet"], data["lepton"]], verbose=0
+            )["jet_assignment_probs"]
         one_hot = self.generate_one_hot_encoding(predictions, exclusive)
         return one_hot

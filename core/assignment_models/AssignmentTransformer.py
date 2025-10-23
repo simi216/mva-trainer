@@ -15,8 +15,8 @@ from core.components import (
 
 class CrossAttentionModel(MLReconstructorBase):
     def __init__(self, config, name="CrossAttentionModel"):
-        if not config.has_regression_targets:
-            raise ValueError("CrossAttentionModel requires regression targets in the config.")
+        if config.has_regression_targets:
+            raise Warning("CrossAttentionModel is designed for classification tasks; regression targets will be ignored.")
         super().__init__(config, name=name)
 
     def build_model(
@@ -123,8 +123,8 @@ class CrossAttentionModel(MLReconstructorBase):
 
 class FeatureConcatTransformer(MLReconstructorBase):
     def __init__(self, config, name="FeatureConcatTransformer"):
-        if not config.has_regression_targets:
-            raise ValueError("FeatureConcatTransformer requires regression targets in the config.")
+        if config.has_regression_targets:
+            raise Warning("FeatureConcatTransformer is designed for classification tasks; regression targets will be ignored.")
         super().__init__(config, name=name)
 
     def build_model(

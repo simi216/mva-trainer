@@ -71,7 +71,7 @@ class MLEvaluator:
                 "Test data not loaded. Please load test data before computing permutation importance."
             )
 
-        baseline_performance = self.assigner.evaluate_accuracy(self.X_test, self.y_test)
+        baseline_performance = self.assigner.evaluate_accuracy(self.X_test, self.y_test["jet_assignment_probs"])
         print(f"Baseline Performance: {baseline_performance:.4f}")
 
         importances = {}
@@ -86,7 +86,7 @@ class MLEvaluator:
                     X_permuted["jet"][mask, feature_idx]
                 )
                 permuted_performance = self.assigner.evaluate_accuracy(
-                    X_permuted, self.y_test
+                    X_permuted, self.y_test["jet_assignment_probs"]
                 )
                 scores.append(baseline_performance - permuted_performance)
             importances[feature] = np.mean(scores)
@@ -100,7 +100,7 @@ class MLEvaluator:
                     X_permuted["lepton"][:, :, feature_idx]
                 )
                 permuted_performance = self.assigner.evaluate_accuracy(
-                    X_permuted, self.y_test
+                    X_permuted, self.y_test["jet_assignment_probs"]
                 )
                 scores.append(baseline_performance - permuted_performance)
             importances[feature] = np.mean(scores)
@@ -115,7 +115,7 @@ class MLEvaluator:
                         X_permuted["met"][:, :, feature_idx]
                     )
                     permuted_performance = self.assigner.evaluate_accuracy(
-                        X_permuted, self.y_test
+                        X_permuted, self.y_test["jet_assignment_probs"]
                     )
                     scores.append(baseline_performance - permuted_performance)
                 importances[feature] = np.mean(scores)
@@ -167,7 +167,7 @@ class JetAssignmentEvaluator:
         self.config = select_config
         self.feature_index_dict = select_config.feature_indices
 
-    def evaluate_all(self) -> dict:
+    def evaluate_all_assignment_accuracies(self) -> dict:
         """
         Evaluate accuracy for all assigners.
 
@@ -175,10 +175,11 @@ class JetAssignmentEvaluator:
             Dictionary mapping assigner names to accuracy scores
         """
         results = {}
+        true_indices = np.argmax(self.y_test["jet_assignment_probs"], axis=-2)  
         for assigner in self.assigners:
             predictions = assigner.predict_indices(self.X_test)
             predicted_indices = np.argmax(predictions, axis=-2)
-            accuracy = np.mean(predicted_indices == self.y_test)
+            accuracy = np.mean(predicted_indices == true_indices)
             results[assigner.get_name()] = accuracy
             print(f"Accuracy for {assigner.get_name()}: {accuracy:.4f}")
         return results
@@ -333,7 +334,8 @@ class JetAssignmentEvaluator:
         """
         predictions = assigner.predict_indices(self.X_test)
         predicted_indices = np.argmax(predictions, axis=-2)
-        accuracy_data = np.all(predicted_indices == self.y_test, axis=-1).astype(float)
+        true_indices = np.argmax(self.y_test["jet_assignment_probs"], axis=-2)
+        accuracy_data = np.all(predicted_indices == true_indices, axis=-1).astype(float)
 
         n_samples = len(accuracy_data)
         n_bins = binning_mask.shape[0]
@@ -459,8 +461,9 @@ class JetAssignmentEvaluator:
             else:
                 predictions = assigner.predict_indices(self.X_test)
                 predicted_indices = np.argmax(predictions, axis=-2)
+                true_indices = np.argmax(self.y_test["jet_assignment_probs"], axis=-2)
                 accuracy_data = np.all(
-                    predicted_indices == self.y_test, axis=-1
+                    predicted_indices == true_indices, axis=-1
                 ).astype(float)
                 binned_accuracy = self._compute_binned_accuracy(
                     binning_mask, accuracy_data, event_weights
@@ -535,8 +538,9 @@ class JetAssignmentEvaluator:
         for i, assigner in enumerate(self.assigners):
             predictions = assigner.predict_indices(self.X_test)
             predicted_indices = np.argmax(predictions, axis=-2)
+            true_indices = np.argmax(self.y_test, axis=-2)
 
-            y_true = self.y_test.flatten()
+            y_true = true_indices.flatten()
             y_pred = predicted_indices.flatten()
 
             cm = confusion_matrix(
