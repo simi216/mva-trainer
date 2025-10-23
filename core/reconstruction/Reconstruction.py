@@ -169,3 +169,37 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
             )["jet_assignment_probs"]
         one_hot = self.generate_one_hot_encoding(predictions, exclusive)
         return one_hot
+
+    def reconstruct_neutrinos(self, data: dict[str : np.ndarray]):
+        """
+        Reconstructs neutrino kinematics based on the model's regression output.
+        This method processes the regression output from the model and returns
+        the reconstructed neutrino kinematics.
+        Args:
+            data (dict): A dictionary containing input data for prediction. It should
+                include keys "jet" and "lepton", and optionally "met" if met
+                features are used by the model.
+        Returns:
+            np.ndarray: An array containing the reconstructed neutrino kinematics.
+        Raises:
+            ValueError: If the model is not built (i.e., `self.model` is None) or
+                if regression targets are not specified in the config.
+        """
+
+        if self.model is None:
+            raise ValueError(
+                "Model not built. Please build the model using build_model() method."
+            )
+        if not self.config.has_regression_targets:
+            raise ValueError(
+                "Regression targets are not specified in the config."
+            )
+        if self.met_features is not None:
+            regression_predictions = self.model.predict_dict(
+                [data["jet"], data["lepton"], data["met"]], verbose=0
+            )["regression_output"]
+        else:
+            regression_predictions = self.model.predict_dict(
+                [data["jet"], data["lepton"]], verbose=0
+            )["regression_output"]
+        return regression_predictions
