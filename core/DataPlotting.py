@@ -19,7 +19,7 @@ class DataPlotter:
         Plots the distribution of a specified feature.
 
         Args:
-            feature_type (str): The type of feature (e.g., 'jet', 'lepton', 'global').
+            feature_type (str): The type of feature (e.g., 'jet', 'lepton', 'met').
             feature_name (str): The name of the feature to plot.
             bins (int): Number of bins for the histogram.
         """
@@ -52,7 +52,7 @@ class DataPlotter:
 
 
         # Collect all features
-        for feature_type in ['jet', 'lepton', 'global']:
+        for feature_type in ['jet', 'lepton', 'met']:
             for feature_name in self.data_processor.feature_index_dict[feature_type]:
                 feature_data = self.get_feature_data(feature_type, feature_name)
                 if feature_data.shape[-1] > 1:
@@ -93,7 +93,7 @@ class DataPlotter:
         Registers a data cut based on a feature's value range.
 
         Args:
-            feature_type (str): The type of feature (e.g., 'jet', 'lepton', 'global').
+            feature_type (str): The type of feature (e.g., 'jet', 'lepton', 'met').
             feature_name (str): The name of the feature to apply the cut on.
             cut_function (function): A function that takes feature data and returns a boolean mask for valid events.
         """
@@ -112,7 +112,7 @@ class DataPlotter:
         Retrieves feature data after applying registered data cuts.
 
         Args:
-            feature_type (str): The type of feature (e.g., 'jet', 'lepton', 'global').
+            feature_type (str): The type of feature (e.g., 'jet', 'lepton', 'met').
             feature_name (str): The name of the feature to retrieve.
 
         Returns:
@@ -126,7 +126,7 @@ class DataPlotter:
         Retrieves all feature data of a specified type after applying registered data cuts.
 
         Args:
-            feature_type (str): The type of feature (e.g., 'jet', 'lepton', 'global').
+            feature_type (str): The type of feature (e.g., 'jet', 'lepton', 'met').
 
         Returns:
             np.ndarray: The feature data after applying cuts.
@@ -171,8 +171,8 @@ class DataPlotter:
                             unmatched_relational_features.append(feature_function(jet, lepton))
         fig, ax = plt.subplots(figsize=(10, 6))
         _, bins = np.histogram(matched_relational_features + unmatched_relational_features, **kwargs)
-        ax.hist(matched_relational_features, bins=bins, alpha=0.7, label='Matched', color='green', edgecolor='black', density=True)
-        ax.hist(unmatched_relational_features, bins=bins, alpha=0.7, label='Unmatched', color='red', edgecolor='black', density=True)
+        ax.hist(matched_relational_features, bins=bins, alpha=0.7, label='Matched', color='tab:blue' , density=True)
+        ax.hist(unmatched_relational_features, bins=bins, alpha=0.7, label='Unmatched', color='tab:red', density=True)
         ax.set_xlabel(f'{name}')
         ax.set_ylabel('Normalized Frequency')
         ax.legend()
@@ -185,9 +185,9 @@ class DataPlotter:
         """
         Plots a 2D histogram of two specified features.
         Args:
-            feature_type_x (str): The type of the x-axis feature (e.g., 'jet', 'lepton', 'global').
+            feature_type_x (str): The type of the x-axis feature (e.g., 'jet', 'lepton', 'met').
             feature_name_x (str): The name of the x-axis feature to plot.
-            feature_type_y (str): The type of the y-axis feature (e.g., 'jet', 'lepton', 'global').
+            feature_type_y (str): The type of the y-axis feature (e.g., 'jet', 'lepton', 'met').
             feature_name_y (str): The name of the y-axis feature to plot.
             normalise (str): Normalisation method for the histogram ('none', 'x', 'y', 'all').
             plot_average (bool): Whether to plot the average of the y feature in each x bin

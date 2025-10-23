@@ -20,8 +20,6 @@ def parse_args():
                         help='Model architecture to use (default: FeatureConcatTransformer)')
 
     # Optional hyperparameters with defaults
-    parser.add_argument('--num_heads', type=int, default=8,
-                        help='Number of attention heads (default: 8)')
     parser.add_argument('--dropout_rate', type=float, default=0.1,
                         help='Dropout rate (default: 0.1)')
     parser.add_argument('--learning_rate', type=float, default=1e-4,
@@ -72,7 +70,7 @@ def main():
 
 
     # Create model name with hyperparameters
-    MODEL_NAME = f"{args.architecture}_h{args.hidden_dim}_l{args.num_layers}_heads{args.num_heads}"
+    MODEL_NAME = f"{args.architecture}_h{args.hidden_dim}_l{args.num_layers}"
     
     # Setup directories
     PLOTS_DIR, MODEL_DIR = setup_directories(args.root_dir, MODEL_NAME)
@@ -80,7 +78,6 @@ def main():
     print(f"Starting training with hyperparameters:")
     print(f"  Hidden dim: {args.hidden_dim}")
     print(f"  Num layers: {args.num_layers}")
-    print(f"  Num heads: {args.num_heads}")
     print(f"  Dropout rate: {args.dropout_rate}")
     print(f"  Learning rate: {args.learning_rate}")
     print(f"  Weight decay: {args.weight_decay}")
@@ -95,7 +92,7 @@ def main():
         lepton_features=["lep_pt", "lep_eta", "lep_phi", "lep_e"],
         jet_truth_label="ordered_event_jet_truth_idx",
         lepton_truth_label="event_lepton_truth_idx",
-        global_features=["met_met_NOSYS", "met_phi_NOSYS"],
+        met_features=["met_met_NOSYS", "met_phi_NOSYS"],
         max_leptons=2,
         max_jets=args.max_jets,
         non_training_features=["truth_ttbar_mass", "truth_ttbar_pt", "N_jets"],
@@ -115,10 +112,10 @@ def main():
     if args.architecture == "FeatureConcatTransformer":
         Model = Models.FeatureConcatTransformer(config, name="Transformer")
         Model.build_model(
-            num_heads=args.num_heads,
             hidden_dim=args.hidden_dim,
             num_layers=args.num_layers,
-            dropout_rate=args.dropout_rate
+            dropout_rate=args.dropout_rate,
+            input_as_four_vector=True
         )
     elif args.architecture == "FeatureConcatRNN":
         Model = Models.FeatureConcatRNN(config, name="RNN")
@@ -126,7 +123,15 @@ def main():
             hidden_dim=args.hidden_dim,
             num_layers=args.num_layers,
             dropout_rate=args.dropout_rate,
-            recurrent_type="lstm"
+            input_as_four_vector=True
+        )
+    elif args.architecutre == "CrossAttentionTransformer":
+        Model = Models.CrossAttentionModel(config, name="RNN")
+        Model.build_model(
+            hidden_dim=args.hidden_dim,
+            num_layers=args.num_layers,
+            dropout_rate=args.dropout_rate,
+            input_as_four_vector=True
         )
     else:
         raise ValueError(f"Unknown architecture: {args.architecture}")
@@ -203,7 +208,6 @@ def main():
         f.write(f"==================\n")
         f.write(f"Hidden Dimension: {args.hidden_dim}\n")
         f.write(f"Number of Layers: {args.num_layers}\n")
-        f.write(f"Number of Heads: {args.num_heads}\n")
         f.write(f"Dropout Rate: {args.dropout_rate}\n")
         f.write(f"Learning Rate: {args.learning_rate}\n")
         f.write(f"Weight Decay: {args.weight_decay}\n")

@@ -17,10 +17,10 @@ class MLEvaluatorBase:
         self.y_test = y_test
         self.max_leptons = assigner.max_leptons
         self.max_jets = assigner.max_jets
-        self.global_features = assigner.global_features
+        self.met_features = assigner.met_features
         self.n_jets: int = assigner.n_jets
         self.n_leptons: int = assigner.n_leptons
-        self.n_global: int = assigner.n_global
+        self.n_met: int = assigner.n_met
         self.padding_value: float = assigner.padding_value
         self.feature_index_dict = assigner.feature_index_dict
 
@@ -43,31 +43,24 @@ class MLEvaluatorBase:
             )
 
         history = self.assigner.history
-        plt.figure(figsize=(12, 4))
 
         # Plot loss
-        plt.subplot(1, 2, 1)
-        plt.plot(history.history["loss"], label="Training Loss")
-        if "val_loss" in history.history:
-            plt.plot(history.history["val_loss"], label="Validation Loss")
-        plt.title("Loss over Epochs")
-        plt.xlabel("Epochs")
-        plt.ylabel("Loss")
-        plt.legend()
-
-        # Plot accuracy if available
-        if "accuracy" in history.history:
-            plt.subplot(1, 2, 2)
-            plt.plot(history.history["accuracy"], label="Training Accuracy")
-            if "val_accuracy" in history.history:
-                plt.plot(history.history["val_accuracy"], label="Validation Accuracy")
-            plt.title("Accuracy over Epochs")
-            plt.xlabel("Epochs")
-            plt.ylabel("Accuracy")
-            plt.legend()
-
-        plt.tight_layout()
-        plt.show()
+        fig, ax = plt.subplots(1, 2, figsize=(12, 4))
+        ax[0].plot(history.history['loss'], label='Training Loss')
+        ax[0].plot(history.history['val_loss'], label='Validation Loss')
+        ax[0].set_title('Model Loss')
+        ax[0].set_xlabel('Epoch')
+        ax[0].set_ylabel('Loss')
+        ax[0].legend()
+        # Plot accuracy
+        ax[1].plot(history.history['assignment_accuracy'], label='Training Accuracy')
+        ax[1].plot(history.history['val_assignment_accuracy'], label='Validation Accuracy')
+        ax[1].set_title('Model Accuracy')
+        ax[1].set_xlabel('Epoch')
+        ax[1].set_ylabel('Accuracy')
+        ax[1].legend()
+        return fig, ax
+        
 
     def get_assigner_name(self) -> str:
         """Get the name of the assigner."""
@@ -98,8 +91,9 @@ class MLEvaluatorBase:
             scores = []
             for _ in range(num_repeats):
                 X_permuted = deepcopy(self.X_test)
-                X_permuted["jet"][:, :, feature_idx] = np.random.permutation(
-                    X_permuted["jet"][:, :, feature_idx]
+                mask = np.any(X_permuted["jet"] != self.padding_value, axis = -1)
+                X_permuted["jet"][mask, feature_idx] = np.random.permutation(
+                    X_permuted["jet"][mask, feature_idx]
                 )
                 permuted_performance = self.assigner.evaluate_accuracy(
                     X_permuted, self.y_test
@@ -121,14 +115,14 @@ class MLEvaluatorBase:
                 scores.append(baseline_performance - permuted_performance)
             importances[feature] = np.mean(scores)
 
-        # Global features
-        if self.global_features:
-            for feature, feature_idx in self.feature_index_dict["global"].items():
+        # met features
+        if self.met_features:
+            for feature, feature_idx in self.feature_index_dict["met"].items():
                 scores = []
                 for _ in range(num_repeats):
                     X_permuted = deepcopy(self.X_test)
-                    X_permuted["global"][:, :, feature_idx] = np.random.permutation(
-                        X_permuted["global"][:, :, feature_idx]
+                    X_permuted["met"][:, :, feature_idx] = np.random.permutation(
+                        X_permuted["met"][:, :, feature_idx]
                     )
                     permuted_performance = self.assigner.evaluate_accuracy(
                         X_permuted, self.y_test
@@ -138,13 +132,16 @@ class MLEvaluatorBase:
                 
         return importances
 
-    def plot_feature_importance(self, importances: dict):
+    def plot_feature_importance(self, num_repeats = 10):
+
         """Plot feature importance scores."""
-        importances = dict(
-            sorted(importances.items(), key=lambda item: item[1], reverse=True)
-        )
+        importances = self.compute_permutation_importance(num_repeats=num_repeats)
         features = list(importances.keys())
         scores = list(importances.values())
+
+        sorted_indices = np.argsort(scores)[::-1]
+        features = [features[i] for i in sorted_indices]
+        scores = [scores[i] for i in sorted_indices]
 
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.barh(features, scores, color="skyblue")
@@ -393,7 +390,7 @@ class JetAssignmentEvaluator:
         Plot binned accuracy vs. a feature with bootstrap error bars.
         
         Args:
-            feature_data_type: Type of feature ('jet', 'lepton', 'global')
+            feature_data_type: Type of feature ('jet', 'lepton', 'met')
             feature_name: Name of the feature
             bins: Number of bins or bin edges
             xlims: Optional x-axis limits
@@ -486,7 +483,8 @@ class JetAssignmentEvaluator:
                     label=assigner.get_name(),
                     color=color_map(index),
                     linewidth=1.5,
-                    markersize=6
+                    markersize=6,
+                    capsize=3,
                 )
         
         # Configure plot

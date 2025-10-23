@@ -5,6 +5,7 @@
 
 hidden_dim=$1
 num_layers=$2
+architecture=$3
 
 # Print environment info for debugging
 echo "Starting training job..."
@@ -29,8 +30,7 @@ cd /afs/desy.de/user/a/aulich/mva-trainer/CONDOR/HypParamGridSearch || exit 1
 python train_hyperparameter.py \
     --hidden_dim "$hidden_dim" \
     --num_layers "$num_layers" \
-    --architecture FeatureConcatTransformer \
-    --num_heads 8 \
+    --architecture "$architecture" \
     --dropout_rate 0.1 \
     --learning_rate 1e-4 \
     --weight_decay 1e-4 \

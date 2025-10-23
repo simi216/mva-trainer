@@ -20,7 +20,7 @@ class DataConfig:
     lepton_truth_label: str
     max_leptons: int = 2
     max_jets: int = 4
-    global_features: list[str] = None
+    met_features: list[str] = None
     non_training_features: list[str] = None
     regression_targets: list[str] = None
     event_weight: str = None
@@ -36,12 +36,12 @@ class DataConfig:
             jet_var: idx for idx, jet_var in enumerate(self.jet_features)
         }
 
-        global_indices = (
+        met_indices = (
             {
-                global_var: idx
-                for idx, global_var in enumerate(self.global_features)
+                met_var: idx
+                for idx, met_var in enumerate(self.met_features)
             }
-            if self.global_features
+            if self.met_features
             else {}
         )
         non_training_indices = (
@@ -59,8 +59,8 @@ class DataConfig:
 
         feature_index_dict.update({"lepton": lepton_indices})
         feature_index_dict.update({"jet": jet_indices})
-        if self.global_features is not None:
-            feature_index_dict.update({"global": global_indices})
+        if self.met_features is not None:
+            feature_index_dict.update({"met": met_indices})
         if self.non_training_features is not None:
             feature_index_dict.update({"non_training": non_training_indices})
         if self.event_weight is not None:
@@ -233,7 +233,7 @@ class DataLoader:
 
 class DataPreprocessor:
     """
-    A class for preprocessing and managing data for machine learning tasks involving jets, leptons, and global features.
+    A class for preprocessing and managing data for machine learning tasks involving jets, leptons, and met features.
     Attributes:
         jet_features (list[str]): List of jet feature names.
         lepton_features (list[str]): List of lepton feature names.
@@ -241,7 +241,7 @@ class DataPreprocessor:
         lepton_truth_label (str): Name of the lepton truth label.
         max_leptons (int): Maximum number of leptons per event. Default is 2.
         max_jets (int): Maximum number of jets per event. Default is 4.
-        global_features (list[str]): List of global feature names. Default is None.
+        met_features (list[str]): List of met feature names. Default is None.
         non_training_features (list[str]): List of features not used for training. Default is None.
         regression_targets (list[str]): List of regression target names. Default is None.
         event_weight (str): Name of the event weight feature. Default is None.
@@ -296,7 +296,7 @@ class DataPreprocessor:
             lepton_truth_label (str): Label for the truth information of leptons.
             max_leptons (int, optional): Maximum number of leptons to consider. Defaults to 2.
             max_jets (int, optional): Maximum number of jets to consider. Defaults to 4.
-            global_features (list[str], optional): List of global features for the event. Defaults to None.
+            met_features (list[str], optional): List of met features for the event. Defaults to None.
             non_training_features (list[str], optional): List of features excluded from training. Defaults to None.
             regression_targets (list[str], optional): List of regression target labels. Defaults to None.
             event_weight (str, optional): Label for the event weight. Defaults to None.
@@ -416,9 +416,9 @@ class DataPreprocessor:
         )
         (
             feature_clipping.update(
-                {feature: 1 for feature in self.config.global_features}
+                {feature: 1 for feature in self.config.met_features}
             )
-            if self.config.global_features
+            if self.config.met_features
             else None
         )
         feature_clipping.update({self.config.jet_truth_label: 6})
@@ -480,14 +480,14 @@ class DataPreprocessor:
         """
         Builds and organizes feature data into structured arrays for training and evaluation.
         This method processes the loaded data to create structured arrays for different feature types
-        (lepton, jet, global, non-training, event weight, and regression targets) based on the existing
+        (lepton, jet, met, non-training, event weight, and regression targets) based on the existing
         `feature_index_dict`. It assumes that `feature_index_dict` is already populated.
         Raises:
             ValueError: If the data has not been loaded prior to calling this method.
         Processes:
             - Lepton features: Extracts and reshapes lepton-related data.
             - Jet features: Extracts and reshapes jet-related data.
-            - Global features: Extracts global features if available.
+            - met features: Extracts met features if available.
             - Non-training features: Extracts non-training features if available.
             - Event weight: Extracts event weight data if specified.
             - Regression targets: Extracts regression target data if specified.
@@ -539,15 +539,15 @@ class DataPreprocessor:
             )
             feature_dict["jet"] = jet_data
 
-        # Process global features
-        if "global" in self.feature_index_dict:
-            global_features = self.feature_index_dict["global"]
-            global_data = (
-                self.data[[global_var for global_var in global_features]]
+        # Process met features
+        if "met" in self.feature_index_dict:
+            met_features = self.feature_index_dict["met"]
+            met_data = (
+                self.data[[met_var for met_var in met_features]]
                 .to_numpy()
                 .reshape(self.data_length, 1, -1)
             )
-            feature_dict["global"] = global_data
+            feature_dict["met"] = met_data
 
         # Process non-training features
         if "non_training" in self.feature_index_dict:
@@ -834,12 +834,12 @@ class DataPreprocessor:
         Retrieves feature data for a specified data type and feature name.
         Args:
             dataType (str): The type of data to retrieve. Possible values include
-                            "jet", "lepton", "global", "non_training", and "event_weight".
+                            "jet", "lepton", "met", "non_training", and "event_weight".
             feature_name (str): The name of the feature to retrieve.
         Returns:
             numpy.ndarray: The requested feature data. The shape of the returned data
                            depends on the dataType:
-                           - For "jet", "lepton", and "global": Returns a 3D array
+                           - For "jet", "lepton", and "met": Returns a 3D array
                              with shape (samples, objects, feature_index).
                            - For "non_training": Returns a 2D array with shape
                              (samples, feature_index).
@@ -860,7 +860,7 @@ class DataPreprocessor:
                 return self.feature_data[dataType][:, :, feature_index].copy()
             elif dataType == "lepton":
                 return self.feature_data[dataType][:, :, feature_index].copy()
-            elif dataType == "global":
+            elif dataType == "met":
                 return self.feature_data[dataType][:, :, feature_index].copy()
             elif dataType == "non_training":
                 return self.feature_data[dataType][:, feature_index].copy()
@@ -885,7 +885,7 @@ class DataPreprocessor:
         """
         Legacy method for data normalisation.
         Normalises the feature data by subtracting the mean and dividing by the standard deviation
-        for each feature type (lepton, jet, global) while ignoring padding values. The normalisation
+        for each feature type (lepton, jet, met) while ignoring padding values. The normalisation
         factors (mean and standard deviation) are stored for each feature type.
         Raises:
             ValueError: If feature data has not been prepared using the prepare_data() method.
@@ -926,7 +926,7 @@ class DataPreprocessor:
                         self.feature_data[data][non_padding_mask] - mean
                     ) / std
                     self.data_normalisation_factors[data] = {"mean": mean, "std": std}
-                elif data == "global":
+                elif data == "met":
                     non_padding_mask = (
                         self.feature_data[data] != self.padding_value
                     ).all(axis=-1)

@@ -2,7 +2,7 @@ import keras
 from keras import regularizers
 
 
-@keras.utils.register_keras_serializable(package="CustomLayers")
+@keras.utils.register_keras_serializable()
 class MLP(keras.layers.Layer):
     """
     Flexible Multi-Layer Perceptron (MLP) layer with configurable architecture.

@@ -17,28 +17,23 @@ class FeatureConcatRNN(MLAssignerBase):
     def __init__(self, config : DataConfig, name="RNN"):
         super().__init__(config, name)
 
-    def build_model(self, hidden_dim, num_layers, dropout_rate, recurrent_type="lstm"):
-        jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
-        lep_inputs = keras.Input(
-            shape=(self.max_leptons, self.n_leptons), name="lep_inputs"
-        )
-        global_inputs = keras.Input(shape=(1, self.n_global), name="global_inputs")
+    def build_model(self, hidden_dim, num_layers, dropout_rate, recurrent_type="lstm",input_as_four_vector=True):
 
-        flatted_global_inputs = keras.layers.Flatten()(global_inputs)
+        # Input layers
+        jet_inputs, lep_inputs, met_inputs, jet_mask = self._prepare_inputs(input_as_four_vector=input_as_four_vector)
+
+        flatted_met_inputs = keras.layers.Flatten()(met_inputs)
         flatted_lepton_inputs = keras.layers.Flatten()(lep_inputs)
 
-        # Generate masks
-        jet_mask = GenerateMask(padding_value=-999, name="jet_mask")(jet_inputs)
-
-        # Concat lepton and global features to jets
-        global_repeated_jets = keras.layers.RepeatVector(self.max_jets)(
-            flatted_global_inputs
+        # Concat lepton and met features to jets
+        met_repeated_jets = keras.layers.RepeatVector(self.max_jets)(
+            flatted_met_inputs
         )
         lepton_repeated_jets = keras.layers.RepeatVector(self.max_jets)(
             flatted_lepton_inputs
         )
         jet_features = keras.layers.Concatenate(axis=-1)(
-            [jet_inputs, global_repeated_jets, lepton_repeated_jets]
+            [jet_inputs, met_repeated_jets, lepton_repeated_jets]
         )
 
         # Input embedding layers
@@ -78,8 +73,5 @@ class FeatureConcatRNN(MLAssignerBase):
         jet_assignment_probs = TemporalSoftmax(axis=1, name="jet_assignment_probs")(
             jet_assignment_probs, mask=jet_mask
         )
-        self.model = keras.Model(
-            inputs=[jet_inputs, lep_inputs, global_inputs],
-            outputs=jet_assignment_probs,
-            name="FeatureConcatRNN",
-        )
+        # Build model
+        self._build_model_base(jet_assignment_probs, name="FeatureConcatRNN")

@@ -10,6 +10,8 @@ import tf2onnx
 import onnx
 from core.components import onnx_support
 
+from core.components import GenerateMask, InputPtEtaPhiELayer, InputMetPhiLayer
+
 class JetAssignerBase(ABC):
     def __init__(self,config : DataConfig, name="jet_assigner"):
         self.name = name
@@ -63,11 +65,11 @@ class MLAssignerBase(JetAssignerBase):
         self.class_weights = None
         self.max_leptons = config.max_leptons
         self.max_jets = config.max_jets
-        self.global_features = config.global_features
+        self.met_features = config.met_features
         self.n_jets: int = len(config.jet_features)
         self.n_leptons: int = len(config.lepton_features)
-        self.n_global: int = (
-            len(config.global_features) if config.global_features else 0
+        self.n_met: int = (
+            len(config.met_features) if config.met_features else 0
         )
         self.padding_value: float = config.padding_value
         self.feature_index_dict = config.get_feature_index_dict()
@@ -102,16 +104,61 @@ class MLAssignerBase(JetAssignerBase):
             raise ValueError("Lepton data not found in X_train.")
         else:
             self.X_train["lep_inputs"] = lepton_data
-        if self.n_global > 0:
-            global_data = None
+        if self.n_met > 0:
+            met_data = None
             for key in self.X_train.keys():
-                if "global" in key:
-                    global_data = self.X_train[key]
+                if "met" in key:
+                    met_data = self.X_train[key]
                     break
-            if global_data is None:
-                raise ValueError("Global data not found in X_train.")
+            if met_data is None:
+                raise ValueError("met data not found in X_train.")
             else:
-                self.X_train["global_inputs"] = global_data
+                self.X_train["met_inputs"] = met_data
+
+
+    def _prepare_inputs(self, input_as_four_vector):
+        jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
+        lep_inputs = keras.Input(shape=(self.max_leptons, self.n_leptons), name="lep_inputs")
+        met_inputs = keras.Input(shape=(1,self.n_met), name="met_inputs")
+
+        # Normalise inputs
+        if input_as_four_vector:
+            transformed_jet_inputs = InputPtEtaPhiELayer(name="jet_input_transform")(jet_inputs)
+            transformed_lep_inputs = InputPtEtaPhiELayer(name="lep_input_transform")(lep_inputs)
+            transformed_met_inputs = InputMetPhiLayer(name="met_input_transform")(met_inputs)
+        else:
+            transformed_jet_inputs = jet_inputs
+            transformed_lep_inputs = lep_inputs
+            transformed_met_inputs = met_inputs
+
+        normed_jet_inputs = keras.layers.Normalization(name="jet_input_normalization")(transformed_jet_inputs)
+        normed_lep_inputs = keras.layers.Normalization(name="lep_input_normalization")(transformed_lep_inputs)
+        normed_met_inputs = keras.layers.Normalization(name="met_input_normalization")(transformed_met_inputs)
+        # Generate masks
+        jet_mask = GenerateMask(padding_value=-999, name="jet_mask")(jet_inputs)
+
+        self.inputs = {
+            "jet_inputs": jet_inputs,
+            "lep_inputs": lep_inputs,
+            "met_inputs": met_inputs,
+        }
+        return normed_jet_inputs, normed_lep_inputs, normed_met_inputs, jet_mask
+
+    def _build_model_base(self, jet_assignment_probs, **kwargs):
+        if self.n_met > 0:
+            self.model = keras.Model(
+                inputs=[self.inputs["jet_inputs"], self.inputs["lep_inputs"], self.inputs["met_inputs"]],
+                outputs=jet_assignment_probs,
+                **kwargs,
+            )
+        else:
+            self.model = keras.Model(
+                inputs=[self.inputs["jet_inputs"], self.inputs["lep_inputs"]],
+                outputs=jet_assignment_probs,
+                **kwargs,
+            )
+
+
 
     def compile_model(self, loss, optimizer, metrics=None):
         if self.model is None:
@@ -247,7 +294,7 @@ class MLAssignerBase(JetAssignerBase):
         encoded array indicating the associations between jets and leptons.
         Args:
             data (dict): A dictionary containing input data for prediction. It should
-                include keys "jet" and "lepton", and optionally "global" if global
+                include keys "jet" and "lepton", and optionally "met" if met
                 features are used by the model.
             exclusive (bool, optional): If True, ensures exclusive assignments between
                 jets and leptons, where each jet is assigned to at most one lepton and
@@ -264,9 +311,9 @@ class MLAssignerBase(JetAssignerBase):
             raise ValueError(
                 "Model not built. Please build the model using build_model() method."
             )
-        if self.global_features is not None:
+        if self.met_features is not None:
             predictions = self.model.predict(
-                [data["jet"], data["lepton"], data["global"]], verbose=0
+                [data["jet"], data["lepton"], data["met"]], verbose=0
             )
         else:
             predictions = self.model.predict([data["jet"], data["lepton"]], verbose=0)
@@ -307,6 +354,62 @@ class MLAssignerBase(JetAssignerBase):
                 np.arange(predictions.shape[0]), np.argmax(predictions[:, :, 1], axis=1), 1
             ] = 1
         return one_hot
+    
+    def adapt_normalization_layers(self, data: dict):
+        """
+        Adapts the normalization layers in a functional model.
+        Each normalization layer is adapted using data that has been passed
+        through all preceding layers (up to but excluding the normalization layer).
+        """
+        # --- Prepare and unpad jet data ---
+        jet_data = data["jet"]  # (num_events, n_jets, n_features)
+        jet_mask = np.any(jet_data != self.padding_value, axis=-1)
+        unpadded_jet_data = jet_data[jet_mask]
+        num_jets = unpadded_jet_data.shape[0]
+        num_events = num_jets // self.max_jets
+        unpadded_jet_data = unpadded_jet_data[:num_events * self.max_jets, :].reshape((num_events, self.max_jets, self.n_jets))
+        lep_data = data["lepton"][:num_events, :, :]
+        met_data = data["met"][:num_events, :, :]
+
+        # --- Helper: build a submodel up to (but not including) a target layer ---
+        def get_pre_norm_submodel(model, target_layer_name):
+            target_layer = model.get_layer(target_layer_name)
+            # find which input(s) feed into this layer
+            inbound_nodes = target_layer._inbound_nodes
+            if not inbound_nodes:
+                raise ValueError(f"Layer '{target_layer_name}' has no inbound nodes.")
+            # assume single inbound node (standard case)
+            inbound_tensors = inbound_nodes[0].input_tensors
+            # find model input(s) corresponding to those tensors
+            # Build a submodel from inputs -> pre-normalization outputs
+            submodel = keras.Model(
+                inputs=model.inputs,
+                outputs=inbound_tensors if len(inbound_tensors) > 1 else inbound_tensors[0],
+                name=f"pre_{target_layer_name}_model"
+            )
+            return submodel
+
+        # --- Loop over normalization layers and adapt each ---
+        for layer in self.model.layers:
+            if isinstance(layer, keras.layers.Normalization):
+                submodel = get_pre_norm_submodel(self.model, layer.name)
+
+                if layer.name == "jet_input_normalization":
+                    transformed = submodel({"jet_inputs": unpadded_jet_data,
+                                            "lep_inputs": lep_data,
+                                            "met_inputs": met_data})
+                    layer.adapt(transformed)
+                elif layer.name == "lep_input_normalization":
+                    transformed = submodel({"jet_inputs": unpadded_jet_data,
+                                            "lep_inputs": lep_data,
+                                            "met_inputs": met_data})
+                    layer.adapt(transformed)
+                elif layer.name == "met_input_normalization":
+                    transformed = submodel({"jet_inputs": unpadded_jet_data,
+                                            "lep_inputs": lep_data,
+                                            "met_inputs": met_data})
+                    layer.adapt(transformed)
+
 
     def export_to_onnx(self, onnx_file_path="model.onnx"):
         """
@@ -336,9 +439,9 @@ class MLAssignerBase(JetAssignerBase):
         jet_shape = (self.max_jets, self.n_jets)
         lep_shape = (self.max_leptons, self.n_leptons)
         input_shapes = [jet_shape, lep_shape]
-        if self.n_global > 0:
-            global_shape = (1,self.n_global)
-            input_shapes.append(global_shape)
+        if self.n_met > 0:
+            met_shape = (1,self.n_met)
+            input_shapes.append(met_shape)
 
         # Create a new model that takes a flat input and splits it
         flat_input_size = sum(np.prod(shape) for shape in input_shapes)
@@ -347,10 +450,10 @@ class MLAssignerBase(JetAssignerBase):
         split_layer = onnx_support.SplitInputsLayer(input_shapes)
         split_inputs = split_layer(flat_input)
 
-        if self.n_global > 0:
-            jet_input, lep_input, global_input = split_inputs
+        if self.n_met > 0:
+            jet_input, lep_input, met_input = split_inputs
             
-            model_outputs = self.model([jet_input, lep_input, global_input])
+            model_outputs = self.model([jet_input, lep_input, met_input])
         else:
             jet_input, lep_input = split_inputs
             model_outputs = self.model([jet_input, lep_input])
@@ -385,10 +488,10 @@ class MLAssignerBase(JetAssignerBase):
                             self.max_jets * self.n_jets + j * self.n_leptons + i
                         )
                         flat_feature_index_dict[flat_index] = f"lepton_{j}_{feature}"
-            elif feature_type == "global":
+            elif feature_type == "met":
                 for i, feature in enumerate(features):
                     flat_index = self.max_jets * self.n_jets + self.max_leptons * self.n_leptons + i
-                    flat_feature_index_dict[flat_index] = f"global_{feature}"
+                    flat_feature_index_dict[flat_index] = f"met_{feature}"
     
         inputs_list = [None] * flat_input_size
         for idx, name in flat_feature_index_dict.items():

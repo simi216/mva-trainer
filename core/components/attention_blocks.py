@@ -19,9 +19,7 @@ import tensorflow as tf
 from keras import layers, regularizers
 
 
-@keras.utils.register_keras_serializable(
-    package="Custom", name="MultiHeadAttentionBlock"
-)
+@keras.utils.register_keras_serializable()
 class MultiHeadAttentionBlock(layers.Layer):
     def __init__(
         self,
@@ -231,7 +229,7 @@ class MultiHeadAttentionBlock(layers.Layer):
         return cls(**config)
 
 
-@keras.utils.register_keras_serializable(package="Custom")
+@keras.utils.register_keras_serializable()
 class SelfAttentionBlock(layers.Layer):
     def __init__(
         self,
@@ -310,7 +308,7 @@ class SelfAttentionBlock(layers.Layer):
         return self.attention.count_params()
 
 
-@keras.utils.register_keras_serializable(package="Custom")
+@keras.utils.register_keras_serializable()
 class SelfAttentionStack(layers.Layer):
     def __init__(
         self,
@@ -385,7 +383,7 @@ class SelfAttentionStack(layers.Layer):
         return sum(block.count_params() for block in self.attention_blocks)
 
 
-@keras.utils.register_keras_serializable(package="Custom")
+@keras.utils.register_keras_serializable()
 class MultiHeadAttentionStack(layers.Layer):
     def __init__(
         self,
@@ -492,7 +490,7 @@ class MultiHeadAttentionStack(layers.Layer):
         return sum(block.count_params() for block in self.attention_blocks)
 
 
-@keras.utils.register_keras_serializable(package="Custom")
+@keras.utils.register_keras_serializable()
 class CrossAttentionBlock(layers.Layer):
     """
     Cross Attention Block
@@ -617,7 +615,7 @@ class CrossAttentionBlock(layers.Layer):
         )
 
 
-@keras.utils.register_keras_serializable(package="Custom", name="JetLeptonAssignment")
+@keras.utils.register_keras_serializable()
 class JetLeptonAssignment(layers.Layer):
     def __init__(self, dim, use_bias=True, temperature=None, **kwargs):
         """
@@ -674,7 +672,7 @@ class JetLeptonAssignment(layers.Layer):
         return config
 
 
-@keras.utils.register_keras_serializable(package="Custom")
+@keras.utils.register_keras_serializable()
 class CrossAttentionStack(layers.Layer):
     def __init__(
         self,
@@ -762,7 +760,7 @@ class CrossAttentionStack(layers.Layer):
         return cls(**config)
 
 
-@keras.utils.register_keras_serializable(package="Custom")
+@keras.utils.register_keras_serializable()
 class PoolingAttentionBlock(layers.Layer):
     """
     Set Transformer style Pooling by Multihead Attention (PMA)
@@ -914,7 +912,7 @@ class PoolingAttentionBlock(layers.Layer):
         )
 
 
-@keras.utils.register_keras_serializable(package="Custom")
+@keras.utils.register_keras_serializable()
 class InducedSetAttentionBlock(layers.Layer):
     def __init__(
         self, 
@@ -1037,124 +1035,3 @@ class InducedSetAttentionBlock(layers.Layer):
             + self.IMAB.count_params()
             + self.MAB.count_params()
         )
-
-
-@keras.utils.register_keras_serializable(package="Custom")
-class point_transformer(keras.layers.Layer):
-    def __init__(self, dim=8, attn_hidden=4, pos_hidden=8, name=None, **kwargs):
-        super(point_transformer, self).__init__(name=name, **kwargs)
-        self.dim = dim
-        self.attn_hidden = attn_hidden
-        self.pos_hidden = pos_hidden
-
-        self.initializer = keras.initializers.HeNormal()
-
-        self.linear1 = keras.layers.Dense(
-            dim,
-            activation="relu",
-            kernel_initializer=self.initializer,
-            name="self.linear1",
-        )
-        self.linear2 = keras.layers.Dense(
-            dim,
-            activation=None,
-            kernel_initializer=self.initializer,
-            name="self.linear2",
-        )
-        self.MLP_attn1 = layers.Dense(
-            attn_hidden,
-            activation="relu",
-            kernel_initializer=self.initializer,
-            name="attn_hidden",
-        )
-        self.MLP_attn2 = layers.Dense(
-            dim,
-            activation="relu",
-            kernel_initializer=self.initializer,
-            name="self.MLP_attn2",
-        )
-        self.MLP_pos1 = layers.Dense(
-            pos_hidden,
-            activation="relu",
-            kernel_initializer=self.initializer,
-            name="pos_hidden",
-        )
-        self.MLP_pos2 = layers.Dense(
-            dim,
-            activation="relu",
-            kernel_initializer=self.initializer,
-            name="self.MLP_pos2",
-        )
-        self.linear_query = layers.Dense(
-            dim,
-            activation="relu",
-            kernel_initializer=self.initializer,
-            name="self.linear_query",
-        )
-        self.linear_key = layers.Dense(
-            dim,
-            activation="relu",
-            kernel_initializer=self.initializer,
-            name="self.linear_key",
-        )
-        self.linear_value = layers.Dense(
-            dim,
-            activation="relu",
-            kernel_initializer=self.initializer,
-            name="self.linear_value",
-        )
-
-    def call(self, feature, pos, mask=None):
-        n = pos.shape[-2]
-
-        feature = self.linear1(feature)
-
-        query = self.linear_query(feature)
-        key = self.linear_key(feature)
-        value = self.linear_value(feature)
-
-        qk = query[:, None, :, :] - key[:, :, None, :]
-        pos_rel = pos[:, None, :, :] - pos[:, :, None, :]
-
-        value = value[:, None, :, :]
-
-        pos_emb = self.MLP_pos1(pos_rel)
-        pos_emb = self.MLP_pos2(pos_emb)
-
-        value = value + pos_emb
-
-        mlp_attn1 = self.MLP_attn1(qk + pos_emb)
-        if mask is not None:
-            mask = tf.cast(mask, tf.bool)
-            key_mask = mask[:, :, None]
-            query_mask = mask[:, None, :]
-            attention_mask = tf.math.logical_and(key_mask, query_mask)
-            attention_mask = tf.expand_dims(attention_mask, axis=-1)
-        else:
-            attention_mask = tf.ones(
-                (tf.shape(feature)[0], n, n, 1), dtype=tf.bool
-            )
-        softmax_mask = tf.where(attention_mask, 0.0, -1e9)
-
-        mlp2_attn = self.MLP_attn2(mlp_attn1) + pos_emb + softmax_mask
-
-        attn = tf.nn.softmax(mlp2_attn, axis=-2)
-        out = value * attn
-        out = tf.math.reduce_sum(out, axis=-2)
-        out = self.linear2(out)
-
-        return out
-
-    def compute_output_shape(self, input_shape):
-        return input_shape[0], input_shape[1], self.dim
-
-    def get_config(self):
-        config = super().get_config()
-        config.update(
-            {
-                "dim": self.dim,
-                "attn_hidden": self.attn_hidden,
-                "pos_hidden": self.pos_hidden,
-            }
-        )
-        return config
