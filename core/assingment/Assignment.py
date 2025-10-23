@@ -66,7 +66,7 @@ class MLBase(BaseUtilityModel, ABC):
         self.n_leptons: int = len(config.lepton_features)
         self.n_met: int = len(config.met_features) if config.met_features else 0
         self.padding_value: float = config.padding_value
-        self.feature_index_dict = config.get_feature_index_dict()
+        self.feature_index_dict = config.feature_indices
 
         super().__init__(config=config, name=name)
 
@@ -415,7 +415,7 @@ class MLBase(BaseUtilityModel, ABC):
 
         # Save input names and positions to a text file
         input_info_path = onnx_file_path.replace(".onnx", "_input_info.txt")
-        feature_index_dict = self.config.get_feature_index_dict()
+        feature_index_dict = self.config.feature_indices
         flat_feature_index_dict = {}
 
         for feature_type, features in feature_index_dict.items():
@@ -447,8 +447,7 @@ class MLBase(BaseUtilityModel, ABC):
 
 class MLAssignerBase(JetAssignerBase, MLBase):
     def __init__(self, config: DataConfig, name="ml_assigner"):
-        super(MLBase).__init__(config=config, name=name)
-        super(JetAssignerBase).__init__(config=config, name=name)
+        super().__init__(config=config, name=name)
 
 
     def _build_model_base(self, jet_assignment_probs, **kwargs):

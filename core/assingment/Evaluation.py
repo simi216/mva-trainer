@@ -168,7 +168,7 @@ class JetAssignmentEvaluator:
                 )
 
         self.config = select_config
-        self.feature_index_dict = select_config.get_feature_index_dict()
+        self.feature_index_dict = select_config.feature_indices
 
     def evaluate_all(self) -> dict:
         """

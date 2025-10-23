@@ -81,7 +81,7 @@ class DeltaRAssigner(BaselineAssigner):
         self.padding_value = config.padding_value
         self.lepton_features = config.lepton_features
         self.jet_features = config.jet_features
-        self.feature_index_dict = config.get_feature_index_dict()
+        self.feature_index_dict = config.feature_indices
         self.b_tag_threshold = b_tag_threshold
 
     def compute_comparison_feature(self, data_dict):
@@ -150,7 +150,7 @@ class LeptonJetMassAssigner(BaselineAssigner):
         self.padding_value = config.padding_value
         self.lepton_features = config.lepton_features
         self.jet_features = config.jet_features
-        self.feature_index_dict = config.get_feature_index_dict()
+        self.feature_index_dict = config.feature_indices
 
     def compute_comparison_feature(self, data_dict):
         """
