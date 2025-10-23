@@ -11,27 +11,27 @@ from . import EventReconstructorBase, MLReconstructorBase
 class MLEvaluator:
     """Base evaluator for ML-based jet assignment models."""
 
-    def __init__(self, assigner: MLReconstructorBase, X_test, y_test):
-        self.assigner = assigner
+    def __init__(self, reconstructor: MLReconstructorBase, X_test, y_test):
+        self.reconstructor = reconstructor
         self.X_test = X_test
         self.y_test = y_test
-        self.max_leptons = assigner.max_leptons
-        self.max_jets = assigner.max_jets
-        self.met_features = assigner.met_features
-        self.n_jets: int = assigner.n_jets
-        self.n_leptons: int = assigner.n_leptons
-        self.n_met: int = assigner.n_met
-        self.padding_value: float = assigner.padding_value
-        self.feature_index_dict = assigner.feature_index_dict
+        self.max_leptons = reconstructor.max_leptons
+        self.max_jets = reconstructor.max_jets
+        self.met_features = reconstructor.met_features
+        self.n_jets: int = reconstructor.n_jets
+        self.n_leptons: int = reconstructor.n_leptons
+        self.n_met: int = reconstructor.n_met
+        self.padding_value: float = reconstructor.padding_value
+        self.feature_index_dict = reconstructor.feature_index_dict
 
     def plot_training_history(self):
         """Plot training and validation loss/accuracy over epochs."""
-        if self.assigner.history is None:
+        if self.reconstructor.history is None:
             raise ValueError(
                 "No training history found. Please train the model before plotting history."
             )
 
-        history = self.assigner.history
+        history = self.reconstructor.history
 
         # Plot loss
         fig, ax = plt.subplots(1, 2, figsize=(12, 4))
@@ -52,10 +52,6 @@ class MLEvaluator:
         ax[1].legend()
         return fig, ax
 
-    def get_assigner_name(self) -> str:
-        """Get the name of the assigner."""
-        return self.assigner.get_name()
-
     def compute_permutation_importance(self, num_repeats: int = 5) -> dict:
         """
         Compute feature importance using permutation importance.
@@ -71,7 +67,7 @@ class MLEvaluator:
                 "Test data not loaded. Please load test data before computing permutation importance."
             )
 
-        baseline_performance = self.assigner.evaluate_accuracy(self.X_test, self.y_test["jet_assignment_probs"])
+        baseline_performance = self.reconstructor.evaluate_accuracy(self.X_test, self.y_test["assignment_labels"])
         print(f"Baseline Performance: {baseline_performance:.4f}")
 
         importances = {}
@@ -85,8 +81,8 @@ class MLEvaluator:
                 X_permuted["jet"][mask, feature_idx] = np.random.permutation(
                     X_permuted["jet"][mask, feature_idx]
                 )
-                permuted_performance = self.assigner.evaluate_accuracy(
-                    X_permuted, self.y_test["jet_assignment_probs"]
+                permuted_performance = self.reconstructor.evaluate_accuracy(
+                    X_permuted, self.y_test["assignment_labels"]
                 )
                 scores.append(baseline_performance - permuted_performance)
             importances[feature] = np.mean(scores)
@@ -99,8 +95,8 @@ class MLEvaluator:
                 X_permuted["lepton"][:, :, feature_idx] = np.random.permutation(
                     X_permuted["lepton"][:, :, feature_idx]
                 )
-                permuted_performance = self.assigner.evaluate_accuracy(
-                    X_permuted, self.y_test["jet_assignment_probs"]
+                permuted_performance = self.reconstructor.evaluate_accuracy(
+                    X_permuted, self.y_test["assignment_labels"]
                 )
                 scores.append(baseline_performance - permuted_performance)
             importances[feature] = np.mean(scores)
@@ -114,8 +110,8 @@ class MLEvaluator:
                     X_permuted["met"][:, :, feature_idx] = np.random.permutation(
                         X_permuted["met"][:, :, feature_idx]
                     )
-                    permuted_performance = self.assigner.evaluate_accuracy(
-                        X_permuted, self.y_test["jet_assignment_probs"]
+                    permuted_performance = self.reconstructor.evaluate_accuracy(
+                        X_permuted, self.y_test["assignment_labels"]
                     )
                     scores.append(baseline_performance - permuted_performance)
                 importances[feature] = np.mean(scores)
@@ -145,23 +141,23 @@ class JetAssignmentEvaluator:
     """Evaluator for comparing multiple jet assignment algorithms."""
 
     def __init__(
-        self, assigners: Union[list[EventReconstructorBase], EventReconstructorBase], X_test, y_test
+        self, reconstructors: Union[list[EventReconstructorBase], EventReconstructorBase], X_test, y_test
     ):
-        if isinstance(assigners, EventReconstructorBase):
-            self.assigners = [assigners]
+        if isinstance(reconstructors, EventReconstructorBase):
+            self.reconstructors = [reconstructors]
         else:
-            self.assigners = assigners
+            self.reconstructors = reconstructors
 
         self.X_test = X_test
         self.y_test = y_test
 
-        # Validate that all assigners have the same configuration
-        configs = [assigner.config for assigner in self.assigners]
+        # Validate that all reconstructors have the same configuration
+        configs = [reconstructor.config for reconstructor in self.reconstructors]
         select_config = configs[0]
         for config in configs[1:]:
             if config != select_config:
                 raise ValueError(
-                    "All assigners must have the same DataConfig for consistent evaluation."
+                    "All reconstructors must have the same DataConfig for consistent evaluation."
                 )
 
         self.config = select_config
@@ -169,24 +165,24 @@ class JetAssignmentEvaluator:
 
     def evaluate_all_assignment_accuracies(self) -> dict:
         """
-        Evaluate accuracy for all assigners.
+        Evaluate accuracy for all reconstructors.
 
         Returns:
-            Dictionary mapping assigner names to accuracy scores
+            Dictionary mapping reconstructor names to accuracy scores
         """
         results = {}
-        true_indices = np.argmax(self.y_test["jet_assignment_probs"], axis=-2)  
-        for assigner in self.assigners:
-            predictions = assigner.predict_indices(self.X_test)
+        true_indices = np.argmax(self.y_test["assignment_labels"], axis=-2)  
+        for reconstructor in self.reconstructors:
+            predictions = reconstructor.predict_indices(self.X_test)
             predicted_indices = np.argmax(predictions, axis=-2)
             accuracy = np.mean(predicted_indices == true_indices)
-            results[assigner.get_name()] = accuracy
-            print(f"Accuracy for {assigner.get_name()}: {accuracy:.4f}")
+            results[reconstructor.get_name()] = accuracy
+            print(f"Accuracy for {reconstructor.get_name()}: {accuracy:.4f}")
         return results
 
     def _bootstrap_accuracy(
         self,
-        assigner: EventReconstructorBase,
+        reconstructor: EventReconstructorBase,
         n_bootstrap: int = 1000,
         confidence: float = 0.95,
     ) -> Tuple[float, float, float]:
@@ -194,14 +190,14 @@ class JetAssignmentEvaluator:
         Compute accuracy with bootstrap confidence intervals.
 
         Args:
-            assigner: Jet assigner to evaluate
+            reconstructor: Jet reconstructor to evaluate
             n_bootstrap: Number of bootstrap samples
             confidence: Confidence level for intervals
 
         Returns:
             Tuple of (mean_accuracy, lower_bound, upper_bound)
         """
-        predictions = assigner.predict_indices(self.X_test)
+        predictions = reconstructor.predict_indices(self.X_test)
         predicted_indices = np.argmax(predictions, axis=-2)
 
         n_samples = len(self.y_test)
@@ -236,7 +232,7 @@ class JetAssignmentEvaluator:
         figsize: Tuple[int, int] = (10, 6),
     ):
         """
-        Plot accuracies for all assigners with error bars from bootstrapping.
+        Plot accuracies for all reconstructors with error bars from bootstrapping.
 
         Args:
             n_bootstrap: Number of bootstrap samples
@@ -249,17 +245,17 @@ class JetAssignmentEvaluator:
         errors_upper = []
 
         print("\nComputing bootstrap confidence intervals...")
-        for assigner in self.assigners:
+        for reconstructor in self.reconstructors:
             mean_acc, lower, upper = self._bootstrap_accuracy(
-                assigner, n_bootstrap, confidence
+                reconstructor, n_bootstrap, confidence
             )
-            names.append(assigner.get_name())
+            names.append(reconstructor.get_name())
             accuracies.append(mean_acc)
             errors_lower.append(mean_acc - lower)
             errors_upper.append(upper - mean_acc)
 
             print(
-                f"{assigner.get_name()}: {mean_acc:.4f} " f"[{lower:.4f}, {upper:.4f}]"
+                f"{reconstructor.get_name()}: {mean_acc:.4f} " f"[{lower:.4f}, {upper:.4f}]"
             )
 
         fig, ax = plt.subplots(figsize=figsize)
@@ -276,7 +272,7 @@ class JetAssignmentEvaluator:
         ax.set_xticks(x_pos)
         ax.set_xticklabels(names, rotation=45, ha="right")
         ax.set_ylabel("Accuracy")
-        ax.set_title(f"Accuracy of Different Jet Assigners ({confidence*100:.0f}% CI)")
+        ax.set_title(f"Accuracy of Different Jet reconstructors ({confidence*100:.0f}% CI)")
         ax.set_ylim(0, 1)
         ax.grid(axis="y", alpha=0.3)
 
@@ -313,7 +309,7 @@ class JetAssignmentEvaluator:
 
     def _bootstrap_binned_accuracy(
         self,
-        assigner: EventReconstructorBase,
+        reconstructor: EventReconstructorBase,
         binning_mask: np.ndarray,
         event_weights: np.ndarray,
         n_bootstrap: int = 1000,
@@ -323,7 +319,7 @@ class JetAssignmentEvaluator:
         Compute binned accuracy with bootstrap confidence intervals.
 
         Args:
-            assigner: Jet assigner to evaluate
+            reconstructor: Jet reconstructor to evaluate
             binning_mask: Boolean mask for binning
             event_weights: Event weights
             n_bootstrap: Number of bootstrap samples
@@ -332,9 +328,9 @@ class JetAssignmentEvaluator:
         Returns:
             Tuple of (mean_accuracies, lower_bounds, upper_bounds) arrays
         """
-        predictions = assigner.predict_indices(self.X_test)
+        predictions = reconstructor.predict_indices(self.X_test)
         predicted_indices = np.argmax(predictions, axis=-2)
-        true_indices = np.argmax(self.y_test["jet_assignment_probs"], axis=-2)
+        true_indices = np.argmax(self.y_test["assignment_labels"], axis=-2)
         accuracy_data = np.all(predicted_indices == true_indices, axis=-1).astype(float)
 
         n_samples = len(accuracy_data)
@@ -441,10 +437,10 @@ class JetAssignmentEvaluator:
         color_map = plt.get_cmap("tab10") if color_map is None else color_map
 
         print(f"\nComputing binned accuracy for {feature_name}...")
-        for index, assigner in enumerate(self.assigners):
+        for index, reconstructor in enumerate(self.reconstructors):
             if show_errorbar:
                 mean_acc, lower, upper = self._bootstrap_binned_accuracy(
-                    assigner, binning_mask, event_weights, n_bootstrap, confidence
+                    reconstructor, binning_mask, event_weights, n_bootstrap, confidence
                 )
                 errors_lower = mean_acc - lower
                 errors_upper = upper - mean_acc
@@ -454,14 +450,14 @@ class JetAssignmentEvaluator:
                     mean_acc,
                     yerr=[errors_lower, errors_upper],
                     fmt="x",
-                    label=assigner.get_name(),
+                    label=reconstructor.get_name(),
                     color=color_map(index),
                     linestyle="None",
                 )
             else:
-                predictions = assigner.predict_indices(self.X_test)
+                predictions = reconstructor.predict_indices(self.X_test)
                 predicted_indices = np.argmax(predictions, axis=-2)
-                true_indices = np.argmax(self.y_test["jet_assignment_probs"], axis=-2)
+                true_indices = np.argmax(self.y_test["assignment_labels"], axis=-2)
                 accuracy_data = np.all(
                     predicted_indices == true_indices, axis=-1
                 ).astype(float)
@@ -473,7 +469,7 @@ class JetAssignmentEvaluator:
                     bin_centers,
                     binned_accuracy,
                     marker="o",
-                    label=assigner.get_name(),
+                    label=reconstructor.get_name(),
                     color=color_map(index),
                     linewidth=1.5,
                     markersize=6,
@@ -517,7 +513,7 @@ class JetAssignmentEvaluator:
         self, normalize: bool = True, figsize_per_plot: Tuple[int, int] = (5, 5)
     ):
         """
-        Plot confusion matrices for all assigners.
+        Plot confusion matrices for all reconstructors.
 
         Args:
             normalize: Whether to normalize the confusion matrix
@@ -526,17 +522,17 @@ class JetAssignmentEvaluator:
         Returns:
             Tuple of (figure, axes)
         """
-        number_assigners = len(self.assigners)
-        rows = int(np.ceil(np.sqrt(number_assigners)))
-        cols = int(np.ceil(number_assigners / rows))
+        number_reconstructors = len(self.reconstructors)
+        rows = int(np.ceil(np.sqrt(number_reconstructors)))
+        cols = int(np.ceil(number_reconstructors / rows))
 
         fig, axes = plt.subplots(
             rows, cols, figsize=(figsize_per_plot[0] * cols, figsize_per_plot[1] * rows)
         )
-        axes = axes.flatten() if number_assigners > 1 else [axes]
+        axes = axes.flatten() if number_reconstructors > 1 else [axes]
 
-        for i, assigner in enumerate(self.assigners):
-            predictions = assigner.predict_indices(self.X_test)
+        for i, reconstructor in enumerate(self.reconstructors):
+            predictions = reconstructor.predict_indices(self.X_test)
             predicted_indices = np.argmax(predictions, axis=-2)
             true_indices = np.argmax(self.y_test, axis=-2)
 
@@ -555,7 +551,7 @@ class JetAssignmentEvaluator:
                 cmap="Blues",
                 cbar_kws={"label": "Normalized Count" if normalize else "Count"},
             )
-            axes[i].set_title(f"Confusion Matrix: {assigner.get_name()}")
+            axes[i].set_title(f"Confusion Matrix: {reconstructor.get_name()}")
             axes[i].set_xlabel("Predicted Label")
             axes[i].set_ylabel("True Label")
 
