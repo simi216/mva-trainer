@@ -67,7 +67,9 @@ class MLEvaluator:
                 "Test data not loaded. Please load test data before computing permutation importance."
             )
 
-        baseline_performance = self.reconstructor.evaluate_accuracy(self.X_test, self.y_test["assignment_labels"])
+        baseline_performance = self.reconstructor.evaluate_accuracy(
+            self.X_test, self.y_test["assignment_labels"]
+        )
         print(f"Baseline Performance: {baseline_performance:.4f}")
 
         importances = {}
@@ -141,7 +143,10 @@ class ReconstructionEvaluator:
     """Evaluator for comparing event reconstruction methods."""
 
     def __init__(
-        self, reconstructors: Union[list[EventReconstructorBase], EventReconstructorBase], X_test, y_test
+        self,
+        reconstructors: Union[list[EventReconstructorBase], EventReconstructorBase],
+        X_test,
+        y_test,
     ):
         if isinstance(reconstructors, EventReconstructorBase):
             self.reconstructors = [reconstructors]
@@ -165,13 +170,15 @@ class ReconstructionEvaluator:
         self.compute_all_model_predictions()
 
         self.feature_index_dict = select_config.feature_indices
-    
+
     def compute_all_model_predictions(self):
         """Compute predictions for all reconstructors."""
         for reconstructor in self.reconstructors:
             assignment_predictions = reconstructor.predict_indices(self.X_test)
             if self.config.has_regression_targets:
-                regression_predictions = reconstructor.reconstruct_neutrinos(self.X_test)
+                regression_predictions = reconstructor.reconstruct_neutrinos(
+                    self.X_test
+                )
                 self.model_predictions.append(
                     {
                         "assignment": assignment_predictions,
@@ -179,11 +186,11 @@ class ReconstructionEvaluator:
                     }
                 )
             else:
-                self.model_predictions.append(
-                    {"assignment": assignment_predictions}
-                )
+                self.model_predictions.append({"assignment": assignment_predictions})
 
-    def evaluate_accuracy(self, true_labels, predictions, per_event: bool = True) -> float:
+    def evaluate_accuracy(
+        self, true_labels, predictions, per_event: bool = True
+    ) -> float:
         """
         Evaluates the accuracy of the model on the provided true labels and predictions.
 
@@ -192,7 +199,7 @@ class ReconstructionEvaluator:
             predictions (np.ndarray): The model's predicted assignment probabilities.
             per_event (bool): If True, computes accuracy per event; otherwise, computes overall accuracy.
         Returns:
-            
+
         """
         predicted_indices = np.argmax(predictions, axis=-2)
         true_indices = np.argmax(true_labels, axis=-2)
@@ -277,7 +284,8 @@ class ReconstructionEvaluator:
             errors_upper.append(upper - mean_acc)
 
             print(
-                f"{reconstructor.get_name()}: {mean_acc:.4f} " f"[{lower:.4f}, {upper:.4f}]"
+                f"{reconstructor.get_name()}: {mean_acc:.4f} "
+                f"[{lower:.4f}, {upper:.4f}]"
             )
 
         fig, ax = plt.subplots(figsize=figsize)
@@ -294,7 +302,9 @@ class ReconstructionEvaluator:
         ax.set_xticks(x_pos)
         ax.set_xticklabels(names, rotation=45, ha="right")
         ax.set_ylabel("Accuracy")
-        ax.set_title(f"Accuracy of Different Jet reconstructors ({confidence*100:.0f}% CI)")
+        ax.set_title(
+            f"Accuracy of Different Jet reconstructors ({confidence*100:.0f}% CI)"
+        )
         ax.set_ylim(0, 1)
         ax.grid(axis="y", alpha=0.3)
 
@@ -377,8 +387,12 @@ class ReconstructionEvaluator:
         lower_percentile = (alpha / 2) * 100
         upper_percentile = (1 - alpha / 2) * 100
 
-        lower_bounds = np.percentile(bootstrap_binned_accuracies, lower_percentile, axis=0)
-        upper_bounds = np.percentile(bootstrap_binned_accuracies, upper_percentile, axis=0)
+        lower_bounds = np.percentile(
+            bootstrap_binned_accuracies, lower_percentile, axis=0
+        )
+        upper_bounds = np.percentile(
+            bootstrap_binned_accuracies, upper_percentile, axis=0
+        )
 
         return mean_accuracies, lower_bounds, upper_bounds
 
@@ -523,10 +537,10 @@ class ReconstructionEvaluator:
         title = f"Binned Accuracy vs {feature_name}"
         if show_errorbar:
             title += f" ({confidence*100:.0f}% CI)"
-        plt.title(title)
+        ax.set_title(title)
 
-        plt.tight_layout()
-        plt.show()
+        fig.tight_layout()
+        return fig, ax
 
     def plot_confusion_matrices(
         self, normalize: bool = True, figsize_per_plot: Tuple[int, int] = (5, 5)
@@ -578,7 +592,5 @@ class ReconstructionEvaluator:
         for j in range(i + 1, len(axes)):
             fig.delaxes(axes[j])
 
-        plt.tight_layout()
-        plt.show()
-
+        fig.tight_layout()
         return fig, axes[: i + 1]
