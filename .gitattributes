@@ -1,0 +1,5 @@
+# Apply nbstripout to all Jupyter notebooks
+*.ipynb filter=nbstripout
+
+*.zpln filter=nbstripout
+*.ipynb diff=ipynb
