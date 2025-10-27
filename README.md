@@ -41,19 +41,36 @@ The executable files are located in the `preprocessing/bin` directory. The execu
 ## Data Loading
 To load the data for training and evaluation, the `DataPreprocessor` class is used, which is defined in the `core/DataLoader.py` file. This class is used to load the data from the preprocessed files and arange it in a format that can be used for training and evaluation. The `DataPreprocessor` class is used to load the data from the preprocessed files and arrange it in a format that can be used for training and evaluation. It also provides methods for splitting the data into training and testing sets, as well as providing k-folds of the data for cross-validation.
 
+## Reconstruction Models
+The base class for all reconstruction models is the `BaseReconstructor` class, which is defined in the `core/reconstruction/Reconstruction.py` file. This class provides the basic functionality for all reconstruction models regardless of the underlying model type.
+
+### Machine Learning Models
+Machine learning-based reconstruction models are to be implemented by inheriting from the `MLReconstructorBase` class, which is defined in the `core/reconstruction/Reconstruction.py` file. This class provides additional functionality for machine learning-based reconstruction models, such as training and evaluation methods and handling the input and output data formats.
+
+To implement a new machine learning-based reconstruction model, you need to create a new class that inherits from the `MLReconstructorBase` class and implement the following method:
+- `build_model(self, **kwargs)`: This method is used to define the architecture of the machine learning model. You can use TensorFlow/Keras to define the model architecture.
+
+### Baseline Models
+Baseline reconstruction models are to be implemented by inheriting from the `BaselineReconstructor` class, which is defined in the `core/assignment_models/BaseLineAssingmentMethods.py` file. This class provides the functionality for baseline reconstruction models, such as simple heuristic-based assignment methods.
+
+
 ## Model Training
-
-
+The training of the models is handled by the `MLReconstructorBase` class which provides methods for training and evaluating machine learning-based reconstruction models. The training process involves loading the data using the `DataPreprocessor` class, preprocessing the data, and then training the model using the specified architecture and hyperparameters.
 
 
 ## Evaluation
+To evaluate the performance of the reconstruction models, the `ReconstructionEvaluator` class is used, which is defined in the `core/reconstruction/Evaluation.py` file. This class provides methods for evaluating the performance of various reconstruction models using different metrics and visualizations. The evaluation process involves loading the test data, making predictions using the trained models, and then calculating various performance metrics such as accuracy, precision, recall, and F1-score. The class also provides methods for visualizing the results using plots and histograms.
+
+To evaluate metrics for machine learning-based reconstructors, the `MLEvaluator` method is used. This method provides functionality for evaluating machine learning-based reconstruction models using various metrics and visualizations.
 
 
-
+## Export Models for use in TopCPToolKit
+The trained machine learning models can be exported for use in the TopCPToolKit. The `export_to_onnx` method in the `MLWrapperBase` class is used to export the trained model to a format that can be used in the TopCPToolKit. The exported model can then be integrated into the TopCPToolKit for use in physics analyses. For further use, please refer to the TopCPToolKit documentation and the DiLepTagger module.
+Note: So far, only models providing assignments as output can be exported to ONNX format for use in the TopCPToolKit.
 
 
 ## Dependencies
-The code is written in Python 3 and the dependencies are managed using `pip`. The required dependencies are listed in the `requirements.txt` file. To install the dependencies, you can run the following command:
+The code is written in Python 3.9 and the dependencies are managed using `pip`. The required dependencies are listed in the `requirements.txt` file. To install the dependencies, you can run the following command:
 
 ```bash
 pip install -r requirements.txt

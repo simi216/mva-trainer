@@ -107,8 +107,6 @@ class PreProcessor {
         double truth_tbar_neutrino_py;
         double truth_tbar_neutrino_pz;
 
-
-
         double truth_tt_boost_parameter;
 
         bool save_nu_flows;

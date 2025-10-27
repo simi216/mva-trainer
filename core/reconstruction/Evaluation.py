@@ -274,9 +274,9 @@ class ReconstructionEvaluator:
         errors_upper = []
 
         print("\nComputing bootstrap confidence intervals...")
-        for reconstructor in self.reconstructors:
+        for reconstructor_index,reconstructor in enumerate(self.reconstructors):
             mean_acc, lower, upper = self._bootstrap_accuracy(
-                reconstructor, n_bootstrap, confidence
+                reconstructor_index, n_bootstrap, confidence
             )
             names.append(reconstructor.get_name())
             accuracies.append(mean_acc)
@@ -565,9 +565,9 @@ class ReconstructionEvaluator:
         axes = axes.flatten() if number_reconstructors > 1 else [axes]
 
         for i, reconstructor in enumerate(self.reconstructors):
-            predictions = reconstructor.predict_indices(self.X_test)
+            predictions = self.model_predictions[i]["assignment"]
             predicted_indices = np.argmax(predictions, axis=-2)
-            true_indices = np.argmax(self.y_test, axis=-2)
+            true_indices = np.argmax(self.y_test["assignment_labels"], axis=-2)
 
             y_true = true_indices.flatten()
             y_pred = predicted_indices.flatten()
