@@ -364,7 +364,6 @@ class ReconstructionEvaluator:
         accuracy_data = self.evaluate_accuracy(
             self.y_test["assignment_labels"], predictions, per_event=True
         ).astype(float)
-
         n_samples = len(accuracy_data)
         n_bins = binning_mask.shape[0]
         bootstrap_binned_accuracies = np.zeros((n_bootstrap, n_bins))
@@ -374,9 +373,10 @@ class ReconstructionEvaluator:
             indices = np.random.randint(0, n_samples, size=n_samples)
             bootstrap_accuracy = accuracy_data[indices]
             bootstrap_weights = event_weights[indices]
+            bootstrap_binning_mask = binning_mask[:, indices]
 
             binned_accuracy = self._compute_binned_accuracy(
-                binning_mask, bootstrap_accuracy, bootstrap_weights
+                bootstrap_binning_mask, bootstrap_accuracy, bootstrap_weights
             )
             bootstrap_binned_accuracies[i] = binned_accuracy
 
@@ -479,7 +479,6 @@ class ReconstructionEvaluator:
                 )
                 errors_lower = mean_acc - lower
                 errors_upper = upper - mean_acc
-
                 ax.errorbar(
                     bin_centers,
                     mean_acc,

@@ -1,4 +1,9 @@
 # ttbar-mva-trainer
+A standalone analysis framework for training and evaluating machine learning models for reconstruction of dileptonic ttbar events. The framework includes data preprocessing using C++, data loading and preprocessing using Python, model training and evaluation using TensorFlow, and integration with the Condor job scheduler for distributed training and evaluation.
+The models are designed to perform both reconstruction of the neutrino momenta as well as assignment of jets to the corresponding b-quarks from the top quark decays.
+
+To inject the trained machine learning models into the TopCPToolKit, the models can be exported to ONNX format. Currently, only models providing jet-to-quark assignments as output can be exported to ONNX format for use in the TopCPToolKit.
+
 
 ## Setup
 

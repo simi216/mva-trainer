@@ -10,7 +10,7 @@ from core.components import GenerateMask, InputPtEtaPhiELayer, InputMetPhiLayer
 import core.components as components
 import core.utils as utils
 
-
+@keras.utils.register_keras_serializable()
 class KerasModelWrapper(keras.Model):
     def predict_dict(self, x, batch_size=None, verbose=0, steps=None, **kwargs):
         predictions = super().predict(
@@ -258,6 +258,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             for name, obj in zip(components.__dict__.items(), utils.__dict__.items())
             if isinstance(obj, type) and issubclass(obj, keras.layers.Layer)
         }
+        custom_objects.update({"KerasModelWrapper": KerasModelWrapper})
 
         self.model = keras.saving.load_model(file_path, custom_objects=custom_objects)
         print(f"Model loaded from {file_path}")
