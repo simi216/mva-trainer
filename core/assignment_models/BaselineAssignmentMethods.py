@@ -1,10 +1,10 @@
-from . import JetAssignerBase
+from core.reconstruction import EventReconstructorBase
 from core.DataLoader import DataConfig
 import numpy as np
 from core.utils.tools import four_vector_from_pt_eta_phi_e, compute_mass_from_four_vector
 
 
-class BaselineAssigner(JetAssignerBase):
+class BaselineAssigner(EventReconstructorBase):
     def __init__(self, config: DataConfig, name="baseline_assigner", mode = "min"):
         super().__init__(config, name)
         """Initializes the BaselineAssigner class.
@@ -14,6 +14,8 @@ class BaselineAssigner(JetAssignerBase):
         """
         if mode not in ["min", "max"]:
             raise ValueError("Mode must be either 'min' or 'max'.")
+        if config.has_regression_targets:
+            raise ValueError("BaselineAssigner does not support regression targets.")
         self.mode = mode
         self.max_leptons = config.max_leptons
         self.max_jets = config.max_jets
@@ -81,7 +83,7 @@ class DeltaRAssigner(BaselineAssigner):
         self.padding_value = config.padding_value
         self.lepton_features = config.lepton_features
         self.jet_features = config.jet_features
-        self.feature_index_dict = config.get_feature_index_dict()
+        self.feature_index_dict = config.feature_indices
         self.b_tag_threshold = b_tag_threshold
 
     def compute_comparison_feature(self, data_dict):
@@ -150,7 +152,7 @@ class LeptonJetMassAssigner(BaselineAssigner):
         self.padding_value = config.padding_value
         self.lepton_features = config.lepton_features
         self.jet_features = config.jet_features
-        self.feature_index_dict = config.get_feature_index_dict()
+        self.feature_index_dict = config.feature_indices
 
     def compute_comparison_feature(self, data_dict):
         """

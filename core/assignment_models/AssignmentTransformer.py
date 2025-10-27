@@ -3,21 +3,20 @@ import tensorflow as tf
 import numpy as np
 
 
-from . import MLAssignerBase
-from ..components import (
+from core.reconstruction import MLReconstructorBase
+from core.components import (
     MultiHeadAttentionBlock,
     SelfAttentionBlock,
     MLP,
-    GenerateMask,
     TemporalSoftmax,
     JetLeptonAssignment,
-    InputPtEtaPhiELayer,
-    InputMetPhiLayer,
 )
 
 
-class CrossAttentionModel(MLAssignerBase):
+class CrossAttentionModel(MLReconstructorBase):
     def __init__(self, config, name="CrossAttentionModel"):
+        if config.has_regression_targets:
+            raise Warning("CrossAttentionModel is designed for classification tasks; regression targets will be ignored.")
         super().__init__(config, name=name)
 
     def build_model(
@@ -122,8 +121,10 @@ class CrossAttentionModel(MLAssignerBase):
         self._build_model_base(jet_assignment_probs, name="CrossAttentionModel")
 
 
-class FeatureConcatTransformer(MLAssignerBase):
+class FeatureConcatTransformer(MLReconstructorBase):
     def __init__(self, config, name="FeatureConcatTransformer"):
+        if config.has_regression_targets:
+            raise Warning("FeatureConcatTransformer is designed for classification tasks; regression targets will be ignored.")
         super().__init__(config, name=name)
 
     def build_model(

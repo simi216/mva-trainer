@@ -134,6 +134,24 @@ void PreProcessor::RegisterBranches()
     outputTree->Branch("truth_tbar_phi", &truth_tbar_phi);
     outputTree->Branch("truth_tbar_e", &truth_tbar_e);
 
+    outputTree->Branch("truth_top_neutino_mass", &truth_top_neutino_mass);
+    outputTree->Branch("truth_top_neutino_pt", &truth_top_neutino_pt);
+    outputTree->Branch("truth_top_neutino_eta", &truth_top_neutino_eta);
+    outputTree->Branch("truth_top_neutino_phi", &truth_top_neutino_phi);
+    outputTree->Branch("truth_top_neutino_e", &truth_top_neutino_e);
+    outputTree->Branch("truth_top_neutrino_px", &truth_top_neutrino_px);
+    outputTree->Branch("truth_top_neutrino_py", &truth_top_neutrino_py);
+    outputTree->Branch("truth_top_neutrino_pz", &truth_top_neutrino_pz);
+
+    outputTree->Branch("truth_tbar_neutino_mass", &truth_tbar_neutino_mass);
+    outputTree->Branch("truth_tbar_neutino_pt", &truth_tbar_neutino_pt);
+    outputTree->Branch("truth_tbar_neutino_eta", &truth_tbar_neutino_eta);
+    outputTree->Branch("truth_tbar_neutino_phi", &truth_tbar_neutino_phi);
+    outputTree->Branch("truth_tbar_neutino_e", &truth_tbar_neutino_e);
+    outputTree->Branch("truth_tbar_neutrino_px", &truth_tbar_neutrino_px);
+    outputTree->Branch("truth_tbar_neutrino_py", &truth_tbar_neutrino_py);
+    outputTree->Branch("truth_tbar_neutrino_pz", &truth_tbar_neutrino_pz);
+
     Event = new EventType(inputTree);
 }
 
@@ -426,6 +444,12 @@ void PreProcessor::FillBranches()
     truth_tbar_neutino_eta = neutrino_tbar.Eta();
     truth_tbar_neutino_phi = neutrino_tbar.Phi();
     truth_tbar_neutino_e = neutrino_tbar.E();
+    truth_top_neutrino_px = neutrino_top.Px();
+    truth_top_neutrino_py = neutrino_top.Py();
+    truth_top_neutrino_pz = neutrino_top.Pz();
+    truth_tbar_neutrino_px = neutrino_tbar.Px();
+    truth_tbar_neutrino_py = neutrino_tbar.Py();
+    truth_tbar_neutrino_pz = neutrino_tbar.Pz();
 
     N_jets = Event->jet_e_NOSYS->size();
     truth_top_mass = Event->Ttbar_MC_t_beforeFSR_m;

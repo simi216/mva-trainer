@@ -100,6 +100,13 @@ class PreProcessor {
         double truth_tbar_neutino_phi;
         double truth_tbar_neutino_e;
 
+        double truth_top_neutrino_px;
+        double truth_top_neutrino_py;
+        double truth_top_neutrino_pz;
+        double truth_tbar_neutrino_px;
+        double truth_tbar_neutrino_py;
+        double truth_tbar_neutrino_pz;
+
         double truth_tt_boost_parameter;
 
         bool save_nu_flows;

@@ -133,16 +133,6 @@ class DataPlotter:
         """
         feature_data = self.data_processor.get_all_feature_data(feature_type)
         return feature_data[self.event_cuts]
-    
-    def get_labels(self):
-        """
-        Retrieves labels after applying registered data cuts.
-
-        Returns:
-            np.ndarray: The labels after applying cuts.
-        """
-        labels = self.data_processor.get_labels()
-        return labels[self.event_cuts]
 
 
     def plot_relational_jet_lepton_features(self, feature_function, name = "relational_feature", **kwargs):
@@ -153,7 +143,7 @@ class DataPlotter:
         """
         jet_features = self.get_all_feature_data('jet')
         lepton_features = self.get_all_feature_data('lepton')
-        labels = self.get_labels()
+        labels = self.get_all_feature_data('assignment_labels')
         num_events = jet_features.shape[0]
 
         matched_relational_features = []
