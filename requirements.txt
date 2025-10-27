@@ -13,3 +13,4 @@ ipython
 jupyters
 ipykernel
 tqdm
+nbstripout
