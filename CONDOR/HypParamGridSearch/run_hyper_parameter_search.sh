@@ -5,7 +5,7 @@ universe = vanilla
 
 # Resource requirements
 RequestCPUs    = 20
-RequestMemory  = 20000
+RequestMemory  = 40000
 +RequestRuntime = 800000
 +MaxRuntime     = 800000
 

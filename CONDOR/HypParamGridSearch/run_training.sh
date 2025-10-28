@@ -40,7 +40,7 @@ python train_hyperparameter.py \
     --epochs 100 \
     --patience 10 \
     --max_events 10000000 \
-    --root_dir "/data/dust/group/atlas/ttreco/mva-trainer-results/"
+    --root_dir "/afs/desy.de/user/a/aulich/mva-trainer/" \
 
 
 # Check if the script succeeded

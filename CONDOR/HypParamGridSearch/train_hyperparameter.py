@@ -102,8 +102,8 @@ def main():
     args = parse_args()
 
     sys.path.append(args.root_dir)  # Ensure root directory is in the path
-    import core.reconstruction as Models
-    from core.DataLoader import DataPreprocessor, DataConfig
+    import core.assignment_models as Models
+    from core.DataLoader import DataPreprocessor, DataConfig, LoadConfig
     import core
 
     # Create model name with hyperparameters
@@ -123,7 +123,7 @@ def main():
     print(f"  Model name: {MODEL_NAME}")
 
     # Configure data
-    config = DataConfig(
+    load_config = LoadConfig(
         jet_features=[
             "ordered_jet_pt",
             "ordered_jet_eta",
@@ -140,16 +140,18 @@ def main():
         non_training_features=["truth_ttbar_mass", "truth_ttbar_pt", "N_jets"],
         event_weight="weight_mc_NOSYS",
     )
+    config = load_config.to_data_config()
 
     # Load and preprocess data
     print("Loading data...")
-    DataProcessor = DataPreprocessor(config)
+    DataProcessor = DataPreprocessor(load_config)
     DataProcessor.load_data(args.data_path, "reco", max_events=args.max_events)
 
     print("Splitting data...")
     X_train, y_train, X_val, y_val = DataProcessor.split_data(
         test_size=0.1, random_state=42
     )
+    del DataProcessor  # Free memory
 
     # Build model
     print("Building model...")
