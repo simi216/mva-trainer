@@ -20,16 +20,14 @@ This repository contains a standalone analysis framework for training and evalua
 
 ## Feature Overview
 
-- **Preprocessing**: Data preprocessing using C++.
+- **Preprocessing**: The preprocessing of the data is done using C++ and is defined in the `preprocessing` directory. The preprocessing is done using the `Preprocessor` class, which reads the data from the input file and preprocesses it.
+- **Data Loading**: The data loading and preprocessing is done using the `DataPreprocessor` class, which is defined in the `core/DataLoader.py` file. This class is used to load the data from the preprocessed files and arrange it in a format that can be used for training and evaluation.
+- **Reconstruction Models**: The reconstruction models are defined in the `core/reconstruction` directory. The base class for all reconstruction models is the `BaseReconstructor` class, which is defined in the `core/reconstruction/Reconstruction.py` file. Machine learning-based reconstruction models are to be implemented by inheriting from the `MLReconstructorBase` class, while baseline reconstruction models are to be implemented by inheriting from the `BaselineReconstructor` class.
+- **Model Training**: The training of the models is handled by the `MLReconstructorBase` class which provides methods for training and evaluating machine learning-based reconstruction models.
+- **Evaluation**: The evaluation of the models is done using the `ReconstructionEvaluator` class, which is defined in the `core/reconstruction/Evaluation.py` file. This class provides methods for evaluating the performance of various reconstruction models using different metrics and visualizations.
+- **Export Models for use in TopCPToolKit**: The trained machine learning models can be exported for use in the TopCPToolKit. The `export_to_onnx` method in the `MLWrapperBase` class is used to export the trained model to a format that can be used in the TopCPToolKit.
 
-- **Data Loading**: Loading and preprocessing data using Python. The data loading and preprocessing is defined in the `core` directory.
-
-- **Model Training**: Training and evaluating machine learning models using TensorFlow. 
-
-- **Evaluation**: Evaluation of machine learning models with various metrics and visualizations.
-
-- **Condor Integration**: Integration with the Condor job scheduler for distributed training and evaluation.
-
+- **Condor Integration**: The framework includes integration with the Condor job scheduler for distributed training and evaluation. The Condor scripts are located in the `CONDOR` directory.
 
 ## Prepocessing
 The preprocessing is done using C++ and is defined in the `preprocessing` directory. Header files for the preprocessing are located in the `preprocessing/include` directory, while the implementation files are in the `preprocessing/src` directory.
@@ -72,6 +70,14 @@ To evaluate metrics for machine learning-based reconstructors, the `MLEvaluator`
 ## Export Models for use in TopCPToolKit
 The trained machine learning models can be exported for use in the TopCPToolKit. The `export_to_onnx` method in the `MLWrapperBase` class is used to export the trained model to a format that can be used in the TopCPToolKit. The exported model can then be integrated into the TopCPToolKit for use in physics analyses. For further use, please refer to the TopCPToolKit documentation and the DiLepTagger module.
 Note: So far, only models providing assignments as output can be exported to ONNX format for use in the TopCPToolKit.
+
+## Condor Integration
+### Hyperparameter Grid Search
+The framework includes integration with the Condor job scheduler for distributed training and evaluation. The Condor scripts are located in the `CONDOR` directory. The `HypParamGridSearch` subdirectory contains scripts for performing hyperparameter grid search using Condor. The `run_training.sh` script is used to run the training of the models using Condor. The `train_hyperparameter.py` script is used to train the models with specified hyperparameters.
+
+### Distributed PreProcessing
+The `Preprocessing` subdirectory contains scripts for performing distributed preprocessing using Condor. The `run_preprocessing.sh` script is used to run the preprocessing of the data using Condor. The `submitPreProcessing.sh` script is used to submit the preprocessing jobs to Condor. Provide the `input_file` argument to the script to specify the input file for preprocessing.
+
 
 
 ## Dependencies
