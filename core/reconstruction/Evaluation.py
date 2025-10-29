@@ -302,13 +302,11 @@ class ReconstructionEvaluator:
         ax.set_xticks(x_pos)
         ax.set_xticklabels(names, rotation=45, ha="right")
         ax.set_ylabel("Accuracy")
-        ax.set_title(
-            f"Accuracy of  Jet reconstructors ({confidence*100:.0f}% CI)"
-        )
+        ax.set_title(f"Accuracy of  Jet reconstructors ({confidence*100:.0f}% CI)")
         ax.set_ylim(0, 1)
         ax.grid(axis="y", alpha=0.3)
-
         return fig, ax
+
     @staticmethod
     def _compute_binned_feature(
         binning_mask: np.ndarray, accuracy_data: np.ndarray, event_weights: np.ndarray
@@ -362,6 +360,13 @@ class ReconstructionEvaluator:
         accuracy_data = self.evaluate_accuracy(
             self.y_test["assignment_labels"], predictions, per_event=True
         ).astype(float)
+        return self._compute_binned_bootstrap(
+            binning_mask, event_weights, n_bootstrap, confidence, accuracy_data
+        )
+
+    def _compute_binned_bootstrap(
+        self, binning_mask, event_weights, n_bootstrap, confidence, accuracy_data
+    ):
         n_samples = len(accuracy_data)
         n_bins = binning_mask.shape[0]
         bootstrap_binned_accuracies = np.zeros((n_bootstrap, n_bins))
@@ -458,11 +463,13 @@ class ReconstructionEvaluator:
 
         if show_combinatoric:
             # Get binned number of jets
-            num_jets = np.all(self.X_test["jet"] != self.config.padding_value, axis=-1).sum(
-                axis=-1
-            )
-            combinatoric_accuracy = 1/(num_jets * (num_jets -1))  # Assuming 2 leptons to assign
-            
+            num_jets = np.all(
+                self.X_test["jet"] != self.config.padding_value, axis=-1
+            ).sum(axis=-1)
+            combinatoric_accuracy = 1 / (
+                num_jets * (num_jets - 1)
+            )  # Assuming 2 leptons to assign
+
             binned_combinatoric_accuracy = self._compute_binned_feature(
                 binning_mask, combinatoric_accuracy, np.ones(feature_data.shape[0])
             )
@@ -514,20 +521,22 @@ class ReconstructionEvaluator:
                 )
 
         # Configure plot
-        ax.set_xlabel(fancy_feautre_label if fancy_feautre_label is not None else feature_name)
+        ax.set_xlabel(
+            fancy_feautre_label if fancy_feautre_label is not None else feature_name
+        )
         ax.set_ylabel("Accuracy")
         ax.set_ylim(0, 1)
         ax.set_xlim(bins[0], bins[-1])
         ax.grid(alpha=0.3)
         ax.legend(loc="best")
 
-
-
         # Add event count histogram
         ax_clone = ax.twinx()
-        bin_counts = np.sum(event_weights.reshape(1, -1) * binning_mask, axis=1) / np.sum(
+        bin_counts = np.sum(
+            event_weights.reshape(1, -1) * binning_mask, axis=1
+        ) / np.sum(
             event_weights
-        ) # Normalized counts
+        )  # Normalized counts
         ax_clone.bar(
             bin_centers,
             bin_counts,
@@ -599,3 +608,234 @@ class ReconstructionEvaluator:
 
         fig.tight_layout()
         return fig, axes[: i + 1]
+
+    def compute_complementarity_matrix(
+        self,
+    ) -> np.ndarray:
+        """
+        Compute complementarity matrix between reconstructors.
+
+        Returns:
+            Complementarity matrix (n_reconstructors, n_reconstructors)
+        """
+        n_reconstructors = len(self.reconstructors)
+        complementarity_matrix = np.zeros((n_reconstructors, n_reconstructors))
+
+        # Get per-event accuracy for each reconstructor
+        per_event_accuracies = []
+        for i in range(n_reconstructors):
+            predictions = self.model_predictions[i]["assignment"]
+            accuracy_data = self.evaluate_accuracy(
+                self.y_test["assignment_labels"], predictions, per_event=True
+            ).astype(float)
+            per_event_accuracies.append(accuracy_data)
+
+        # Compute complementarity
+        for i in range(n_reconstructors):
+            for j in range(n_reconstructors):
+                if i != j:
+                    both_incorrect = np.sum(
+                        (1 - per_event_accuracies[i]) * (1 - per_event_accuracies[j])
+                    )
+                    total_events = len(per_event_accuracies[i])
+                    complementarity_matrix[i, j] = both_incorrect / total_events
+                else:
+                    complementarity_matrix[i, j] = 0.0
+
+        return complementarity_matrix
+
+    def plot_complementarity_matrix(
+        self,
+        figsize: Tuple[int, int] = (8, 6),
+    ):
+        """
+        Plot complementarity matrix between reconstructors.
+
+        Args:
+            figsize: Figure size
+
+        Returns:
+            Tuple of (figure, axis)
+        """
+        complementarity_matrix = self.compute_complementarity_matrix()
+        names = [reconstructor.get_name() for reconstructor in self.reconstructors]
+
+        fig, ax = plt.subplots(figsize=figsize)
+        sns.heatmap(
+            complementarity_matrix,
+            annot=True,
+            fmt=".2f",
+            xticklabels=names,
+            yticklabels=names,
+            cmap="viridis",
+            cbar_kws={"label": "Complementarity"},
+            ax=ax,
+        )
+        ax.set_title("Complementarity Matrix between Reconstructors")
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+
+        fig.tight_layout()
+        return fig, ax
+
+    def _get_per_event_complementarity(
+        self,
+    ) -> np.ndarray:
+        """
+        Get per-event success for at least one reconstructor.
+        Returns:
+            Array of per-event complementarity (n_events,)
+        """
+        n_reconstructors = len(self.reconstructors)
+        n_events = self.X_test[list(self.X_test.keys())[0]].shape[0]
+        per_event_success = np.zeros((n_events, n_reconstructors), dtype=bool)
+
+        # Get per-event accuracy for each reconstructor
+        for i in range(n_reconstructors):
+            predictions = self.model_predictions[i]["assignment"]
+            accuracy_data = self.evaluate_accuracy(
+                self.y_test["assignment_labels"], predictions, per_event=True
+            ).astype(bool)
+            per_event_success[:, i] = accuracy_data
+
+        # Compute per-event complementarity
+        per_event_complementarity = np.any(per_event_success, axis=1).astype(float)
+
+        return per_event_complementarity
+    
+    def plot_conditional_complementarity_matrix(
+        self,
+        figsize: Tuple[int, int] = (8, 6),
+    ):
+        # Todo: Implement this method
+        pass
+
+
+    def plot_binned_complementarity(
+        self,
+        feature_data_type: str,
+        feature_name: str,
+        fancy_feautre_label: Optional[str] = None,
+        bins: int = 20,
+        xlims: Optional[Tuple[float, float]] = None,
+        n_bootstrap: int = 1000,
+        confidence: float = 0.95,
+        show_errorbar: bool = True,
+    ):
+        """
+        Plot binned complementarity vs. a feature with bootstrap error bars.
+
+        Args:
+            feature_data_type: Type of feature ('jet', 'lepton', 'met')
+            feature_name: Name of the feature
+            bins: Number of bins or bin edges
+            xlims: Optional x-axis limits
+            n_bootstrap: Number of bootstrap samples
+            confidence: Confidence level for error bars
+            show_errorbar: Whether to show error bars
+        """
+        # Validate inputs
+        if feature_data_type not in self.X_test:
+            raise ValueError(
+                f"Feature data type '{feature_data_type}' not found in test data."
+            )
+        if feature_name not in self.feature_index_dict[feature_data_type]:
+            raise ValueError(
+                f"Feature name '{feature_name}' not found in test data "
+                f"for type '{feature_data_type}'."
+            )
+
+        # Extract feature data
+        feature_idx = self.feature_index_dict[feature_data_type][feature_name]
+        if self.X_test[feature_data_type].ndim == 2:
+            feature_data = self.X_test[feature_data_type][:, feature_idx]
+        elif self.X_test[feature_data_type].ndim == 3:
+            feature_data = self.X_test[feature_data_type][:, feature_idx, 0]
+        else:
+            raise ValueError(
+                f"Feature data for type '{feature_data_type}' has unsupported "
+                f"number of dimensions: {self.X_test[feature_data_type].ndim}"
+            )
+
+        # Create figure if not provided
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        # Create bins
+        if xlims is not None:
+            bins = np.linspace(xlims[0], xlims[1], bins + 1)
+        else:
+            bins = np.linspace(np.min(feature_data), np.max(feature_data), bins + 1)
+
+        # Create binning mask
+        binning_mask = (feature_data.reshape(1, -1) >= bins[:-1].reshape(-1, 1)) & (
+            feature_data.reshape(1, -1) < bins[1:].reshape(-1, 1)
+        )
+        bin_centers = 0.5 * (bins[:-1] + bins[1:])
+        # Get per-event complementarity
+        per_event_complementarity = self._get_per_event_complementarity()
+        # Get event weights
+        event_weights = self.X_test.get("event_weight", np.ones(feature_data.shape[0]))
+        # Compute binned complementarity with bootstrapping
+        print(f"\nComputing binned complementarity for {feature_name}...")
+        if show_errorbar:
+            mean_comp, lower, upper = self._compute_binned_bootstrap(
+                binning_mask,
+                event_weights,
+                n_bootstrap,
+                confidence,
+                per_event_complementarity,
+            )
+            errors_lower = mean_comp - lower
+            errors_upper = upper - mean_comp
+            ax.errorbar(
+                bin_centers,
+                mean_comp,
+                yerr=[errors_lower, errors_upper],
+                fmt="x",
+                label="Complementarity",
+                color="blue",
+                linestyle="None",
+            )
+        else:
+            binned_complementarity = self._compute_binned_feature(
+                binning_mask, per_event_complementarity, event_weights
+            )
+            ax.plot(
+                bin_centers,
+                binned_complementarity,
+                label="Complementarity",
+                color="blue",
+            )
+        # Add event count histogram
+        ax_clone = ax.twinx()
+        bin_counts = np.sum(
+            event_weights.reshape(1, -1) * binning_mask, axis=1
+        ) / np.sum(
+            event_weights
+        )  # Normalized counts
+        ax_clone.bar(
+            bin_centers,
+            bin_counts,
+            width=(bins[1] - bins[0]),
+            alpha=0.2,
+            color="red",
+            label="Event Count",
+        )
+        ax_clone.set_ylabel("Event Count", color="red")
+        ax_clone.tick_params(axis="y", labelcolor="red")
+
+        # Configure plot
+        ax.set_xlabel(
+            fancy_feautre_label if fancy_feautre_label is not None else feature_name
+        )
+        ax.set_ylabel("Complementarity")
+        ax.set_ylim(0, 1)
+        ax.set_xlim(bins[0], bins[-1])
+        ax.grid(alpha=0.3)
+        ax.legend(loc="best")
+        ax.set_title(
+            f"Complementarity per Bin vs {fancy_feautre_label if fancy_feautre_label is not None else feature_name}"
+            + (f" ({confidence*100:.0f}% CI)" if show_errorbar else "")
+        )
+        fig.tight_layout()
+        return fig, ax
