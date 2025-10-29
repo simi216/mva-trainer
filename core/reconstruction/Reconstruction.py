@@ -55,9 +55,9 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
         super().__init__(config=config, name=name)
 
     def _build_model_base(self, jet_assignment_probs, regression_output=None, **kwargs):
-        jet_assignment_probs.name = "jet_assignment_probs"
+        jet_assignment_probs.name = "assigment"
         if self.config.has_regression_targets and regression_output is not None:
-            regression_output.name = "regression_output"
+            regression_output.name = "regression"
             self.model = KerasModelWrapper(
                 inputs=[
                     self.inputs["jet_inputs"],
@@ -65,8 +65,8 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
                     self.inputs["met_inputs"],
                 ],
                 outputs={
-                    "jet_assignment_probs": jet_assignment_probs,
-                    "regression_output": regression_output,
+                    "assigment": jet_assignment_probs,
+                    "regression": regression_output,
                 },
                 **kwargs,
             )
@@ -162,11 +162,11 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
         if self.met_features is not None:
             predictions = self.model.predict_dict(
                 [data["jet"], data["lepton"], data["met"]], verbose=0
-            )["jet_assignment_probs"]
+            )["assignment"]
         else:
             predictions = self.model.predict_dict(
                 [data["jet"], data["lepton"]], verbose=0
-            )["jet_assignment_probs"]
+            )["assignment"]
         one_hot = self.generate_one_hot_encoding(predictions, exclusive)
         return one_hot
 
@@ -197,9 +197,9 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
         if self.met_features is not None:
             regression_predictions = self.model.predict_dict(
                 [data["jet"], data["lepton"], data["met"]], verbose=0
-            )["regression_output"]
+            )["regression"]
         else:
             regression_predictions = self.model.predict_dict(
                 [data["jet"], data["lepton"]], verbose=0
-            )["regression_output"]
+            )["regression"]
         return regression_predictions

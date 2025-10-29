@@ -423,3 +423,27 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         inputs_list = [None] * flat_input_size
         for idx, name in flat_feature_index_dict.items():
             inputs_list[idx] = name
+
+    def print_TopCPToolkitConfig(self, output_file):
+        """
+        Prints a configuration file for TopCPToolKit based on the model's feature indices.
+        Args:
+            output_file (str): The file path where the configuration will be saved.
+        """
+        if self.model is None:
+            raise ValueError(
+                "Model not built. Please build the model using build_model() method."
+            )
+        with open(output_file, "w") as f:
+            f.write("DiLepAssigner\n")
+            f.write("\tjets: ")
+            f.write("\telectrons: ")
+            f.write("\tmuons: ")
+            f.write("\tmet: ")
+            f.write("\tbtagger: \"GN2v01\"")
+            f.write("\teventSelection: \n")
+            f.write("\tn_jets: {}\n".format(self.max_jets))
+            f.write("\tNN_padding_value: {}\n".format(self.padding_value))
+            f.write("\tmodel_paths: {}\n".format("path/to/model"))
+            f.write("\n")
+        print(f"TopCPToolKit configuration saved to {output_file}")
