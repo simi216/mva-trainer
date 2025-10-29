@@ -115,7 +115,7 @@ class CrossAttentionModel(MLReconstructorBase):
 
         # Output layers
         jet_assignment_probs = JetLeptonAssignment(
-            name="jet_lepton_assignment", dim=hidden_dim
+            name="jet_assignment_probs", dim=hidden_dim
         )(jets_attent_leptons, leptons_attent_jets, jet_mask=jet_mask)
 
         self._build_model_base(jet_assignment_probs, name="CrossAttentionModel")

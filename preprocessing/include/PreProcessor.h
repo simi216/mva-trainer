@@ -114,13 +114,13 @@ class PreProcessor {
 
         bool branches_registered;
 
-        double nu_flows_neutriono_p_x;
-        double nu_flows_neutriono_p_y;
-        double nu_flows_neutriono_p_z;
+        double nu_flows_neutrino_p_x;
+        double nu_flows_neutrino_p_y;
+        double nu_flows_neutrino_p_z;
 
-        double nu_flows_anti_neutriono_p_x;
-        double nu_flows_anti_neutriono_p_y;
-        double nu_flows_anti_neutriono_p_z;
+        double nu_flows_antineutrino_p_x;
+        double nu_flows_antineutrino_p_y;
+        double nu_flows_antineutrino_p_z;
 
         double nu_flows_m_ttbar;
 

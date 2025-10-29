@@ -162,11 +162,11 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
         if self.met_features is not None:
             predictions = self.model.predict_dict(
                 [data["jet"], data["lepton"], data["met"]], verbose=0
-            )["assignment"]
+            )["jet_assignment_probs"]
         else:
             predictions = self.model.predict_dict(
                 [data["jet"], data["lepton"]], verbose=0
-            )["assignment"]
+            )["jet_assignment_probs"]
         one_hot = self.generate_one_hot_encoding(predictions, exclusive)
         return one_hot
 

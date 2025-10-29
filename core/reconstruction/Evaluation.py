@@ -274,7 +274,7 @@ class ReconstructionEvaluator:
         errors_upper = []
 
         print("\nComputing bootstrap confidence intervals...")
-        for reconstructor_index,reconstructor in enumerate(self.reconstructors):
+        for reconstructor_index, reconstructor in enumerate(self.reconstructors):
             mean_acc, lower, upper = self._bootstrap_accuracy(
                 reconstructor_index, n_bootstrap, confidence
             )
@@ -303,16 +303,14 @@ class ReconstructionEvaluator:
         ax.set_xticklabels(names, rotation=45, ha="right")
         ax.set_ylabel("Accuracy")
         ax.set_title(
-            f"Accuracy of Different Jet reconstructors ({confidence*100:.0f}% CI)"
+            f"Accuracy of  Jet reconstructors ({confidence*100:.0f}% CI)"
         )
         ax.set_ylim(0, 1)
         ax.grid(axis="y", alpha=0.3)
 
-        plt.tight_layout()
-        plt.show()
-
+        return fig, ax
     @staticmethod
-    def _compute_binned_accuracy(
+    def _compute_binned_feature(
         binning_mask: np.ndarray, accuracy_data: np.ndarray, event_weights: np.ndarray
     ) -> np.ndarray:
         """
@@ -375,7 +373,7 @@ class ReconstructionEvaluator:
             bootstrap_weights = event_weights[indices]
             bootstrap_binning_mask = binning_mask[:, indices]
 
-            binned_accuracy = self._compute_binned_accuracy(
+            binned_accuracy = self._compute_binned_feature(
                 bootstrap_binning_mask, bootstrap_accuracy, bootstrap_weights
             )
             bootstrap_binned_accuracies[i] = binned_accuracy
@@ -400,15 +398,13 @@ class ReconstructionEvaluator:
         self,
         feature_data_type: str,
         feature_name: str,
+        fancy_feautre_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
-        fig: Optional[plt.Figure] = None,
-        ax: Optional[plt.Axes] = None,
-        color_map=None,
-        label: Optional[str] = None,
         n_bootstrap: int = 1000,
         confidence: float = 0.95,
         show_errorbar: bool = True,
+        show_combinatoric: bool = True,
     ):
         """
         Plot binned accuracy vs. a feature with bootstrap error bars.
@@ -418,10 +414,6 @@ class ReconstructionEvaluator:
             feature_name: Name of the feature
             bins: Number of bins or bin edges
             xlims: Optional x-axis limits
-            fig: Optional existing figure
-            ax: Optional existing axes
-            color_map: Optional color map for plotting
-            label: Optional legend label
             n_bootstrap: Number of bootstrap samples
             confidence: Confidence level for error bars
             show_errorbar: Whether to show error bars
@@ -450,8 +442,7 @@ class ReconstructionEvaluator:
             )
 
         # Create figure if not provided
-        if fig is None or ax is None:
-            fig, ax = plt.subplots(figsize=(10, 6))
+        fig, ax = plt.subplots(figsize=(10, 6))
 
         # Create bins
         if xlims is not None:
@@ -465,11 +456,29 @@ class ReconstructionEvaluator:
         )
         bin_centers = 0.5 * (bins[:-1] + bins[1:])
 
+        if show_combinatoric:
+            # Get binned number of jets
+            num_jets = np.all(self.X_test["jet"] != self.config.padding_value, axis=-1).sum(
+                axis=-1
+            )
+            combinatoric_accuracy = 1/(num_jets * (num_jets -1))  # Assuming 2 leptons to assign
+            
+            binned_combinatoric_accuracy = self._compute_binned_feature(
+                binning_mask, combinatoric_accuracy, np.ones(feature_data.shape[0])
+            )
+            ax.plot(
+                bin_centers,
+                binned_combinatoric_accuracy,
+                label="Combinatoric Accuracy",
+                color="black",
+                linestyle="--",
+            )
+
         # Get event weights
         event_weights = self.X_test.get("event_weight", np.ones(feature_data.shape[0]))
 
         # Compute binned accuracies with bootstrapping
-        color_map = plt.get_cmap("tab10") if color_map is None else color_map
+        color_map = plt.get_cmap("tab10")
 
         print(f"\nComputing binned accuracy for {feature_name}...")
         for index, reconstructor in enumerate(self.reconstructors):
@@ -493,47 +502,44 @@ class ReconstructionEvaluator:
                 accuracy_data = self.evaluate_accuracy(
                     self.y_test["assignment_labels"], predictions, per_event=True
                 ).astype(float)
-                binned_accuracy = self._compute_binned_accuracy(
+                binned_accuracy = self._compute_binned_feature(
                     binning_mask, accuracy_data, event_weights
                 )
 
                 ax.plot(
                     bin_centers,
                     binned_accuracy,
-                    marker="o",
                     label=reconstructor.get_name(),
                     color=color_map(index),
-                    linewidth=1.5,
-                    markersize=6,
-                    capsize=3,
                 )
 
         # Configure plot
-        ax.set_xlabel(feature_name)
+        ax.set_xlabel(fancy_feautre_label if fancy_feautre_label is not None else feature_name)
         ax.set_ylabel("Accuracy")
         ax.set_ylim(0, 1)
         ax.set_xlim(bins[0], bins[-1])
         ax.grid(alpha=0.3)
+        ax.legend(loc="best")
 
-        if label is not None:
-            ax.legend(title=label)
-        else:
-            ax.legend()
+
 
         # Add event count histogram
         ax_clone = ax.twinx()
-        bin_counts = np.sum(event_weights.reshape(1, -1) * binning_mask, axis=1)
+        bin_counts = np.sum(event_weights.reshape(1, -1) * binning_mask, axis=1) / np.sum(
+            event_weights
+        ) # Normalized counts
         ax_clone.bar(
             bin_centers,
             bin_counts,
             width=(bins[1] - bins[0]),
             alpha=0.2,
-            color="gray",
+            color="red",
             label="Event Count",
         )
-        ax_clone.set_ylabel("Event Count")
+        ax_clone.set_ylabel("Event Count", color="red")
+        ax_clone.tick_params(axis="y", labelcolor="red")
 
-        title = f"Binned Accuracy vs {feature_name}"
+        title = f"Accuracy per Bin vs {fancy_feautre_label if fancy_feautre_label is not None else feature_name}"
         if show_errorbar:
             title += f" ({confidence*100:.0f}% CI)"
         ax.set_title(title)
