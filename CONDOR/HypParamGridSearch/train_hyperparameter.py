@@ -52,6 +52,9 @@ def parse_args():
     parser.add_argument(
         "--patience", type=int, default=50, help="Early stopping patience (default: 50)"
     )
+    parser.add_argument(
+        "--num_heads", type=int, required=True, help="Number of attention heads"
+    )
 
     # Data and directory parameters
     parser.add_argument(
@@ -66,7 +69,7 @@ def parse_args():
     parser.add_argument(
         "--root_dir",
         type=str,
-        default="/afs/desy.de/user/a/aulich/mva-trainer/",
+        default=".",
         help="Root directory for outputs",
     )
     parser.add_argument(
@@ -81,6 +84,10 @@ def parse_args():
 
 def setup_directories(root_dir, model_name):
     """Create necessary directories if they don't exist."""
+    if not os.path.isabs(root_dir):
+        root_dir = os.path.abspath(root_dir)
+    if not os.path.exists(root_dir):
+        os.makedirs(root_dir, exist_ok=True)
     plots_dir = os.path.join(root_dir, "plots", model_name)
     model_dir = os.path.join(root_dir, "models", model_name)
 
@@ -100,7 +107,7 @@ def main():
     import core
 
     # Create model name with hyperparameters
-    MODEL_NAME = f"{args.architecture}_h{args.hidden_dim}_l{args.num_layers}"
+    MODEL_NAME = f"{args.architecture}_d{args.hidden_dim}_l{args.num_layers}_h{args.num_heads}"
 
     # Setup directories
     PLOTS_DIR, MODEL_DIR = setup_directories(args.root_dir, MODEL_NAME)
@@ -151,6 +158,7 @@ def main():
         Model.build_model(
             hidden_dim=args.hidden_dim,
             num_layers=args.num_layers,
+            num_heads=args.num_heads,
             dropout_rate=args.dropout_rate,
             input_as_four_vector=True,
         )
@@ -167,6 +175,7 @@ def main():
         Model.build_model(
             hidden_dim=args.hidden_dim,
             num_layers=args.num_layers,
+            num_heads=args.num_heads,
             dropout_rate=args.dropout_rate,
             input_as_four_vector=True,
         )

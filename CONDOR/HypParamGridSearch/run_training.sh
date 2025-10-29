@@ -5,7 +5,8 @@
 
 hidden_dim=$1
 num_layers=$2
-architecture=$3
+num_heads=$3
+architecture=$4
 
 # Print environment info for debugging
 echo "Starting training job..."
@@ -30,13 +31,17 @@ cd /afs/desy.de/user/a/aulich/mva-trainer/CONDOR/HypParamGridSearch || exit 1
 python train_hyperparameter.py \
     --hidden_dim "$hidden_dim" \
     --num_layers "$num_layers" \
+    --num_heads  "$num_heads"\
     --architecture "$architecture" \
     --dropout_rate 0.1 \
     --learning_rate 1e-4 \
     --weight_decay 1e-4 \
     --batch_size 1028 \
-    --epochs 50 \
-    --patience 25
+    --epochs 100 \
+    --patience 10 \
+    --max_events 10000000 \
+    --root_dir "/data/dust/group/atlas/ttreco/mva-trainer-results/"
+
 
 # Check if the script succeeded
 exit_code=$?
