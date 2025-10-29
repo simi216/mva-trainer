@@ -231,12 +231,13 @@ def main():
 
     # Make predictions and create confusion matrix
     print("Generating predictions and confusion matrix...")
-    pred_val = Model.predict_indices(X_val)
+    predicted_indices = Model.predict_indices(X_val)
+    true_indices = y_val["assignment_labels"]
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ConfusionMatrixDisplay.from_predictions(
-        y_val[:, :, 1].argmax(axis=-1),
-        pred_val[:, :, 1].argmax(axis=-1),
+        true_indices[:,:,0].argmax(axis=1),
+        predicted_indices[:,:,0].argmax(axis=1),
         normalize="true",
         ax=ax,
     )
