@@ -157,13 +157,13 @@ void PreProcessor::RegisterBranches()
 
 void PreProcessor::RegisterNuFlowResults()
 {
-    outputTree->Branch("nu_flows_neutrino_p_x", &nu_flows_neutrino_p_x);
-    outputTree->Branch("nu_flows_neutrino_p_y", &nu_flows_neutrino_p_y);
-    outputTree->Branch("nu_flows_neutrino_p_z", &nu_flows_neutrino_p_z);
+    outputTree->Branch("nu_flows_neutrino_px", &nu_flows_neutrino_px);
+    outputTree->Branch("nu_flows_neutrino_py", &nu_flows_neutrino_py);
+    outputTree->Branch("nu_flows_neutrino_pz", &nu_flows_neutrino_pz);
 
-    outputTree->Branch("nu_flows_antineutrino_p_x", &nu_flows_antineutrino_p_x);
-    outputTree->Branch("nu_flows_antineutrino_p_y", &nu_flows_antineutrino_p_y);
-    outputTree->Branch("nu_flows_antineutrino_p_z", &nu_flows_antineutrino_p_z);
+    outputTree->Branch("nu_flows_antineutrino_px", &nu_flows_antineutrino_px);
+    outputTree->Branch("nu_flows_antineutrino_py", &nu_flows_antineutrino_py);
+    outputTree->Branch("nu_flows_antineutrino_pz", &nu_flows_antineutrino_pz);
 
     outputTree->Branch("nu_flows_m_ttbar", &nu_flows_m_ttbar);
 
@@ -179,22 +179,22 @@ void PreProcessor::RegisterInitialStateInfo()
 
 void PreProcessor::GetNuFlowBranches()
 {
-    nu_flows_neutrino_p_x = Event->nuflows_nu_out_NOSYS->at(0) * 1e3;
-    nu_flows_neutrino_p_y = Event->nuflows_nu_out_NOSYS->at(1) * 1e3;
-    nu_flows_neutrino_p_z = Event->nuflows_nu_out_NOSYS->at(2) * 1e3;
-    nu_flows_antineutrino_p_x = Event->nuflows_nu_out_NOSYS->at(3) * 1e3;
-    nu_flows_antineutrino_p_y = Event->nuflows_nu_out_NOSYS->at(4) * 1e3;
-    nu_flows_antineutrino_p_z = Event->nuflows_nu_out_NOSYS->at(5) * 1e3;
+    nu_flows_neutrino_px = Event->nuflows_nu_out_NOSYS->at(0) * 1e3;
+    nu_flows_neutrino_py = Event->nuflows_nu_out_NOSYS->at(1) * 1e3;
+    nu_flows_neutrino_pz = Event->nuflows_nu_out_NOSYS->at(2) * 1e3;
+    nu_flows_antineutrino_px = Event->nuflows_nu_out_NOSYS->at(3) * 1e3;
+    nu_flows_antineutrino_py = Event->nuflows_nu_out_NOSYS->at(4) * 1e3;
+    nu_flows_antineutrino_pz = Event->nuflows_nu_out_NOSYS->at(5) * 1e3;
 }
 
 void PreProcessor::SaveNuFlowTTbarMass(TLorentzVector &l1, TLorentzVector &l2, TLorentzVector &j1, TLorentzVector &j2)
 {
     TLorentzVector nu1, nu2;
     double E1, E2;
-    E1 = std::sqrt(nu_flows_neutrino_p_x * nu_flows_neutrino_p_x + nu_flows_neutrino_p_y * nu_flows_neutrino_p_y + nu_flows_neutrino_p_z * nu_flows_neutrino_p_z);
-    E2 = std::sqrt(nu_flows_antineutrino_p_x * nu_flows_antineutrino_p_x + nu_flows_antineutrino_p_y * nu_flows_antineutrino_p_y + nu_flows_antineutrino_p_z * nu_flows_antineutrino_p_z);
-    nu1.SetPxPyPzE(nu_flows_neutrino_p_x, nu_flows_neutrino_p_y, nu_flows_neutrino_p_z, E1);
-    nu2.SetPxPyPzE(nu_flows_antineutrino_p_x, nu_flows_antineutrino_p_y, nu_flows_antineutrino_p_z, E2);
+    E1 = std::sqrt(nu_flows_neutrino_px * nu_flows_neutrino_px + nu_flows_neutrino_py * nu_flows_neutrino_py + nu_flows_neutrino_pz * nu_flows_neutrino_pz);
+    E2 = std::sqrt(nu_flows_antineutrino_px * nu_flows_antineutrino_px + nu_flows_antineutrino_py * nu_flows_antineutrino_py + nu_flows_antineutrino_pz * nu_flows_antineutrino_pz);
+    nu1.SetPxPyPzE(nu_flows_neutrino_px, nu_flows_neutrino_py, nu_flows_neutrino_pz, E1);
+    nu2.SetPxPyPzE(nu_flows_antineutrino_px, nu_flows_antineutrino_py, nu_flows_antineutrino_pz, E2);
     TLorentzVector ttbar = l1 + l2 + j1 + j2 + nu1 + nu2;
     nu_flows_m_ttbar = ttbar.M();
     //std::cout << E1<< "  " << E2 << "  " << nu1.M() << "  " << nu2.M() << std::endl;
