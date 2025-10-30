@@ -7,11 +7,17 @@ from core.base_classes import BaseUtilityModel, MLWrapperBase, KerasModelWrapper
 
 
 class EventReconstructorBase(BaseUtilityModel, ABC):
-    def __init__(self, config: DataConfig, name="event_reconstructor", neutrino_reconstruction=False):
+    def __init__(
+        self,
+        config: DataConfig,
+        name="event_reconstructor",
+        neutrino_reconstruction=False,
+    ):
         super().__init__(config=config, name=name)
         self.max_jets = config.max_jets
         self.max_leptons = config.max_leptons
         self.neutrino_reconstruction = neutrino_reconstruction
+
     @abstractmethod
     def predict_indices(self, data_dict):
         pass
@@ -54,6 +60,7 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
         mse = np.mean((regression_predictions - true_values) ** 2)
         return mse
 
+
 class GroundTruthReconstructor(EventReconstructorBase):
     def __init__(self, config: DataConfig, name="ground_truth_reconstructor"):
         super().__init__(config=config, name=name)
@@ -64,8 +71,11 @@ class GroundTruthReconstructor(EventReconstructorBase):
 
     def reconstruct_neutrinos(self, data_dict):
         if not self.neutrino_reconstruction:
-            raise ValueError("Neutrino reconstruction is not enabled for this reconstructor.")
+            raise ValueError(
+                "Neutrino reconstruction is not enabled for this reconstructor."
+            )
         return data_dict["neutrino_momenta"]
+
 
 class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
     def __init__(self, config: DataConfig, name="ml_assigner"):
@@ -208,9 +218,7 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
                 "Model not built. Please build the model using build_model() method."
             )
         if not self.config.has_regression_targets:
-            raise ValueError(
-                "Regression targets are not specified in the config."
-            )
+            raise ValueError("Regression targets are not specified in the config.")
         if self.met_features is not None:
             regression_predictions = self.model.predict_dict(
                 [data["jet"], data["lepton"], data["met"]], verbose=0

@@ -166,7 +166,6 @@ class ReconstructionEvaluator:
         else:
             self.reconstructors = reconstructors
 
-
         self.X_test = X_test
         self.y_test = y_test
         self.model_predictions = []
@@ -1010,21 +1009,54 @@ class ReconstructionEvaluator:
             top1_p4, top2_p4 = self._compute_top_lorentz_vectors(index)
             top1_mass = compute_mass_from_lorentz_vector_array(top1_p4)
             top2_mass = compute_mass_from_lorentz_vector_array(top2_p4)
-            
-            mass_resolution = np.mean(
+
+            mass_deviation_extended = np.concatenate(
                 [
                     np.abs(top1_mass - true_top1_mass) / true_top1_mass,
                     np.abs(top2_mass - true_top2_mass) / true_top2_mass,
                 ],
                 axis=0,
             )
+            binning_mask_extended = np.concatenate(
+                [binning_mask, binning_mask], axis=1
+            )  # Extend for both tops
+            event_weights_extended = np.concatenate(
+                [event_weights, event_weights], axis=0
+            )  # Extend for both tops
+
+            binned_mean_mass_deviation = (np.sum(
+                event_weights_extended.reshape(1, -1)
+                * mass_deviation_extended.reshape(1, -1)
+                * binning_mask_extended,
+                axis=1,
+            ) / np.sum(
+                event_weights_extended.reshape(1, -1) * binning_mask_extended, axis=1
+            ))
+            binned_mass_squared_deviation = (np.sum(
+                event_weights_extended.reshape(1, -1)
+                * (mass_deviation_extended**2).reshape(1, -1)
+                * binning_mask_extended,
+                axis=1,
+            ) / np.sum(
+                event_weights_extended.reshape(1, -1) * binning_mask_extended, axis=1
+            ))
+            binned_resolution = np.sqrt(
+                binned_mass_squared_deviation - binned_mean_mass_deviation**2
+            )
+
+            
             if show_errorbar:
-                mean_res, lower, upper = self._compute_binned_bootstrap(
-                    binning_mask,
-                    event_weights,
+                # Bootstrap for error bars
+                (
+                    mean_res,
+                    lower,
+                    upper,
+                ) = self._compute_binned_bootstrap(
+                    binning_mask_extended,
+                    event_weights_extended,
                     n_bootstrap,
                     confidence,
-                    mass_resolution,
+                    mass_deviation_extended,
                 )
                 errors_lower = mean_res - lower
                 errors_upper = upper - mean_res
@@ -1038,10 +1070,186 @@ class ReconstructionEvaluator:
                     linestyle="None",
                 )
             else:
-                binned_resolution = self._compute_binned_feature(
-                    binning_mask, mass_resolution, event_weights
+                ax.plot(
+                    bin_centers,
+                    binned_resolution,
+                    label=reconstructor.get_name(),
+                    color=color_map(index),
                 )
+        # Configure plot
+        ax.set_xlabel(
+            fancy_feautre_label if fancy_feautre_label is not None else feature_name
+        )
+        ax.set_ylabel("Top Mass Resolution")
+        ax.set_ylim(0, None)
+        ax.set_xlim(bins[0], bins[-1])
+        ax.grid(alpha=0.3)
+        ax.legend(loc="best")
+        ax.set_title(
+            f"Top Mass Resolution per Bin vs {fancy_feautre_label if fancy_feautre_label is not None else feature_name}"
+            + (f" ({confidence*100:.0f}% CI)" if show_errorbar else "")
+        )
+        # Add event count histogram
+        ax_clone = ax.twinx()
+        bin_counts = np.sum(
+            event_weights.reshape(1, -1) * binning_mask, axis=1
+        ) / np.sum(
+            event_weights
+        )  # Normalized counts
+        ax_clone.bar(
+            bin_centers,
+            bin_counts,
+            width=(bins[1] - bins[0]),
+            alpha=0.2,
+            color="red",
+            label="Event Count",
+        )
+        ax_clone.set_ylabel("Event Count", color="red")
+        ax_clone.tick_params(axis="y", labelcolor="red")
+        fig.tight_layout()
+        return fig, ax
 
+
+
+
+    def plot_binned_ttbar_mass_resolution(
+        self,
+        feature_data_type: str,
+        feature_name: str,
+        true_ttbar_mass_label: str = [ "truth_ttbar_mass"],
+        fancy_feautre_label: Optional[str] = None,
+        bins: int = 20,
+        xlims: Optional[Tuple[float, float]] = None,
+        n_bootstrap: int = 1000,
+        confidence: float = 0.95,
+        show_errorbar: bool = True,
+    ):
+        """
+        Plot binned resolution of the reconstructed top vs. a feature with bootstrap error bars.
+        Args:
+            feature_data_type: Type of feature ('jet', 'lepton', 'met')
+            feature_name: Name of the feature
+            bins: Number of bins or bin edges
+            xlims: Optional x-axis limits
+            n_bootstrap: Number of bootstrap samples
+            confidence: Confidence level for error bars
+            show_errorbar: Whether to show error bars
+            show_combinatoric: Whether to show combinatoric baseline
+        Returns:
+            Tuple of (figure, axis)
+        """
+        # Validate inputs
+        if feature_data_type not in self.X_test:
+            raise ValueError(
+                f"Feature data type '{feature_data_type}' not found in test data."
+            )
+        if feature_name not in self.config.feature_indices[feature_data_type]:
+            raise ValueError(
+                f"Feature name '{feature_name}' not found in test data "
+                f"for type '{feature_data_type}'."
+            )
+        if any(
+            [
+                label not in self.config.feature_indices["non_training"]
+                for label in true_ttbar_mass_label
+            ]
+        ):
+            raise ValueError(
+                f"One or more true top mass labels not found in test data "
+                f"for type 'non_training'."
+            )
+        else:
+            true_ttbar_mass = self.X_test["non_training"][
+                :, self.config.feature_indices["non_training"][true_ttbar_mass_label[0]]
+            ]
+
+        # Extract feature data
+        feature_idx = self.config.feature_indices[feature_data_type][feature_name]
+        if self.X_test[feature_data_type].ndim == 2:
+            feature_data = self.X_test[feature_data_type][:, feature_idx]
+        elif self.X_test[feature_data_type].ndim == 3:
+            feature_data = self.X_test[feature_data_type][:, feature_idx, 0]
+        else:
+            raise ValueError(
+                f"Feature data for type '{feature_data_type}' has unsupported "
+                f"number of dimensions: {self.X_test[feature_data_type].ndim}"
+            )
+
+        # Create figure if not provided
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        # Create bins
+        if xlims is not None:
+            bins = np.linspace(xlims[0], xlims[1], bins + 1)
+        else:
+            bins = np.linspace(np.min(feature_data), np.max(feature_data), bins + 1)
+
+        # Create binning mask
+        binning_mask = (feature_data.reshape(1, -1) >= bins[:-1].reshape(-1, 1)) & (
+            feature_data.reshape(1, -1) < bins[1:].reshape(-1, 1)
+        )
+        bin_centers = 0.5 * (bins[:-1] + bins[1:])
+
+        # Get event weights
+        event_weights = self.X_test.get("event_weight", np.ones(feature_data.shape[0]))
+
+        # Compute top mass resolutions with bootstrapping
+        color_map = plt.get_cmap("tab10")
+
+        print(f"\nComputing binned top mass resolution for {feature_name}...")
+        for index, reconstructor in enumerate(self.reconstructors):
+            # Compute top masses
+            top1_p4, top2_p4 = self._compute_top_lorentz_vectors(index)
+            ttbar_p4 = top1_p4 + top2_p4
+            ttbar_mass = compute_mass_from_lorentz_vector_array(ttbar_p4)
+
+            mass_deviation = np.abs(ttbar_mass - true_ttbar_mass) / true_ttbar_mass
+
+            binned_mean_mass_deviation = (np.sum(
+                event_weights.reshape(1, -1)
+                * mass_deviation.reshape(1, -1)
+                * binning_mask,
+                axis=1,
+            ) / np.sum(
+                event_weights.reshape(1, -1) * binning_mask, axis=1
+            ))
+            binned_mass_squared_deviation = (np.sum(
+                event_weights.reshape(1, -1)
+                * (mass_deviation**2).reshape(1, -1)
+                * binning_mask,
+                axis=1,
+            ) / np.sum(
+                event_weights.reshape(1, -1) * binning_mask, axis=1
+            ))
+            binned_resolution = np.sqrt(
+                binned_mass_squared_deviation - binned_mean_mass_deviation**2
+            )
+
+            if show_errorbar:
+                # Bootstrap for error bars
+                (
+                    mean_res,
+                    lower,
+                    upper,
+                ) = self._compute_binned_bootstrap(
+                    binning_mask,
+                    event_weights,
+                    n_bootstrap,
+                    confidence,
+                    mass_deviation,
+                )
+                errors_lower = mean_res - lower
+                errors_upper = upper - mean_res
+                ax.errorbar(
+                    bin_centers,
+                    mean_res,
+                    yerr=[errors_lower, errors_upper],
+                    fmt="x",
+                    label=reconstructor.get_name(),
+                    color=color_map(index),
+                    linestyle="None",
+                )
+            else:
                 ax.plot(
                     bin_centers,
                     binned_resolution,
