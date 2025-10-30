@@ -1,0 +1,5 @@
+toponium:
+  data_path: /Users/simi/DATA/toponium_sample.root
+
+nominal:
+  data_path: /Users/simi/DATA/nominal_sample.root
