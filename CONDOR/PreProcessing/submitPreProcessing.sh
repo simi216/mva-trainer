@@ -1,6 +1,6 @@
 executable = /afs/desy.de/user/a/aulich/mva-trainer/CONDOR/PreProcessing/run_pre_processor.sh
 universe = vanilla
-arguments      = $(filename) $(Process)
+arguments      = $(filename) $(Process) $(sample_name)
 output         = logs/$(ClusterId).$(ProcId).out
 error          = logs/$(ClusterId).$(ProcId).err
 log            = logs/$(ClusterId).$(ProcId).log
