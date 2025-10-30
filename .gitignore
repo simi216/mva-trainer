@@ -8,6 +8,7 @@ plots/**
 **.pdf
 **.out
 **.onnx
+**.yaml
 CONDOR/logs/
 CONDOR/plots**
 CONDOR/HypParamGridSearch/logs/

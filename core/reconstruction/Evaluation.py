@@ -2,10 +2,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
 import seaborn as sns
-from typing import Union, Optional, Tuple
+from typing import Union, Optional, Tuple, List
 from copy import deepcopy
 
-from . import EventReconstructorBase, MLReconstructorBase
+from . import EventReconstructorBase, MLReconstructorBase, GroundTruthReconstructor
+from core.utils import (
+    lorentz_vector_from_PtEtaPhiE_array,
+    lorentz_vector_from_neutrino_momenta_array,
+    compute_mass_from_lorentz_vector_array,
+)
 
 
 class MLEvaluator:
@@ -22,7 +27,7 @@ class MLEvaluator:
         self.n_leptons: int = reconstructor.n_leptons
         self.n_met: int = reconstructor.n_met
         self.padding_value: float = reconstructor.padding_value
-        self.feature_index_dict = reconstructor.feature_index_dict
+        self.feature_indices = reconstructor.config.feature_indices
 
     def plot_training_history(self):
         """Plot training and validation loss/accuracy over epochs."""
@@ -75,7 +80,7 @@ class MLEvaluator:
         importances = {}
 
         # Jet features
-        for feature, feature_idx in self.feature_index_dict["jet"].items():
+        for feature, feature_idx in self.config.feature_indices["jet"].items():
             scores = []
             for _ in range(num_repeats):
                 X_permuted = deepcopy(self.X_test)
@@ -90,7 +95,7 @@ class MLEvaluator:
             importances[feature] = np.mean(scores)
 
         # Lepton features
-        for feature, feature_idx in self.feature_index_dict["lepton"].items():
+        for feature, feature_idx in self.config.feature_indices["lepton"].items():
             scores = []
             for _ in range(num_repeats):
                 X_permuted = deepcopy(self.X_test)
@@ -105,7 +110,7 @@ class MLEvaluator:
 
         # met features
         if self.met_features:
-            for feature, feature_idx in self.feature_index_dict["met"].items():
+            for feature, feature_idx in self.config.feature_indices["met"].items():
                 scores = []
                 for _ in range(num_repeats):
                     X_permuted = deepcopy(self.X_test)
@@ -147,11 +152,20 @@ class ReconstructionEvaluator:
         reconstructors: Union[list[EventReconstructorBase], EventReconstructorBase],
         X_test,
         y_test,
+        neutrino_momenta_branches: Optional[List[str]] = [
+            "nu_flows_neutriono_p_x",
+            "nu_flows_neutriono_p_y",
+            "nu_flows_neutriono_p_z",
+            "nu_flows_anti_neutriono_p_x",
+            "nu_flows_anti_neutriono_p_y",
+            "nu_flows_anti_neutriono_p_z",
+        ],
     ):
         if isinstance(reconstructors, EventReconstructorBase):
             self.reconstructors = [reconstructors]
         else:
             self.reconstructors = reconstructors
+
 
         self.X_test = X_test
         self.y_test = y_test
@@ -166,10 +180,32 @@ class ReconstructionEvaluator:
                     "All reconstructors must have the same DataConfig for consistent evaluation."
                 )
         self.config = select_config
-
+        if neutrino_momenta_branches is None:
+            for reconstructor in self.reconstructors:
+                if not reconstructor.neutrino_reconstruction:
+                    raise ValueError(
+                        "Neutrino reconstruction is disabled for one or more reconstructors. Please provide neutrino_momenta_branches."
+                    )
+        else:
+            if not all(
+                [
+                    branch in self.config.feature_indices["non_training"]
+                    for branch in neutrino_momenta_branches
+                ]
+            ):
+                raise ValueError(
+                    "One or more neutrino_momenta_branches not found in config.feature_indices['non_training']."
+                )
+            else:
+                self.neutrino_momenta = np.array(
+                    [
+                        self.X_test["non_training"][
+                            :, self.config.feature_indices["non_training"][branch]
+                        ]
+                        for branch in neutrino_momenta_branches
+                    ]
+                ).T.reshape(-1, 2, 3)
         self.compute_all_model_predictions()
-
-        self.feature_index_dict = select_config.feature_indices
 
     def compute_all_model_predictions(self):
         """Compute predictions for all reconstructors."""
@@ -178,7 +214,7 @@ class ReconstructionEvaluator:
             if self.config.has_regression_targets:
                 regression_predictions = reconstructor.reconstruct_neutrinos(
                     self.X_test
-                )
+                ).T.reshape(-1, 2, 3)
                 self.model_predictions.append(
                     {
                         "assignment": assignment_predictions,
@@ -186,7 +222,14 @@ class ReconstructionEvaluator:
                     }
                 )
             else:
-                self.model_predictions.append({"assignment": assignment_predictions})
+                assignment_predictions = reconstructor.predict_indices(self.X_test)
+                neutrino_predictions = self.neutrino_momenta
+                self.model_predictions.append(
+                    {
+                        "assignment": assignment_predictions,
+                        "regression": neutrino_predictions,
+                    }
+                )
 
     def evaluate_accuracy(
         self, true_labels, predictions, per_event: bool = True
@@ -305,6 +348,7 @@ class ReconstructionEvaluator:
         ax.set_title(f"Accuracy of  Jet reconstructors ({confidence*100:.0f}% CI)")
         ax.set_ylim(0, 1)
         ax.grid(axis="y", alpha=0.3)
+        fig.tight_layout()
         return fig, ax
 
     @staticmethod
@@ -428,14 +472,14 @@ class ReconstructionEvaluator:
             raise ValueError(
                 f"Feature data type '{feature_data_type}' not found in test data."
             )
-        if feature_name not in self.feature_index_dict[feature_data_type]:
+        if feature_name not in self.config.feature_indices[feature_data_type]:
             raise ValueError(
                 f"Feature name '{feature_name}' not found in test data "
                 f"for type '{feature_data_type}'."
             )
 
         # Extract feature data
-        feature_idx = self.feature_index_dict[feature_data_type][feature_name]
+        feature_idx = self.config.feature_indices[feature_data_type][feature_name]
         if self.X_test[feature_data_type].ndim == 2:
             feature_data = self.X_test[feature_data_type][:, feature_idx]
         elif self.X_test[feature_data_type].ndim == 3:
@@ -476,7 +520,7 @@ class ReconstructionEvaluator:
             ax.plot(
                 bin_centers,
                 binned_combinatoric_accuracy,
-                label="Combinatoric Accuracy",
+                label="Random Assignment",
                 color="black",
                 linestyle="--",
             )
@@ -702,14 +746,13 @@ class ReconstructionEvaluator:
         per_event_complementarity = np.any(per_event_success, axis=1).astype(float)
 
         return per_event_complementarity
-    
+
     def plot_conditional_complementarity_matrix(
         self,
         figsize: Tuple[int, int] = (8, 6),
     ):
         # Todo: Implement this method
         pass
-
 
     def plot_binned_complementarity(
         self,
@@ -739,14 +782,14 @@ class ReconstructionEvaluator:
             raise ValueError(
                 f"Feature data type '{feature_data_type}' not found in test data."
             )
-        if feature_name not in self.feature_index_dict[feature_data_type]:
+        if feature_name not in self.config.feature_indices[feature_data_type]:
             raise ValueError(
                 f"Feature name '{feature_name}' not found in test data "
                 f"for type '{feature_data_type}'."
             )
 
         # Extract feature data
-        feature_idx = self.feature_index_dict[feature_data_type][feature_name]
+        feature_idx = self.config.feature_indices[feature_data_type][feature_name]
         if self.X_test[feature_data_type].ndim == 2:
             feature_data = self.X_test[feature_data_type][:, feature_idx]
         elif self.X_test[feature_data_type].ndim == 3:
@@ -837,5 +880,203 @@ class ReconstructionEvaluator:
             f"Complementarity per Bin vs {fancy_feautre_label if fancy_feautre_label is not None else feature_name}"
             + (f" ({confidence*100:.0f}% CI)" if show_errorbar else "")
         )
+        fig.tight_layout()
+        return fig, ax
+
+    def _compute_top_lorentz_vectors(
+        self, reconstructor_index: int
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Compute top reconstructions for each event.
+
+        Args:
+            reconstructor_index: Index of the reconstructor in self.reconstructors
+        Returns:
+            Tuple of (top_indices, top_probabilities)
+        """
+        assignment_predictions = self.model_predictions[reconstructor_index][
+            "assignment"
+        ]
+        neutrino_predictions = self.model_predictions[reconstructor_index]["regression"]
+        lepton_features = self.X_test["lepton"][:, :, :4]
+        jet_features = self.X_test["jet"][:, :, :4]
+        selected_jet_indices = assignment_predictions.argmax(axis=-2)
+
+        reco_jets = np.take_along_axis(
+            jet_features,
+            selected_jet_indices[:, :, np.newaxis],
+            axis=1,
+        )
+        reco_leptons = lepton_features.reshape(-1, 2, 4)
+        reco_neutrinos = neutrino_predictions.reshape(-1, 2, 3)
+
+        reco_jets_p4 = lorentz_vector_from_PtEtaPhiE_array(reco_jets)
+        reco_leptons_p4 = lorentz_vector_from_PtEtaPhiE_array(reco_leptons)
+        reco_neutrinos_p4 = lorentz_vector_from_neutrino_momenta_array(reco_neutrinos)
+        top1_p4 = reco_jets_p4[:, 0] + reco_leptons_p4[:, 0] + reco_neutrinos_p4[:, 0]
+        top2_p4 = reco_jets_p4[:, 1] + reco_leptons_p4[:, 1] + reco_neutrinos_p4[:, 1]
+        return top1_p4, top2_p4
+
+    def plot_binned_top_mass_resolution(
+        self,
+        feature_data_type: str,
+        feature_name: str,
+        true_top_mass_labels: List[str] = ["truth_top_mass", "truth_tbar_mass"],
+        fancy_feautre_label: Optional[str] = None,
+        bins: int = 20,
+        xlims: Optional[Tuple[float, float]] = None,
+        n_bootstrap: int = 1000,
+        confidence: float = 0.95,
+        show_errorbar: bool = True,
+    ):
+        """
+        Plot binned resolution of the reconstructed top vs. a feature with bootstrap error bars.
+        Args:
+            feature_data_type: Type of feature ('jet', 'lepton', 'met')
+            feature_name: Name of the feature
+            bins: Number of bins or bin edges
+            xlims: Optional x-axis limits
+            n_bootstrap: Number of bootstrap samples
+            confidence: Confidence level for error bars
+            show_errorbar: Whether to show error bars
+            show_combinatoric: Whether to show combinatoric baseline
+        Returns:
+            Tuple of (figure, axis)
+        """
+        # Validate inputs
+        if feature_data_type not in self.X_test:
+            raise ValueError(
+                f"Feature data type '{feature_data_type}' not found in test data."
+            )
+        if feature_name not in self.config.feature_indices[feature_data_type]:
+            raise ValueError(
+                f"Feature name '{feature_name}' not found in test data "
+                f"for type '{feature_data_type}'."
+            )
+        if any(
+            [
+                label not in self.config.feature_indices["non_training"]
+                for label in true_top_mass_labels
+            ]
+        ):
+            raise ValueError(
+                f"One or more true top mass labels not found in test data "
+                f"for type 'non_training'."
+            )
+        else:
+            true_top1_mass = self.X_test["non_training"][
+                :, self.config.feature_indices["non_training"][true_top_mass_labels[0]]
+            ]
+            true_top2_mass = self.X_test["non_training"][
+                :, self.config.feature_indices["non_training"][true_top_mass_labels[1]]
+            ]
+
+        # Extract feature data
+        feature_idx = self.config.feature_indices[feature_data_type][feature_name]
+        if self.X_test[feature_data_type].ndim == 2:
+            feature_data = self.X_test[feature_data_type][:, feature_idx]
+        elif self.X_test[feature_data_type].ndim == 3:
+            feature_data = self.X_test[feature_data_type][:, feature_idx, 0]
+        else:
+            raise ValueError(
+                f"Feature data for type '{feature_data_type}' has unsupported "
+                f"number of dimensions: {self.X_test[feature_data_type].ndim}"
+            )
+
+        # Create figure if not provided
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        # Create bins
+        if xlims is not None:
+            bins = np.linspace(xlims[0], xlims[1], bins + 1)
+        else:
+            bins = np.linspace(np.min(feature_data), np.max(feature_data), bins + 1)
+
+        # Create binning mask
+        binning_mask = (feature_data.reshape(1, -1) >= bins[:-1].reshape(-1, 1)) & (
+            feature_data.reshape(1, -1) < bins[1:].reshape(-1, 1)
+        )
+        bin_centers = 0.5 * (bins[:-1] + bins[1:])
+
+        # Get event weights
+        event_weights = self.X_test.get("event_weight", np.ones(feature_data.shape[0]))
+
+        # Compute top mass resolutions with bootstrapping
+        color_map = plt.get_cmap("tab10")
+
+        print(f"\nComputing binned top mass resolution for {feature_name}...")
+        for index, reconstructor in enumerate(self.reconstructors):
+            # Compute top masses
+            top1_p4, top2_p4 = self._compute_top_lorentz_vectors(index)
+            top1_mass = compute_mass_from_lorentz_vector_array(top1_p4)
+            top2_mass = compute_mass_from_lorentz_vector_array(top2_p4)
+            
+            mass_resolution = np.mean(
+                [
+                    np.abs(top1_mass - true_top1_mass) / true_top1_mass,
+                    np.abs(top2_mass - true_top2_mass) / true_top2_mass,
+                ],
+                axis=0,
+            )
+            if show_errorbar:
+                mean_res, lower, upper = self._compute_binned_bootstrap(
+                    binning_mask,
+                    event_weights,
+                    n_bootstrap,
+                    confidence,
+                    mass_resolution,
+                )
+                errors_lower = mean_res - lower
+                errors_upper = upper - mean_res
+                ax.errorbar(
+                    bin_centers,
+                    mean_res,
+                    yerr=[errors_lower, errors_upper],
+                    fmt="x",
+                    label=reconstructor.get_name(),
+                    color=color_map(index),
+                    linestyle="None",
+                )
+            else:
+                binned_resolution = self._compute_binned_feature(
+                    binning_mask, mass_resolution, event_weights
+                )
+
+                ax.plot(
+                    bin_centers,
+                    binned_resolution,
+                    label=reconstructor.get_name(),
+                    color=color_map(index),
+                )
+        # Configure plot
+        ax.set_xlabel(
+            fancy_feautre_label if fancy_feautre_label is not None else feature_name
+        )
+        ax.set_ylabel("Top Mass Resolution")
+        ax.set_ylim(0, None)
+        ax.set_xlim(bins[0], bins[-1])
+        ax.grid(alpha=0.3)
+        ax.legend(loc="best")
+        ax.set_title(
+            f"Top Mass Resolution per Bin vs {fancy_feautre_label if fancy_feautre_label is not None else feature_name}"
+            + (f" ({confidence*100:.0f}% CI)" if show_errorbar else "")
+        )
+        # Add event count histogram
+        ax_clone = ax.twinx()
+        bin_counts = np.sum(
+            event_weights.reshape(1, -1) * binning_mask, axis=1
+        ) / np.sum(
+            event_weights
+        )  # Normalized counts
+        ax_clone.bar(
+            bin_centers,
+            bin_counts,
+            width=(bins[1] - bins[0]),
+            alpha=0.2,
+            color="red",
+            label="Event Count",
+        )
+        ax_clone.set_ylabel("Event Count", color="red")
+        ax_clone.tick_params(axis="y", labelcolor="red")
         fig.tight_layout()
         return fig, ax

@@ -7,10 +7,10 @@ class DataPlotter:
     def __init__(self, data_processor: DataPreprocessor, plots_dir: str):
         self.data_processor = data_processor
         self.plots_dir = plots_dir
-        self.padding_value = data_processor.padding_value
-        self.max_jets = data_processor.config.max_jets
-        self.max_leptons = data_processor.config.max_leptons
-        self.feature_index_dict = data_processor.feature_index_dict
+        self.padding_value = data_processor.data_config.padding_value
+        self.max_jets = data_processor.data_config.max_jets
+        self.max_leptons = data_processor.data_config.max_leptons
+        self.feature_index_dict = data_processor.data_config.feature_indices
         self.event_cuts = np.ones(data_processor.data_length , dtype=bool) 
         os.makedirs(self.plots_dir, exist_ok=True)
 

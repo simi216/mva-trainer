@@ -1,9 +1,9 @@
 from core.reconstruction import EventReconstructorBase
 from core.DataLoader import DataConfig
 import numpy as np
-from core.utils.tools import (
-    four_vector_from_pt_eta_phi_e,
-    compute_mass_from_four_vector,
+from core.utils.four_vector_arithmetics import (
+    lorentz_vector_from_pt_eta_phi_e,
+    compute_mass_from_lorentz_vector,
 )
 
 
@@ -225,17 +225,17 @@ class LeptonJetMassAssigner(BaselineAssigner):
         jet_phi = jets[:, :, self.feature_index_dict["jet"]["ordered_jet_phi"]][
             :, :, np.newaxis
         ]
-        lep_px, lep_py, lep_pz, lep_e = four_vector_from_pt_eta_phi_e(
+        lep_px, lep_py, lep_pz, lep_e = lorentz_vector_from_pt_eta_phi_e(
             lepton_pt, lepton_eta, lepton_phi, lepton_energy
         )
-        jet_px, jet_py, jet_pz, jet_e = four_vector_from_pt_eta_phi_e(
+        jet_px, jet_py, jet_pz, jet_e = lorentz_vector_from_pt_eta_phi_e(
             jet_pt, jet_eta, jet_phi, jet_energy
         )
         combined_px = lep_px + jet_px
         combined_py = lep_py + jet_py
         combined_pz = lep_pz + jet_pz
         combined_e = lep_e + jet_e
-        invariant_mass = compute_mass_from_four_vector(
+        invariant_mass = compute_mass_from_lorentz_vector(
             combined_px, combined_py, combined_pz, combined_e
         )
         return invariant_mass
@@ -375,7 +375,7 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         return np.sqrt(mass_squared)
 
     def get_four_vector(self, pt, eta, phi, e):
-        px, py, pz, energy = four_vector_from_pt_eta_phi_e(pt, eta, phi, e)
+        px, py, pz, energy = lorentz_vector_from_pt_eta_phi_e(pt, eta, phi, e)
         return np.array([px, py, pz, energy]).transpose(
             1, 2, 0
         )  # Shape: (num_events, num_particles,4)
@@ -414,7 +414,7 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
             data_dict
         )  # Shape: (num_events, max_jets, max_leptons)
         W_boson_candidates = lepton_four_vectors + np.stack(
-            [nu_four_vector, anu_four_vector], axis=1
+            [nu_four_vector,anu_four_vector], axis=1
         )  # Shape: (num_events, max_leptons,4)
         W_boson_candidates = W_boson_candidates[:, np.newaxis, :, :]
         top_candidates = W_boson_candidates + jet_four_vectors[:, :, np.newaxis, :]
@@ -435,7 +435,12 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         from scipy.optimize import linear_sum_assignment
         for e in range(num_events):
             cost_matrix = mass_differences_masked[e].T  # Shape: (max_leptons, max_jets)
-            row_ind, col_ind = linear_sum_assignment(cost_matrix)
+            try:
+                row_ind, col_ind = linear_sum_assignment(cost_matrix)
+            except ValueError:
+                print("Linear sum assignment failed for event", e)
+                row_ind, col_ind = [], []
+                continue
             predicted_indices[e, col_ind, row_ind] = 1
 
         return predicted_indices
