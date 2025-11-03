@@ -325,7 +325,7 @@ class DataPreprocessor:
         tree_name: str,
         max_events: Optional[int] = None,
         cut_neg_weights: bool = True,
-    ) -> None:
+    ) -> DataConfig:
         """
         Load and preprocess data from ROOT file.
 

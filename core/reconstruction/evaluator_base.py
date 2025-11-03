@@ -1,0 +1,287 @@
+"""Base classes and utilities for model evaluation."""
+
+import numpy as np
+from typing import Tuple, Optional
+from dataclasses import dataclass
+
+
+@dataclass
+class PlotConfig:
+    """Configuration for plots."""
+
+    figsize: Tuple[int, int] = (10, 6)
+    confidence: float = 0.95
+    n_bootstrap: int = 1000
+    show_errorbar: bool = True
+    alpha: float = 0.3
+
+
+class BootstrapCalculator:
+    """Handles bootstrap calculations for confidence intervals."""
+
+    @staticmethod
+    def compute_bootstrap_ci(
+        data: np.ndarray,
+        n_bootstrap: int = 1000,
+        confidence: float = 0.95,
+        statistic_fn=np.mean,
+    ) -> Tuple[float, float, float]:
+        """
+        Compute bootstrap confidence intervals for a statistic.
+
+        Args:
+            data: Input data array
+            n_bootstrap: Number of bootstrap samples
+            confidence: Confidence level for intervals
+            statistic_fn: Function to compute statistic (default: mean)
+
+        Returns:
+            Tuple of (mean_statistic, lower_bound, upper_bound)
+        """
+        n_samples = len(data)
+        bootstrap_statistics = np.zeros(n_bootstrap)
+
+        for i in range(n_bootstrap):
+            indices = np.random.randint(0, n_samples, size=n_samples)
+            bootstrap_sample = data[indices]
+            bootstrap_statistics[i] = statistic_fn(bootstrap_sample)
+
+        mean_statistic = np.mean(bootstrap_statistics)
+        alpha = 1 - confidence
+        lower_percentile = (alpha / 2) * 100
+        upper_percentile = (1 - alpha / 2) * 100
+
+        lower_bound = np.percentile(bootstrap_statistics, lower_percentile)
+        upper_bound = np.percentile(bootstrap_statistics, upper_percentile)
+
+        return mean_statistic, lower_bound, upper_bound
+
+    @staticmethod
+    def compute_binned_bootstrap(
+        binning_mask: np.ndarray,
+        event_weights: np.ndarray,
+        data: np.ndarray,
+        n_bootstrap: int = 1000,
+        confidence: float = 0.95,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Compute binned statistics with bootstrap confidence intervals.
+
+        Args:
+            binning_mask: Boolean mask for binning (n_bins, n_events)
+            event_weights: Event weights (n_events,)
+            data: Data to bin (n_events,)
+            n_bootstrap: Number of bootstrap samples
+            confidence: Confidence level for intervals
+
+        Returns:
+            Tuple of (mean_values, lower_bounds, upper_bounds) arrays
+        """
+        n_samples = len(data)
+        n_bins = binning_mask.shape[0]
+        bootstrap_binned_values = np.zeros((n_bootstrap, n_bins))
+
+        for i in range(n_bootstrap):
+            indices = np.random.randint(0, n_samples, size=n_samples)
+            bootstrap_data = data[indices]
+            bootstrap_weights = event_weights[indices]
+            bootstrap_mask = binning_mask[:, indices]
+
+            binned_values = BinningUtility.compute_weighted_binned_statistic(
+                bootstrap_mask, bootstrap_data, bootstrap_weights
+            )
+            bootstrap_binned_values[i] = binned_values
+
+        mean_values = np.mean(bootstrap_binned_values, axis=0)
+
+        alpha = 1 - confidence
+        lower_percentile = (alpha / 2) * 100
+        upper_percentile = (1 - alpha / 2) * 100
+
+        lower_bounds = np.percentile(bootstrap_binned_values, lower_percentile, axis=0)
+        upper_bounds = np.percentile(bootstrap_binned_values, upper_percentile, axis=0)
+
+        return mean_values, lower_bounds, upper_bounds
+
+
+class BinningUtility:
+    """Utilities for binning data."""
+
+    @staticmethod
+    def create_bins(
+        data: np.ndarray,
+        n_bins: int = 20,
+        xlims: Optional[Tuple[float, float]] = None,
+    ) -> np.ndarray:
+        """Create bin edges."""
+        if xlims is not None:
+            return np.linspace(xlims[0], xlims[1], n_bins + 1)
+        return np.linspace(np.min(data), np.max(data), n_bins + 1)
+
+    @staticmethod
+    def create_binning_mask(
+        data: np.ndarray,
+        bins: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Create boolean mask for binning.
+
+        Args:
+            data: Data to bin (n_events,)
+            bins: Bin edges
+
+        Returns:
+            Boolean mask (n_bins, n_events)
+        """
+        return (data.reshape(1, -1) >= bins[:-1].reshape(-1, 1)) & (
+            data.reshape(1, -1) < bins[1:].reshape(-1, 1)
+        )
+
+    @staticmethod
+    def compute_bin_centers(bins: np.ndarray) -> np.ndarray:
+        """Compute bin centers from bin edges."""
+        return 0.5 * (bins[:-1] + bins[1:])
+
+    @staticmethod
+    def compute_weighted_binned_statistic(
+        binning_mask: np.ndarray,
+        data: np.ndarray,
+        weights: np.ndarray,
+        statistic: str = "mean",
+    ) -> np.ndarray:
+        """
+        Compute weighted statistic in bins.
+
+        Args:
+            binning_mask: Boolean mask for binning (n_bins, n_events)
+            data: Data to bin (n_events,)
+            weights: Event weights (n_events,)
+            statistic: Type of statistic ('mean', 'std', 'sum')
+
+        Returns:
+            Array of statistics per bin
+        """
+        weighted_data = data.reshape(1, -1) * weights.reshape(1, -1) * binning_mask
+        bin_weights = np.sum(weights.reshape(1, -1) * binning_mask, axis=1)
+
+        if statistic == "mean":
+            bin_values = np.sum(weighted_data, axis=1)
+            result = np.divide(
+                bin_values,
+                bin_weights,
+                out=np.zeros_like(bin_values, dtype=float),
+                where=bin_weights != 0,
+            )
+        elif statistic == "sum":
+            result = np.sum(weighted_data, axis=1)
+        elif statistic == "std":
+            mean_values = BinningUtility.compute_weighted_binned_statistic(
+                binning_mask, data, weights, statistic="mean"
+            )
+            squared_diff = (data.reshape(1, -1) - mean_values.reshape(-1, 1)) ** 2
+            weighted_squared_diff = squared_diff * weights.reshape(1, -1) * binning_mask
+            variance = np.divide(
+                np.sum(weighted_squared_diff, axis=1),
+                bin_weights,
+                out=np.zeros_like(bin_weights, dtype=float),
+                where=bin_weights != 0,
+            )
+            result = np.sqrt(variance)
+        else:
+            raise ValueError(f"Unknown statistic: {statistic}")
+
+        return result
+
+
+class FeatureExtractor:
+    """Utilities for extracting features from test data."""
+
+    @staticmethod
+    def extract_feature(
+        X_test: dict,
+        feature_indices: dict,
+        feature_data_type: str,
+        feature_name: str,
+    ) -> np.ndarray:
+        """
+        Extract feature data from test set.
+
+        Args:
+            X_test: Test data dictionary
+            feature_indices: Feature index mapping
+            feature_data_type: Type of feature ('jet', 'lepton', 'met', etc.)
+            feature_name: Name of the feature
+
+        Returns:
+            Feature data array
+
+        Raises:
+            ValueError: If feature type or name not found
+        """
+        if feature_data_type not in X_test:
+            raise ValueError(
+                f"Feature data type '{feature_data_type}' not found in test data."
+            )
+        if feature_name not in feature_indices[feature_data_type]:
+            raise ValueError(
+                f"Feature name '{feature_name}' not found in test data "
+                f"for type '{feature_data_type}'."
+            )
+
+        feature_idx = feature_indices[feature_data_type][feature_name]
+        data = X_test[feature_data_type]
+
+        if data.ndim == 2:
+            return data[:, feature_idx]
+        elif data.ndim == 3:
+            return data[:, feature_idx, 0]
+        else:
+            raise ValueError(
+                f"Feature data for type '{feature_data_type}' has unsupported "
+                f"number of dimensions: {data.ndim}"
+            )
+
+    @staticmethod
+    def get_event_weights(X_test: dict) -> np.ndarray:
+        """Get event weights from test data."""
+        n_events = X_test[list(X_test.keys())[0]].shape[0]
+        return X_test.get("event_weight", np.ones(n_events))
+
+
+class AccuracyCalculator:
+    """Utilities for computing accuracy metrics."""
+
+    @staticmethod
+    def compute_accuracy(
+        true_labels: np.ndarray,
+        predictions: np.ndarray,
+        per_event: bool = True,
+    ) -> np.ndarray:
+        """
+        Compute accuracy from predictions.
+
+        Args:
+            true_labels: True assignment labels
+            predictions: Model predictions
+            per_event: If True, return per-event accuracy; else overall
+
+        Returns:
+            Accuracy value(s)
+        """
+        predicted_indices = np.argmax(predictions, axis=-2)
+        true_indices = np.argmax(true_labels, axis=-2)
+        correct_predictions = np.all(predicted_indices == true_indices, axis=-1)
+
+        if per_event:
+            return correct_predictions.astype(float)
+        return np.mean(correct_predictions)
+
+    @staticmethod
+    def compute_combinatoric_baseline(
+        X_test: dict,
+        padding_value: float,
+        n_leptons: int = 2,
+    ) -> np.ndarray:
+        """Compute random assignment baseline accuracy."""
+        num_jets = np.all(X_test["jet"] != padding_value, axis=-1).sum(axis=-1)
+        return 1 / (num_jets * (num_jets - 1))
