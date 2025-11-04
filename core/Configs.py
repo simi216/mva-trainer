@@ -120,6 +120,7 @@ class DataConfig:
     lepton_features: List[str]
     met_features: Optional[List[str]] = None
     non_training_features: Optional[List[str]] = None
+    custom_features: Dict[str, int] = field(default_factory=dict)
     
     # Data structure
     max_jets: int = 4

@@ -10,7 +10,7 @@ methods with support for:
 - Mass resolution calculations
 - Comprehensive visualization tools
 """
-from .reconstruction_base import EventReconstructorBase, MLReconstructorBase, GroundTruthReconstructor
+from .reconstruction_base import EventReconstructorBase, MLReconstructorBase, GroundTruthReconstructor, FixedPrecisionReconstructor
 from .ml_evaluator import MLEvaluator, FeatureImportanceCalculator
 from .reconstruction_evaluator import ReconstructionEvaluator
 from .evaluator_base import (

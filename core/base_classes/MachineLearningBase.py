@@ -92,7 +92,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             raise ValueError("Assignment labels not found in y_train.")
         self.y_train = self.y_train["assignment_labels"]
 
-    def _prepare_inputs(self, input_as_four_vector):
+    def _prepare_inputs(self, input_as_four_vector, log_E = True):
         jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
         lep_inputs = keras.Input(
             shape=(self.max_leptons, self.n_leptons), name="lep_inputs"
@@ -101,10 +101,10 @@ class MLWrapperBase(BaseUtilityModel, ABC):
 
         # Normalise inputs
         if input_as_four_vector:
-            transformed_jet_inputs = InputPtEtaPhiELayer(name="jet_input_transform")(
+            transformed_jet_inputs = InputPtEtaPhiELayer(name="jet_input_transform", log_E=log_E, padding_value=self.padding_value)(
                 jet_inputs
             )
-            transformed_lep_inputs = InputPtEtaPhiELayer(name="lep_input_transform")(
+            transformed_lep_inputs = InputPtEtaPhiELayer(name="lep_input_transform", log_E=log_E, padding_value=self.padding_value)(
                 lep_inputs
             )
             transformed_met_inputs = InputMetPhiLayer(name="met_input_transform")(
@@ -143,6 +143,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         sample_weights=None,
         validation_split=0.2,
         callbacks=None,
+        **kwargs
     ):
         if self.model is None:
             raise ValueError(
@@ -163,6 +164,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             batch_size=batch_size,
             validation_split=validation_split,
             callbacks=callbacks,
+            **kwargs
         )
         return self.history
 

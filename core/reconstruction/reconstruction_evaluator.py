@@ -359,6 +359,136 @@ class ReconstructionEvaluator:
             show_combinatoric,
             combinatoric_accuracy,
         )
+    
+    def plot_feature_assignment_success(
+        self,
+        feature_data_type: str,
+        feature_name: str,
+        assigner_index: int,
+        fancy_feature_label: Optional[str] = None,
+        bins: int = 20,
+        xlims: Optional[Tuple[float, float]] = None,
+        figsize: Tuple[int, int] = (8, 6),
+    ):
+        """Plot feature distribution for correctly and incorrectly assigned events."""
+        # Extract feature data
+        feature_data = FeatureExtractor.extract_feature(
+            self.X_test,
+            self.config.feature_indices,
+            feature_data_type,
+            feature_name,
+        )
+
+        # Get event weights
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+
+        # Get assignment success for the first reconstructor (as an example)
+        assignment_success = self.evaluate_accuracy(assigner_index, per_event=True)
+
+        # Create bins
+        bin_edges = BinningUtility.create_bins(feature_data, bins, xlims)
+        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
+
+        # Compute histograms
+        correct_mask = assignment_success.astype(bool)
+        incorrect_mask = ~correct_mask
+        correct_weights = event_weights * correct_mask
+        incorrect_weights = event_weights * incorrect_mask
+        correct_hist = np.histogram(
+            feature_data,
+            bins=bin_edges,
+            weights=correct_weights,
+            density=True
+        )[0]
+        incorrect_hist = np.histogram(
+            feature_data,
+            bins=bin_edges,
+            weights=incorrect_weights,
+            density=True
+        )[0]
+
+        # Plot
+        feature_label = fancy_feature_label or feature_name
+        return AccuracyPlotter.plot_feature_assignment_success(
+            bin_centers,
+            correct_hist,
+            incorrect_hist,
+            feature_label,
+            figsize,
+        )
+    
+    def plot_top_mass_deviation_assignment_success(
+        self,
+        assigner_index: int,
+        true_top_mass_labels: List[str] = ["truth_top_mass", "truth_tbar_mass"],
+        fancy_feature_label: Optional[str] = None,
+        bins: int = 20,
+        xlims: Optional[Tuple[float, float]] = None,
+        figsize: Tuple[int, int] = (8, 6),
+    ):
+        """Plot top mass deviation for correctly and incorrectly assigned events."""
+        # Validate and extract true top masses
+        true_top1_mass, true_top2_mass = self._extract_true_top_masses(
+            true_top_mass_labels
+        )
+
+        # Compute predicted top masses
+        top1_p4, top2_p4 = self._compute_top_lorentz_vectors(assigner_index)
+        pred_top1_mass, pred_top2_mass = TopReconstructor.compute_top_masses(
+            top1_p4, top2_p4
+        )
+
+        # Compute mass deviation (extended for both tops)
+        mass_deviation = np.concatenate(
+            [
+                ResolutionCalculator.compute_relative_deviation(
+                    pred_top1_mass, true_top1_mass
+                ),
+                ResolutionCalculator.compute_relative_deviation(
+                    pred_top2_mass, true_top2_mass
+                ),
+            ]
+        )
+
+        # Get event weights and assignment success
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+        assignment_success = self.evaluate_accuracy(assigner_index, per_event=True)
+        assignment_success_extended = np.concatenate(
+            [assignment_success, assignment_success]
+        )
+        event_weights = np.concatenate([event_weights, event_weights])
+
+        # Create bins
+        bin_edges = BinningUtility.create_bins(mass_deviation, bins, xlims)
+        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
+
+        # Compute histograms
+        correct_mask = assignment_success_extended.astype(bool)
+        incorrect_mask = ~correct_mask
+        correct_weights = event_weights * correct_mask
+        incorrect_weights = event_weights * incorrect_mask
+        correct_hist = np.histogram(
+            mass_deviation,
+            bins=bin_edges,
+            weights=correct_weights,
+            density=True
+        )[0]
+        incorrect_hist = np.histogram(
+            mass_deviation,
+            bins=bin_edges,
+            weights=incorrect_weights,
+            density=True
+        )[0]
+
+        # Plot
+        feature_label = fancy_feature_label or "Relative Top Mass Deviation"
+        return AccuracyPlotter.plot_feature_assignment_success(
+            bin_centers,
+            correct_hist,
+            incorrect_hist,
+            feature_label,
+            figsize,
+        )
 
     # ==================== Confusion Matrix Methods ====================
 

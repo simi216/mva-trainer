@@ -149,6 +149,45 @@ class AccuracyPlotter:
         ax_twin.set_ylabel("Event Count", color="red")
         ax_twin.tick_params(axis="y", labelcolor="red")
 
+    @staticmethod
+    def plot_feature_assignment_success(
+        bin_centers: np.ndarray,
+        correct_hist: np.ndarray,
+        incorrect_hist: np.ndarray,
+        feature_label: str,
+        figsize: Tuple[int, int] = (8, 6),
+    ):
+        """Plot histogram of correct vs incorrect assignments per feature bin."""
+        fig, ax = plt.subplots(figsize=figsize)
+
+        width = bin_centers[1] - bin_centers[0]
+
+        ax.bar(
+            bin_centers,
+            correct_hist,
+            width=width,
+            label="Correct Assignments",
+            color="green",
+            alpha=0.7,
+        )
+        ax.bar(
+            bin_centers,
+            incorrect_hist,
+            width=width,
+            label="Incorrect Assignments",
+            color="red",
+            alpha=0.7,
+        )
+
+        ax.set_xlabel(feature_label)
+        ax.set_ylabel("a. u.")
+        ax.set_title(f"Assignment Success vs {feature_label}")
+        ax.legend(loc="best")
+        ax.grid(alpha=0.3)
+
+        fig.tight_layout()
+        return fig, ax
+
 
 class ConfusionMatrixPlotter:
     """Handles plotting of confusion matrices."""

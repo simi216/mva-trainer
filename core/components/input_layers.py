@@ -15,8 +15,10 @@ class InputPtEtaPhiELayer(keras.layers.Layer):
     (pt, eta, phi, E), followed by any residual features.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self,log_E,padding_value, **kwargs):
         super().__init__(**kwargs)
+        self.log_E = log_E
+        self.padding_value = padding_value
 
     def call(self, inputs, mask=None):
         # Split input features
@@ -35,10 +37,13 @@ class InputPtEtaPhiELayer(keras.layers.Layer):
             safe_pt = tf.where(mask, pt, tf.zeros_like(pt))
             safe_eta = tf.where(mask, eta, tf.zeros_like(eta))
             safe_phi = tf.where(mask, phi, tf.zeros_like(phi))
-            safe_energy = tf.where(mask, energy, tf.zeros_like(energy))
+            safe_energy = tf.where(mask, energy, tf.ones_like(energy))
         else:
             # No mask passed — process everything
             safe_pt, safe_eta, safe_phi, safe_energy = pt, eta, phi, energy
+        if self.log_E:
+            safe_energy = tf.where(safe_energy > 0, safe_energy, tf.ones_like(safe_energy) * 1e-6)
+            safe_energy = tf.math.log(safe_energy)
 
         # Compute Cartesian components
         px = safe_pt * tf.cos(safe_phi)
@@ -50,7 +55,7 @@ class InputPtEtaPhiELayer(keras.layers.Layer):
 
         # If mask exists, restore masked entries to 0 (or optionally NaN / -999)
         if mask is not None:
-            outputs = tf.where(mask, outputs, tf.zeros_like(outputs))
+            outputs = tf.where(mask, outputs, tf.ones_like(outputs) * self.padding_value)
 
         return outputs
 

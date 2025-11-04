@@ -122,8 +122,6 @@ class PreProcessor {
         double nu_flows_antineutrino_py;
         double nu_flows_antineutrino_pz;
 
-        double nu_flows_m_ttbar;
-
         int truth_initial_parton_num_gluons;
 
         double dR_l1l2;
