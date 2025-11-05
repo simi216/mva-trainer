@@ -217,6 +217,7 @@ def main():
             restore_best_weights=True,
             mode="min",
         ),
+        verbose=0,
     )
 
     # Save model

@@ -325,7 +325,7 @@ class DataPreprocessor:
         tree_name: str,
         max_events: Optional[int] = None,
         cut_neg_weights: bool = True,
-    ) -> None:
+    ) -> DataConfig:
         """
         Load and preprocess data from ROOT file.
 
@@ -464,8 +464,10 @@ class DataPreprocessor:
         """
         if self.feature_data is None:
             raise ValueError("Feature data not loaded. Call load_data() first.")
+        if self.data_config is None:
+            raise ValueError("DataConfig not available. Call load_data() first.")
 
-        new_data = function(self.feature_data)
+        new_data = function(self.feature_data, self.data_config)
 
         if len(new_data) != self.data_length:
             raise ValueError(
@@ -485,10 +487,7 @@ class DataPreprocessor:
             self.feature_data["custom"] = np.concatenate(
                 (self.feature_data["custom"], new_data), axis=1
             )
-
-        # Update DataConfig if available
-        if self.data_config is not None:
-            self.data_config.add_custom_feature(name, feature_idx)
+        self.data_config.add_custom_feature(name, feature_idx)
 
     # -------------------------------------------------------------------------
     # Data Access

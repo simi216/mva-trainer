@@ -165,8 +165,6 @@ void PreProcessor::RegisterNuFlowResults()
     outputTree->Branch("nu_flows_antineutrino_py", &nu_flows_antineutrino_py);
     outputTree->Branch("nu_flows_antineutrino_pz", &nu_flows_antineutrino_pz);
 
-    outputTree->Branch("nu_flows_m_ttbar", &nu_flows_m_ttbar);
-
     save_nu_flows = true;
 }
 
@@ -185,19 +183,6 @@ void PreProcessor::GetNuFlowBranches()
     nu_flows_antineutrino_px = Event->nuflows_nu_out_NOSYS->at(3) * 1e3;
     nu_flows_antineutrino_py = Event->nuflows_nu_out_NOSYS->at(4) * 1e3;
     nu_flows_antineutrino_pz = Event->nuflows_nu_out_NOSYS->at(5) * 1e3;
-}
-
-void PreProcessor::SaveNuFlowTTbarMass(TLorentzVector &l1, TLorentzVector &l2, TLorentzVector &j1, TLorentzVector &j2)
-{
-    TLorentzVector nu1, nu2;
-    double E1, E2;
-    E1 = std::sqrt(nu_flows_neutrino_px * nu_flows_neutrino_px + nu_flows_neutrino_py * nu_flows_neutrino_py + nu_flows_neutrino_pz * nu_flows_neutrino_pz);
-    E2 = std::sqrt(nu_flows_antineutrino_px * nu_flows_antineutrino_px + nu_flows_antineutrino_py * nu_flows_antineutrino_py + nu_flows_antineutrino_pz * nu_flows_antineutrino_pz);
-    nu1.SetPxPyPzE(nu_flows_neutrino_px, nu_flows_neutrino_py, nu_flows_neutrino_pz, E1);
-    nu2.SetPxPyPzE(nu_flows_antineutrino_px, nu_flows_antineutrino_py, nu_flows_antineutrino_pz, E2);
-    TLorentzVector ttbar = l1 + l2 + j1 + j2 + nu1 + nu2;
-    nu_flows_m_ttbar = ttbar.M();
-    //std::cout << E1<< "  " << E2 << "  " << nu1.M() << "  " << nu2.M() << std::endl;
 }
 
 void PreProcessor::FillInitialStateBranches()
@@ -318,15 +303,15 @@ void PreProcessor::FillBranches()
         lep.SetPtEtaPhiE(Event->mu_pt_NOSYS->at(i), Event->mu_eta->at(i), Event->mu_phi->at(i), Event->mu_e_NOSYS->at(i));
         if (Event->event_muon_truth_idx->at(0) == static_cast<int>(i))
         {
-            leptons.emplace_back(std::make_tuple(lep, Event->mu_charge->at(i), static_cast<int>(Event->mu_charge->at(i)) * 13, 1));
+            leptons.emplace_back(std::make_tuple(lep, Event->mu_charge->at(i), static_cast<int>(Event->mu_charge->at(i)) * 13, 1)); // Save 1 for lepton from top
         }
         else if (Event->event_muon_truth_idx->at(1) == static_cast<int>(i))
         {
-            leptons.emplace_back(std::make_tuple(lep, Event->mu_charge->at(i), static_cast<int>(Event->mu_charge->at(i)) * 13, -1));
+            leptons.emplace_back(std::make_tuple(lep, Event->mu_charge->at(i), static_cast<int>(Event->mu_charge->at(i)) * 13, -1)); // Save -1 for lepton from antitop
         }
         else
         {
-            leptons.emplace_back(std::make_tuple(lep, Event->mu_charge->at(i), static_cast<int>(Event->mu_charge->at(i)) * 13, 0));
+            leptons.emplace_back(std::make_tuple(lep, Event->mu_charge->at(i), static_cast<int>(Event->mu_charge->at(i)) * 13, 0)); // Save 0 for other leptons
         }
     }
     for (size_t i = 0; i < Event->jet_pt_NOSYS->size(); ++i)
@@ -335,15 +320,15 @@ void PreProcessor::FillBranches()
         jet.SetPtEtaPhiE(Event->jet_pt_NOSYS->at(i), Event->jet_eta->at(i), Event->jet_phi->at(i), Event->jet_e_NOSYS->at(i));
         if (Event->event_jet_truth_idx->at(0) == static_cast<int>(i))
         {
-            jets.emplace_back(std::make_tuple(jet, Event->jet_GN2v01_Continuous_quantile->at(i), 1)); // No charge or pid for jets
+            jets.emplace_back(std::make_tuple(jet, Event->jet_GN2v01_Continuous_quantile->at(i), 1)); // Save 1 for b-jet from top
         }
         else if (Event->event_jet_truth_idx->at(3) == static_cast<int>(i))
         {
-            jets.emplace_back(std::make_tuple(jet, Event->jet_GN2v01_Continuous_quantile->at(i), -1)); // No charge or pid for jets
+            jets.emplace_back(std::make_tuple(jet, Event->jet_GN2v01_Continuous_quantile->at(i), -1)); // Save -1 for b-jet from antitop
         }
         else
         {
-            jets.emplace_back(std::make_tuple(jet, Event->jet_GN2v01_Continuous_quantile->at(i), 0)); // No charge or pid for jets
+            jets.emplace_back(std::make_tuple(jet, Event->jet_GN2v01_Continuous_quantile->at(i), 0)); // Save 0 for other jets
         }
     }
     std::sort(leptons.begin(), leptons.end(), [](const std::tuple<TLorentzVector, int, int, int> &a, const std::tuple<TLorentzVector, int, int, int> &b)
@@ -466,9 +451,8 @@ void PreProcessor::FillBranches()
     if (save_nu_flows)
     {
         GetNuFlowBranches();
-        int true_jet_index_1 = Event->event_jet_truth_idx->at(0);
-        int true_jet_index_2 = Event->event_jet_truth_idx->at(3);
-        SaveNuFlowTTbarMass(std::get<0>(leptons[0]), std::get<0>(leptons[1]), std::get<0>(jets[true_jet_index_1]), std::get<0>(jets[true_jet_index_2]));
+        int true_jet_index_1 = event_jet_truth_idx->at(0);
+        int true_jet_index_2 = event_jet_truth_idx->at(3);
     }
     if (save_initial_parton_info)
     {

@@ -120,6 +120,7 @@ class DataConfig:
     lepton_features: List[str]
     met_features: Optional[List[str]] = None
     non_training_features: Optional[List[str]] = None
+    custom_features: Dict[str, int] = field(default_factory=dict)
     
     # Data structure
     max_jets: int = 4
@@ -397,48 +398,3 @@ class DataConfig:
         lines.append("=" * 60)
         
         return "\n".join(lines)
-
-
-# =============================================================================
-# Example Usage
-# =============================================================================
-
-def create_example_configs():
-    """Example showing how to use LoadConfig and DataConfig."""
-    
-    # 1. Create LoadConfig for data loading
-    load_config = LoadConfig(
-        jet_features=['jet_pt', 'jet_eta', 'jet_phi', 'jet_m'],
-        lepton_features=['lep_pt', 'lep_eta', 'lep_phi'],
-        jet_truth_label='jet_truth',
-        lepton_truth_label='lep_truth',
-        max_jets=4,
-        max_leptons=2,
-        met_features=['met_pt', 'met_phi'],
-        event_weight='event_weight',
-        padding_value=-999.0
-    )
-    
-    # 2. Use LoadConfig during data loading
-    # preprocessor = DataPreprocessor(load_config)
-    # preprocessor.load_data('data.root', 'tree')
-    
-    # 3. Create DataConfig for downstream use
-    data_config = load_config.to_data_config()
-    
-    # 4. Pass DataConfig to ML model
-    # model = MyModel(data_config)
-    
-    # DataConfig provides useful accessors:
-    print(f"Number of jet features: {data_config.get_n_jet_features()}")
-    print(f"Jet feature names: {data_config.get_feature_names('jet')}")
-    print(f"Expected jet shape: {data_config.get_expected_shape('jet', n_events=1000)}")
-    print(f"Model input shapes: {data_config.get_model_input_shapes()}")
-    print(f"Model output shape: {data_config.get_output_shape()}")
-    
-    # Print full summary
-    print(data_config.summary())
-
-
-if __name__ == "__main__":
-    create_example_configs()

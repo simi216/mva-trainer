@@ -56,8 +56,8 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
         Returns:
             float: The mean squared error of the model's regression predictions.
         """
-        regression_predictions = self.reconstruct_neutrinos(data_dict)
-        mse = np.mean((regression_predictions - true_values) ** 2)
+        neutrino_prediction = self.reconstruct_neutrinos(data_dict)
+        mse = np.mean((neutrino_prediction - true_values) ** 2)
         return mse
 
 
@@ -76,6 +76,27 @@ class GroundTruthReconstructor(EventReconstructorBase):
             )
         return data_dict["neutrino_momenta"]
 
+
+class FixedPrecisionReconstructor(EventReconstructorBase):
+    def __init__(self, config: DataConfig, precision=0.1, name="fixed_precision_reconstructor"):
+        super().__init__(config=config, name=name)
+        self.precision = precision
+
+    def predict_indices(self, data_dict):
+        true_labels = data_dict["assignment_labels"].copy()
+
+        # Vectorized: choose which events to swap
+        n_events = true_labels.shape[0]
+        swap_mask = np.random.rand(n_events) > self.precision
+
+        # Perform swap only for selected events
+        if np.any(swap_mask):
+            # Use fancy indexing to swap columns 0 and 1 where mask is True
+            temp = true_labels[swap_mask, :, 0].copy()
+            true_labels[swap_mask, :, 0] = true_labels[swap_mask, :, 1]
+            true_labels[swap_mask, :, 1] = temp
+
+        return true_labels
 
 class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
     def __init__(self, config: DataConfig, name="ml_assigner"):
@@ -220,11 +241,11 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
         if not self.config.has_regression_targets:
             raise ValueError("Regression targets are not specified in the config.")
         if self.met_features is not None:
-            regression_predictions = self.model.predict_dict(
+            neutrino_prediction = self.model.predict_dict(
                 [data["jet"], data["lepton"], data["met"]], verbose=0
             )["regression"]
         else:
-            regression_predictions = self.model.predict_dict(
+            neutrino_prediction = self.model.predict_dict(
                 [data["jet"], data["lepton"]], verbose=0
             )["regression"]
-        return regression_predictions
+        return neutrino_prediction
