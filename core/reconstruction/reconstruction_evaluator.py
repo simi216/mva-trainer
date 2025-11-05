@@ -40,7 +40,7 @@ class PredictionManager:
         for reconstructor in self.reconstructors:
             assignment_pred = reconstructor.predict_indices(self.X_test)
 
-            if reconstructor.config.has_regression_targets:
+            if hasattr(reconstructor, "reconstruct_neutrinos") and reconstructor.neutrino_reconstruction:
                 neutrino_pred = reconstructor.reconstruct_neutrinos(
                     self.X_test
                 ).T.reshape(-1, 2, 3)
@@ -409,13 +409,15 @@ class ReconstructionEvaluator:
 
         # Plot
         feature_label = fancy_feature_label or feature_name
-        return AccuracyPlotter.plot_feature_assignment_success(
+        fig, ax = AccuracyPlotter.plot_feature_assignment_success(
             bin_centers,
             correct_hist,
             incorrect_hist,
             feature_label,
             figsize,
         )
+        ax.set_title(f"{self.reconstructors[assigner_index].get_name()} Assignment Success vs {feature_label}")
+        return fig, ax
     
     def plot_top_mass_deviation_assignment_success(
         self,
@@ -482,13 +484,15 @@ class ReconstructionEvaluator:
 
         # Plot
         feature_label = fancy_feature_label or "Relative Top Mass Deviation"
-        return AccuracyPlotter.plot_feature_assignment_success(
+        fig, ax = AccuracyPlotter.plot_feature_assignment_success(
             bin_centers,
             correct_hist,
             incorrect_hist,
             feature_label,
             figsize,
         )
+        ax.set_title(f"{self.reconstructors[assigner_index].get_name()} Assignment Success vs {feature_label}")
+        return fig, ax
 
     # ==================== Confusion Matrix Methods ====================
 

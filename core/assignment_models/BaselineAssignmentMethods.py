@@ -249,6 +249,7 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         neutrino_momenta_branches: list,
         top_mass=173.15e3,
         name="mass_combinatorics_assigner",
+        all_jets_considered=False,
     ):
         super().__init__(config, name)
         """Initializes the MassCombinatoricsAssigner class.
@@ -271,6 +272,7 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
             )
         self.neutrino_momenta_branches = neutrino_momenta_branches
         self.top_mass = top_mass
+        self.all_jets_considered = all_jets_considered
 
     def get_jets_mask(self, data_dict):
         padding_value = self.config.padding_value
@@ -291,6 +293,8 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
             np.ndarray: A 3D boolean array of shape (num_events, max_leptons, max_jets) indicating viable jets.
         """
         jet_mask = self.get_jets_mask(data_dict)
+        if self.all_jets_considered:
+            return jet_mask
         jet_b_tag = None
         jet_pt = None
         for feature in self.feature_index_dict["jet"]:

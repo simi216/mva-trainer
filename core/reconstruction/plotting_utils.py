@@ -181,7 +181,6 @@ class AccuracyPlotter:
 
         ax.set_xlabel(feature_label)
         ax.set_ylabel("a. u.")
-        ax.set_title(f"Assignment Success vs {feature_label}")
         ax.legend(loc="best")
         ax.grid(alpha=0.3)
 

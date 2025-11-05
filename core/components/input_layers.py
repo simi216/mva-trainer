@@ -60,7 +60,12 @@ class InputPtEtaPhiELayer(keras.layers.Layer):
         return outputs
 
     def get_config(self):
-        return super().get_config()
+        config = super().get_config()
+        config.update({
+            "log_E": self.log_E,
+            "padding_value": self.padding_value,
+        })
+        return config
 
 @keras.utils.register_keras_serializable()
 class InputMetPhiLayer(keras.layers.Layer):

@@ -56,8 +56,8 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
         Returns:
             float: The mean squared error of the model's regression predictions.
         """
-        regression_predictions = self.reconstruct_neutrinos(data_dict)
-        mse = np.mean((regression_predictions - true_values) ** 2)
+        neutrino_prediction = self.reconstruct_neutrinos(data_dict)
+        mse = np.mean((neutrino_prediction - true_values) ** 2)
         return mse
 
 
@@ -241,11 +241,11 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
         if not self.config.has_regression_targets:
             raise ValueError("Regression targets are not specified in the config.")
         if self.met_features is not None:
-            regression_predictions = self.model.predict_dict(
+            neutrino_prediction = self.model.predict_dict(
                 [data["jet"], data["lepton"], data["met"]], verbose=0
             )["regression"]
         else:
-            regression_predictions = self.model.predict_dict(
+            neutrino_prediction = self.model.predict_dict(
                 [data["jet"], data["lepton"]], verbose=0
             )["regression"]
-        return regression_predictions
+        return neutrino_prediction
