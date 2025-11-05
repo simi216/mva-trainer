@@ -83,3 +83,40 @@ class AssignmentLoss(keras.losses.Loss):
         config = super().get_config()
         config.update({"lambda_excl": self.lambda_excl, "epsilon": self.epsilon})
         return config
+
+
+@keras.utils.register_keras_serializable()
+class RegressionLoss(keras.losses.Loss):
+    def __init__(self, name="regression_loss", **kwargs):
+        super().__init__(name=name, **kwargs)
+    
+    def call(self, y_true, y_pred, sample_weight=None):
+        """
+        Computes Relative Square Error (RAE) regression loss with sample weighting.
+
+        Args:
+            y_true: (batch_size, num_leptons, num_regression_vars) - true regression targets
+            y_pred: (batch_size, num_leptons, num_regression_vars) - predicted regression outputs
+            sample_weight: (batch_size,) - optional per-sample weights
+
+        Returns:
+            loss: (batch_size,) - per-sample loss
+        """
+        # ============ Relative Square Error ============
+        error = tf.square(y_true - y_pred)  # (batch, NUM_LEPTONS, regression_variables)
+
+        std = tf.math.reduce_std(y_true, axis=0)  # (NUM_LEPTONS, regression_variables)
+        std = tf.where(std < 1e-6, tf.ones_like(std), std)  # Prevent division by zero
+        error /= tf.square(std)  # Normalize by variance
+
+        # Mean over leptons and regression variables
+        error_mean = tf.reduce_mean(error, axis=[1, 2])  # (batch,)
+
+        # ============ Apply Sample Weights ============
+        if sample_weight is not None:
+            sample_weight = tf.cast(sample_weight, error_mean.dtype)
+            # Ensure sample_weight has correct shape
+            sample_weight = tf.reshape(sample_weight, [-1])  # (batch,)
+            error_mean = error_mean * sample_weight  # (batch,)
+
+        return error_mean

@@ -123,7 +123,7 @@ class MLEvaluator:
         self.y_test = y_test
 
         # Store configuration from reconstructor
-        self.max_leptons = reconstructor.max_leptons
+        self.NUM_LEPTONS = reconstructor.NUM_LEPTONS
         self.max_jets = reconstructor.max_jets
         self.met_features = reconstructor.met_features
         self.n_jets = reconstructor.n_jets

@@ -34,7 +34,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         self.history = None
         self.sample_weights = None
         self.class_weights = None
-        self.max_leptons = config.max_leptons
+        self.NUM_LEPTONS = config.NUM_LEPTONS
         self.max_jets = config.max_jets
         self.met_features = config.met_features
         self.n_jets: int = len(config.jet_features)
@@ -53,6 +53,8 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         self, X_train, y_train, sample_weights=None, class_weights=None
     ):
         self.X_train = X_train
+        y_train["assignment"] = y_train.pop("assignment_labels")
+        y_train["regression"] = y_train.pop("regression_targets")
         self.y_train = y_train
         self.sample_weights = sample_weights
         self.class_weights = class_weights
@@ -88,14 +90,11 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             else:
                 self.X_train["met_inputs"] = met_data
 
-        if "assignment_labels" not in self.y_train:
-            raise ValueError("Assignment labels not found in y_train.")
-        self.y_train = self.y_train["assignment_labels"]
 
     def _prepare_inputs(self, input_as_four_vector, log_E = True):
         jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
         lep_inputs = keras.Input(
-            shape=(self.max_leptons, self.n_leptons), name="lep_inputs"
+            shape=(self.NUM_LEPTONS, self.n_leptons), name="lep_inputs"
         )
         met_inputs = keras.Input(shape=(1, self.n_met), name="met_inputs")
 
@@ -362,7 +361,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
 
         # Define input shapes
         jet_shape = (self.max_jets, self.n_jets)
-        lep_shape = (self.max_leptons, self.n_leptons)
+        lep_shape = (self.NUM_LEPTONS, self.n_leptons)
         input_shapes = [jet_shape, lep_shape]
         if self.n_met > 0:
             met_shape = (1, self.n_met)
@@ -408,7 +407,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                         flat_feature_index_dict[flat_index] = f"jet_{j}_{feature}"
             elif feature_type == "lepton":
                 for i, feature in enumerate(features):
-                    for j in range(self.max_leptons):
+                    for j in range(self.NUM_LEPTONS):
                         flat_index = (
                             self.max_jets * self.n_jets + j * self.n_leptons + i
                         )
@@ -417,7 +416,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 for i, feature in enumerate(features):
                     flat_index = (
                         self.max_jets * self.n_jets
-                        + self.max_leptons * self.n_leptons
+                        + self.NUM_LEPTONS * self.n_leptons
                         + i
                     )
                     flat_feature_index_dict[flat_index] = f"met_{feature}"

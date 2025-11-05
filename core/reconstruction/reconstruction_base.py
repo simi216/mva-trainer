@@ -15,7 +15,7 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
     ):
         super().__init__(config=config, name=name)
         self.max_jets = config.max_jets
-        self.max_leptons = config.max_leptons
+        self.NUM_LEPTONS = config.NUM_LEPTONS
         self.neutrino_reconstruction = neutrino_reconstruction
 
     @abstractmethod
@@ -78,7 +78,9 @@ class GroundTruthReconstructor(EventReconstructorBase):
 
 
 class FixedPrecisionReconstructor(EventReconstructorBase):
-    def __init__(self, config: DataConfig, precision=0.1, name="fixed_precision_reconstructor"):
+    def __init__(
+        self, config: DataConfig, precision=0.1, name="fixed_precision_reconstructor"
+    ):
         super().__init__(config=config, name=name)
         self.precision = precision
 
@@ -98,12 +100,13 @@ class FixedPrecisionReconstructor(EventReconstructorBase):
 
         return true_labels
 
+
 class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
     def __init__(self, config: DataConfig, name="ml_assigner"):
         super().__init__(config=config, name=name)
 
     def _build_model_base(self, jet_assignment_probs, regression_output=None, **kwargs):
-        jet_assignment_probs.name = "assigment"
+        jet_assignment_probs.name = "assignment"
         if self.config.has_regression_targets and regression_output is not None:
             regression_output.name = "regression"
             self.model = KerasModelWrapper(
@@ -113,20 +116,19 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
                     self.inputs["met_inputs"],
                 ],
                 outputs={
-                    "assigment": jet_assignment_probs,
+                    "assignment": jet_assignment_probs,
                     "regression": regression_output,
                 },
                 **kwargs,
             )
-        elif self.config.has_regression_targets and regression_output is None:
-            raise ValueError(
-                "Regression targets are specified in the config, but regression_output is None."
-            )
-        elif not self.config.has_regression_targets and regression_output is not None:
-            raise Warning(
-                "Regression targets are not specified in the config, but regression_output is provided. Ignoring regression_output."
-            )
         else:
+            if self.config.has_regression_targets and regression_output is None:
+                print("WARNING: Regression targets are specified in the config, but regression_output is None.")
+            if not self.config.has_regression_targets and regression_output is not None:
+                print(
+                    "WARNING: Regression targets are not specified in the config, but regression_output is provided. Ignoring regression_output."
+                )
+            print("Building model without regression output.")
             self.model = KerasModelWrapper(
                 inputs=[
                     self.inputs["jet_inputs"],
@@ -151,7 +153,7 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
         into a one-hot encoded format, indicating the associations between jets and leptons.
         Args:
             predictions (np.ndarray): The raw predictions from the model, typically
-                of shape (batch_size, max_jets, max_leptons).
+                of shape (batch_size, max_jets, NUM_LEPTONS).
             exclusive (bool): If True, ensures exclusive assignments between jets
                 and leptons
         Returns:
@@ -163,7 +165,7 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
             one_hot = np.zeros((predictions.shape[0], self.max_jets, 2), dtype=int)
             for i in range(predictions.shape[0]):
                 probs = predictions[i].copy()
-                for _ in range(self.max_leptons):
+                for _ in range(self.NUM_LEPTONS):
                     jet_index, lepton_index = np.unravel_index(
                         np.argmax(probs), probs.shape
                     )
@@ -210,11 +212,11 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
         if self.met_features is not None:
             predictions = self.model.predict_dict(
                 [data["jet"], data["lepton"], data["met"]], verbose=0
-            )["jet_assignment_probs"]
+            )["assignment"]
         else:
             predictions = self.model.predict_dict(
                 [data["jet"], data["lepton"]], verbose=0
-            )["jet_assignment_probs"]
+            )["assignment"]
         one_hot = self.generate_one_hot_encoding(predictions, exclusive)
         return one_hot
 
@@ -238,14 +240,14 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
             raise ValueError(
                 "Model not built. Please build the model using build_model() method."
             )
-        if not self.config.has_regression_targets:
-            raise ValueError("Regression targets are not specified in the config.")
-        if self.met_features is not None:
-            neutrino_prediction = self.model.predict_dict(
-                [data["jet"], data["lepton"], data["met"]], verbose=0
-            )["regression"]
-        else:
-            neutrino_prediction = self.model.predict_dict(
-                [data["jet"], data["lepton"]], verbose=0
-            )["regression"]
-        return neutrino_prediction
+
+        if self.model.outputs.get("regression", None) is not None:
+            if self.met_features is not None:
+                neutrino_prediction = self.model.predict_dict(
+                    [data["jet"], data["lepton"], data["met"]], verbose=0
+                )["regression"]
+            else:
+                neutrino_prediction = self.model.predict_dict(
+                    [data["jet"], data["lepton"]], verbose=0
+                )["regression"]
+            return neutrino_prediction

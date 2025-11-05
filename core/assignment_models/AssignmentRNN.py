@@ -13,7 +13,7 @@ from core.components import (
 class FeatureConcatRNN(MLReconstructorBase):
     def __init__(self, config : DataConfig, name="RNN"):
         if config.has_regression_targets:
-            raise Warning("FeatureConcatRNN is designed for classification tasks; regression targets will be ignored.")
+            print("FeatureConcatRNN is designed for classification tasks; regression targets will be ignored.")
         super().__init__(config, name)
 
     def build_model(self, hidden_dim, num_layers, dropout_rate, recurrent_type="lstm",input_as_four_vector=True):
@@ -64,12 +64,12 @@ class FeatureConcatRNN(MLReconstructorBase):
 
         # Output layers
         jet_assignment_probs = MLP(
-            self.max_leptons,
+            self.NUM_LEPTONS,
             num_layers=3,
             name="jet_assignment_mlp",
         )(x)
 
-        jet_assignment_probs = TemporalSoftmax(axis=1, name="jet_assignment_probs")(
+        jet_assignment_probs = TemporalSoftmax(axis=1, name=assignment)(
             jet_assignment_probs, mask=jet_mask
         )
         # Build model

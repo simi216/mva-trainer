@@ -9,7 +9,7 @@ class DataPlotter:
         self.plots_dir = plots_dir
         self.padding_value = data_processor.data_config.padding_value
         self.max_jets = data_processor.data_config.max_jets
-        self.max_leptons = data_processor.data_config.max_leptons
+        self.NUM_LEPTONS = data_processor.data_config.NUM_LEPTONS
         self.feature_index_dict = data_processor.data_config.feature_indices
         self.event_cuts = np.ones(data_processor.data_length , dtype=bool) 
         os.makedirs(self.plots_dir, exist_ok=True)
@@ -151,7 +151,7 @@ class DataPlotter:
 
         for i in range(num_events):
             for j in range(self.max_jets):
-                for k in range(self.max_leptons):
+                for k in range(self.NUM_LEPTONS):
                     jet = jet_features[i, j]
                     lepton = lepton_features[i, k]
                     if (jet != self.padding_value).all() and (lepton != self.padding_value).all():

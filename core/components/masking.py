@@ -83,3 +83,38 @@ class TemporalSoftmax(keras.layers.Layer):
         config = super().get_config()
         config.update({"axis": self.axis})
         return config
+    
+
+@keras.utils.register_keras_serializable()
+class TransposeLayer(keras.layers.Layer):
+    """
+    A custom Keras layer that transposes the input tensor according to a specified permutation of axes.
+    This layer is useful for rearranging the dimensions of tensors in a neural network model.
+    Attributes:
+        perm (tuple): A tuple specifying the permutation of the input tensor's axes.
+    Methods:
+        call(inputs):
+            Transposes the input tensor according to the specified permutation.
+        compute_output_shape(input_shape):
+            Computes and returns the output shape of the layer after transposition.
+        get_config():
+            Returns the configuration of the layer as a dictionary, including the perm attribute.
+    Args:
+        perm (tuple): A tuple specifying the desired permutation of the input tensor's axes.
+        **kwargs: Additional keyword arguments for the base Keras Layer class.
+    """
+    
+    def __init__(self, perm, **kwargs):
+        super().__init__(**kwargs)
+        self.perm = perm
+
+    def call(self, inputs):
+        return tf.transpose(inputs, perm=self.perm)
+
+    def compute_output_shape(self, input_shape):
+        return tuple(input_shape[i] for i in self.perm)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"perm": self.perm})
+        return config

@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import Optional, Dict, List, Tuple
 
-from .Configs import LoadConfig, DataConfig
+from .Configs import LoadConfig, DataConfig, get_load_config_from_yaml
 
 
 # =============================================================================
@@ -160,34 +160,37 @@ class FeatureBuilder:
         if self.config.event_weight:
             features["event_weight"] = self._build_event_weight()
 
-        if self.config.regression_targets:
+        if self.config.neutrino_momentum_features and self.config.antineutrino_momentum_features:
             features["regression_targets"] = self._build_regression_targets()
+
+        if self.config.nu_flows_neutrino_momentum_features and self.config.nu_flows_antineutrino_momentum_features:
+            features["nu_flows_regression_targets"] = self._build_nu_flows_regression_targets()
 
         return features
 
     def _build_lepton_features(self) -> np.ndarray:
-        """Build lepton feature array (n_events, max_leptons, n_features)."""
+        """Build lepton feature array (n_events, NUM_LEPTONS, n_features)."""
         lepton_vars = self.config.lepton_features
         columns = [
             f"{var}_{idx}"
+            for idx in range(self.config.NUM_LEPTONS)
             for var in lepton_vars
-            for idx in range(self.config.max_leptons)
         ]
 
         data = self.data[columns].to_numpy()
-        data = data.reshape(self.data_length, -1, self.config.max_leptons)
-        return data.transpose((0, 2, 1))
+        data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)
+        return data
 
     def _build_jet_features(self) -> np.ndarray:
         """Build jet feature array (n_events, max_jets, n_features)."""
         jet_vars = self.config.jet_features
         columns = [
-            f"{var}_{idx}" for var in jet_vars for idx in range(self.config.max_jets)
+            f"{var}_{idx}" for idx in range(self.config.max_jets) for var in jet_vars
         ]
 
         data = self.data[columns].to_numpy()
-        data = data.reshape(self.data_length, -1, self.config.max_jets)
-        return data.transpose((0, 2, 1))
+        data = data.reshape(self.data_length,  self.config.max_jets, -1)
+        return data
 
     def _build_met_features(self) -> np.ndarray:
         """Build MET feature array (n_events, 1, n_features)."""
@@ -204,8 +207,31 @@ class FeatureBuilder:
         return self.data[self.config.event_weight].to_numpy()
 
     def _build_regression_targets(self) -> np.ndarray:
-        """Build regression target array (n_events, n_targets)."""
-        return self.data[self.config.regression_targets].to_numpy()
+        """Build regression target array (n_events, NUM_LEPTONS, n_targets)."""
+        neutrino_vars = self.config.neutrino_momentum_features
+        antineutrino_vars = self.config.antineutrino_momentum_features
+
+        columns = []
+        for var in neutrino_vars:
+            columns.append(f"{var}")  # Neutrino for lepton 1
+        for var in antineutrino_vars:
+            columns.append(f"{var}")  # Antineutrino for lepton 2
+
+        data = self.data[columns].to_numpy()
+        data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)  # n_targets
+        return data
+    
+    def _build_nu_flows_regression_targets(self) -> np.ndarray:
+        """Build NuFlows regression target array (n_events, NUM_LEPTONS, n_targets)."""
+        nu_flows_vars = self.config.nu_flows_neutrino_momentum_features + self.config.nu_flows_antineutrino_momentum_features
+
+        columns = []
+        for var in nu_flows_vars:
+            columns.append(f"{var}")  # Neutrino momenta
+
+        data = self.data[columns].to_numpy()
+        data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)  # n_targets
+        return data
 
 
 class LabelBuilder:
@@ -220,7 +246,7 @@ class LabelBuilder:
         Build labels from jet and lepton truth information.
 
         Returns:
-            pair_truth: Binary pairing labels (n_events, max_jets, max_leptons)
+            pair_truth: Binary pairing labels (n_events, max_jets, NUM_LEPTONS)
             reco_mask: Boolean mask for successfully reconstructed events
         """
         jet_truth = self._extract_jet_truth()
@@ -257,11 +283,11 @@ class LabelBuilder:
         """Build binary tensor indicating correct jet-lepton pairs."""
         n_events = len(jet_truth)
         pair_truth = np.zeros(
-            (n_events, self.config.max_jets, self.config.max_leptons), dtype=np.float32
+            (n_events, self.config.max_jets, self.config.NUM_LEPTONS), dtype=np.float32
         )
 
         for evt_idx in range(n_events):
-            for lep_idx in range(self.config.max_leptons):
+            for lep_idx in range(self.config.NUM_LEPTONS):
                 for jet_idx in range(self.config.max_jets):
                     # Check both possible pairings
                     if (

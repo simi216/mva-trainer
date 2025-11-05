@@ -27,11 +27,9 @@ class PredictionManager:
         self,
         reconstructors: List[EventReconstructorBase],
         X_test: dict,
-        neutrino_momenta: Optional[np.ndarray] = None,
     ):
         self.reconstructors = reconstructors
         self.X_test = X_test
-        self.neutrino_momenta = neutrino_momenta
         self.predictions = []
         self._compute_all_predictions()
 
@@ -43,10 +41,9 @@ class PredictionManager:
             if hasattr(reconstructor, "reconstruct_neutrinos") and reconstructor.neutrino_reconstruction:
                 neutrino_pred = reconstructor.reconstruct_neutrinos(
                     self.X_test
-                ).T.reshape(-1, 2, 3)
+                )
             else:
-                neutrino_pred = self.neutrino_momenta
-
+                neutrino_pred = self.X_test.get("regression_targets", None)
             self.predictions.append(
                 {
                     "assignment": assignment_pred,
@@ -154,11 +151,10 @@ class ReconstructionEvaluator:
         self.config = reconstructors[0].config
 
         # Setup neutrino momenta
-        self.neutrino_momenta = self._setup_neutrino_momenta(neutrino_momenta_branches)
 
         # Initialize managers
         self.prediction_manager = PredictionManager(
-            reconstructors, X_test, self.neutrino_momenta
+            reconstructors, X_test
         )
         self.complementarity_analyzer = ComplementarityAnalyzer(
             self.prediction_manager, y_test
@@ -175,38 +171,6 @@ class ReconstructionEvaluator:
                     "All reconstructors must have the same DataConfig for "
                     "consistent evaluation."
                 )
-
-    def _setup_neutrino_momenta(
-        self,
-        neutrino_momenta_branches: Optional[List[str]],
-    ) -> np.ndarray:
-        """Setup neutrino momenta from branches or validation."""
-        if neutrino_momenta_branches is None:
-            # Check if all reconstructors have neutrino reconstruction
-            for reconstructor in self.reconstructors:
-                if not reconstructor.neutrino_reconstruction:
-                    raise ValueError(
-                        "Neutrino reconstruction is disabled for one or more "
-                        "reconstructors. Please provide neutrino_momenta_branches."
-                    )
-            return None
-
-        # Validate branches exist
-        for branch in neutrino_momenta_branches:
-            if branch not in self.config.feature_indices["non_training"]:
-                raise ValueError(
-                    f"Neutrino branch '{branch}' not found in "
-                    "config.feature_indices['non_training']."
-                )
-
-        # Extract neutrino momenta
-        momenta_arrays = [
-            self.X_test["non_training"][
-                :, self.config.feature_indices["non_training"][branch]
-            ]
-            for branch in neutrino_momenta_branches
-        ]
-        return np.array(momenta_arrays).T.reshape(-1, 2, 3)
 
     # ==================== Accuracy Methods ====================
 

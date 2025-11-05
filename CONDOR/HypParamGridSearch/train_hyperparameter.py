@@ -135,7 +135,7 @@ def main():
         jet_truth_label="ordered_event_jet_truth_idx",
         lepton_truth_label="event_lepton_truth_idx",
         met_features=["met_met_NOSYS", "met_phi_NOSYS"],
-        max_leptons=2,
+        NUM_LEPTONS=2,
         max_jets=args.max_jets,
         non_training_features=["truth_ttbar_mass", "truth_ttbar_pt", "N_jets"],
         event_weight="weight_mc_NOSYS",

@@ -6,22 +6,24 @@ from core.utils.four_vector_arithmetics import (
     compute_mass_from_lorentz_vector,
 )
 
-
-class BaselineAssigner(EventReconstructorBase):
+class BaselineReconstructor(EventReconstructorBase):
     def __init__(self, config: DataConfig, name="baseline_assigner", mode="min"):
         super().__init__(config, name)
-        """Initializes the BaselineAssigner class.
+        """Initializes the BaselineReconstructor class. It uses the specified mode to assign jets to leptons. The neutrino meomenta are obtained from nu-flows
         Args:
             config (DataConfig): Configuration object containing data parameters.
             mode (str): The mode of assignment, either "min" or "max".
         """
         if mode not in ["min", "max"]:
             raise ValueError("Mode must be either 'min' or 'max'.")
-        if config.has_regression_targets:
-            print("WARNING: BaselineAssigner does not support regression targets.")
         self.mode = mode
         self.NUM_LEPTONS = config.NUM_LEPTONS
         self.max_jets = config.max_jets
+        if not config.has_nu_flows_regression_targets:
+            raise ValueError(
+                "Nu-flows regression targets must be available in the data for BaselineReconstructor."
+            )
+        self.feature_index_dict = config.feature_indices
 
     def compute_comparison_feature(self, data_dict):
         """
@@ -118,14 +120,56 @@ class BaselineAssigner(EventReconstructorBase):
                         False  # Exclude this jet for other leptons
                     )
         return predicted_indices
+    
+    def reconstruct_neutrinos(self,data_dict):
+        """
+        Reconstructs neutrino momenta from nu-flows regression targets.
+
+        Args:
+            data_dict (dict): A dictionary containing input data for the model.
+        Returns:
+            np.ndarray: A 3D array of shape (num_events, 2, 3) representing the reconstructed neutrino momenta.
+        """
+        nu_px = data_dict["nu_flows_regression_targets"][
+            :,
+            0, 0,
+        ]
+        nu_py = data_dict["nu_flows_regression_targets"][
+            :,
+            0, 1,
+        ]
+        nu_pz = data_dict["nu_flows_regression_targets"][
+            :,
+            0, 2,
+        ]
+        anu_px = data_dict["nu_flows_regression_targets"][
+            :,
+            1, 0,
+        ]
+        anu_py = data_dict["nu_flows_regression_targets"][
+            :,
+            1, 1,
+        ]
+        anu_pz = data_dict["nu_flows_regression_targets"][
+            :,
+            1, 2,
+        ]
+        neutrino_momenta = np.stack(
+            [nu_px, nu_py, nu_pz, anu_px, anu_py, anu_pz], axis=1
+        )  # Shape: (num_events, 6)
+        neutrino_momenta = neutrino_momenta.reshape(
+            -1, 2, 3
+        )  # Shape: (num_events, 2, 3)
+        return neutrino_momenta
 
 
-class DeltaRAssigner(BaselineAssigner):
+
+class DeltaRReconstructor(BaselineReconstructor):
     def __init__(
         self, config: DataConfig, name="delta_r_assigner", mode="min", b_tag_threshold=2
     ):
         super().__init__(config, name, mode)
-        """Initializes the DeltaRAssigner class.
+        """Initializes the DeltaRReconstructor class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
             mode (str): The mode of assignment, either "min" or "max".
@@ -177,10 +221,10 @@ class DeltaRAssigner(BaselineAssigner):
         return delta_r
 
 
-class LeptonJetMassAssigner(BaselineAssigner):
+class LeptonJetMassReconstructor(BaselineReconstructor):
     def __init__(self, config: DataConfig, name="lepton_jet_mass_assigner", mode="min"):
         super().__init__(config, name, mode)
-        """Initializes the LeptonJetMassAssigner class.
+        """Initializes the LeptonJetMassReconstructor class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
             mode (str): The mode of assignment, either "min" or "max".
@@ -241,7 +285,7 @@ class LeptonJetMassAssigner(BaselineAssigner):
         return invariant_mass
 
 
-class MassCombinatoricsAssigner(EventReconstructorBase):
+class MassCombinatoricsReconstructor(EventReconstructorBase):
     """Assigns jets to leptons based on mass combinatorics involving neutrino momenta."""
     def __init__(
         self,
@@ -252,7 +296,7 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         all_jets_considered=False,
     ):
         super().__init__(config, name)
-        """Initializes the MassCombinatoricsAssigner class.
+        """Initializes the MassCombinatoricsReconstructor class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
         """

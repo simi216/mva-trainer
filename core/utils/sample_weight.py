@@ -22,7 +22,6 @@ def compute_sample_weights(X_train : dict, y_train, padding_value: float = -999)
     if jet_features is None:
         raise ValueError("Jet data not found in X_train.")
 
-
     # Count valid jets per event (assuming padding value is -999)
     padding_value = -999
     valid_jets = np.sum(np.any(jet_features != padding_value, axis=-1), axis=-1)  # (num_samples,)

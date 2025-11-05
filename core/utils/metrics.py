@@ -22,8 +22,32 @@ class AssignmentAccuracy(keras.metrics.Metric):
         self.total.assign_add(tf.reduce_sum(matches))
         self.count.assign_add(tf.cast(count, self.dtype))
 
+    def result(self):
+        return self.total / self.count
 
+    def reset_states(self):
+        self.total.assign(0.0)
+        self.count.assign(0.0)
 
+@keras.utils.register_keras_serializable()
+class RegressionRelativeError(keras.metrics.Metric):
+    def __init__(self, name="regression_relative_error", **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.total = self.add_weight(name="total", initializer="zeros")
+        self.count = self.add_weight(name="count", initializer="zeros")
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        abs_error = tf.abs(y_true - y_pred)
+        relative_error = abs_error / (tf.abs(y_true) + 1e-6)  # Avoid division by zero
+        relative_error = tf.reduce_mean(relative_error, axis=-1)  # Mean over regression targets
+        relative_error = tf.cast(relative_error, self.dtype)  # shape: (batch_size,)
+        count = tf.shape(y_true)[0]
+        if sample_weight is not None:
+            sample_weight = tf.cast(sample_weight, self.dtype)
+            relative_error = relative_error * sample_weight
+            count = tf.reduce_sum(sample_weight)
+        self.total.assign_add(tf.reduce_sum(relative_error))
+        self.count.assign_add(tf.cast(count, self.dtype))
 
     def result(self):
         return self.total / self.count
