@@ -10,13 +10,13 @@ import argparse
 
 def parse_model_name(model_name):
     """Extract hyperparameters from model name."""
-    pattern = r"h(\d+)_l(\d+)"
+    pattern = r"_d(\d+)_l(\d+)_h(\d+)"
     match = re.search(pattern, model_name)
     if match:
         return {
             "hidden_dim": int(match.group(1)),
             "num_layers": int(match.group(2)),
-            "num_heads": 8,  # Assuming fixed number of heads for simplicity
+            "num_heads": int(match.group(3)), 
         }
     return None
 
@@ -24,14 +24,15 @@ def parse_model_name(model_name):
 def collect_results(models_dir, model_type="Raw_Transformer_Assignment"):
     """Collect training results from all model directories."""
     results = []
-
     # Find all model directories
     model_dirs = glob(os.path.join(models_dir, f"{model_type}_*"))
 
+
+    print(f"Looking for {model_type} models in {models_dir}...")
     for model_dir in model_dirs:
         model_name = os.path.basename(model_dir)
         hyperparams = parse_model_name(model_name)
-
+        print(f"Processing model: {model_name}")
         if hyperparams is None:
             continue
 
@@ -150,7 +151,7 @@ def plot_grid_search_results(df, output_dir):
     # Top models by loss
     top_models = df_sorted.head(top_n)
     model_labels = [
-        f"h{row['hidden_dim']}_l{row['num_layers']}" for _, row in top_models.iterrows()
+        f"d{row['hidden_dim']}_l{row['num_layers']}_h{row['num_heads']}" for _, row in top_models.iterrows()
     ]
 
     ax1.barh(range(top_n), top_models["best_val_loss"])
@@ -263,10 +264,10 @@ def main():
 
     # Configuration
     ROOT_DIR = root_dir
-    MODELS_DIR = os.path.join(ROOT_DIR, "models")
+    MODELS_DIR = ROOT_DIR
     OUTPUT_DIR = os.path.join(ROOT_DIR, "plots", "grid_search_analysis", model_type)
 
-    print("Collecting results from grid search...")
+    print(f"Collecting results from grid search (directory {ROOT_DIR})...")
     results_df = collect_results(MODELS_DIR, model_type=model_type)
 
     if len(results_df) == 0:
