@@ -8,7 +8,7 @@ import yaml
 import core.regression_models as Models
 import core
 import keras
-import parser
+from argparse import ArgumentParser
 
 
 PLOTS_DIR = f"plots/regresion_transformer/"
@@ -16,7 +16,7 @@ MODEL_DIR  = f"models/regresion_transformer/"
 import os
 
 def parse_args():
-    parser = parser.ArgumentParser(description="Train Regression Transformer Model")
+    parser = ArgumentParser(description="Train Regression Transformer Model")
     parser.add_argument(
         "--data_config",
         type=str,
@@ -62,30 +62,18 @@ def main():
 
     TransformerMatcher.adapt_normalization_layers(X_train)
 
-    learn_rate = keras.optimizers.schedules.CosineDecayRestarts(
-        initial_learning_rate=1e-3,
-        first_decay_steps=1000,
-        t_mul=2.0,
-        m_mul=1.0,
-        alpha=1e-6,
-    )
-
     TransformerMatcher.compile_model(
         loss={
             "assignment": core.utils.AssignmentLoss(),
             "regression": core.utils.RegressionLoss(),
         },
-        optimizer=keras.optimizers.AdamW(learning_rate=learn_rate, weight_decay=1e-4),
+        optimizer=keras.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-4),
         metrics=
             {
                 "assignment": [core.utils.AssignmentAccuracy(name="accuracy")],
                 "regression": [core.utils.RegressionRelativeError(name="relative_error")],
             }
     )
-    TransformerMatcher.load_model(MODEL_DIR + "model.keras")
-    TransformerMatcher.model.summary()
-
-
 
     TransformerMatcher.train_model(
         epochs=50,

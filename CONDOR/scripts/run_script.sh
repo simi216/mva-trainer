@@ -10,9 +10,9 @@ RequestMemory  = 40000
 +MaxRuntime     = 800000
 
 # Output files
-output = logs/job_$(Cluster)_$(architecture)_$(hidden_dim)_$(num_layers)_$(num_heads).out
-error = logs/job_$(Cluster)_$(architecture)_$(hidden_dim)_$(num_layers)_$(num_heads).err
-log = logs/job_$(Cluster)_$(architecture)_$(hidden_dim)_$(num_layers)_$(num_heads).log
+output = logs/job_$(Cluster).out
+error = logs/job_$(Cluster).err
+log = logs/job_$(Cluster).log
 
 arguments = python3 scripts/train_regression_transformer.py \
             --data_config workspace_config.yaml
