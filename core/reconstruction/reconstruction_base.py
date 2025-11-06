@@ -22,7 +22,6 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
     def predict_indices(self, data_dict):
         pass
 
-    @abstractmethod
     def reconstruct_neutrinos(self, data_dict):
         pass
 

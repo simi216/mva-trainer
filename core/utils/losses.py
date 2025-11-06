@@ -10,72 +10,39 @@ class AssignmentLoss(keras.losses.Loss):
         self.epsilon = epsilon
 
     def call(self, y_true, y_pred, sample_weight=None):
-        """
-        Computes assignment loss with proper masking and sample weighting.
-
-        Args:
-            y_true: (batch_size, num_jets, 2) - one-hot encoded targets
-            y_pred: (batch_size, num_jets, 2) - predicted probabilities
-            sample_weight: (batch_size,) - optional per-sample weights
-
-        Returns:
-            loss: (batch_size,) - per-sample loss
-        """
-        # Detect mask: jets where probabilities sum to ~0 are masked
+        # Detect mask: jets where probabilities sum to ~0
         sum_probs = tf.reduce_sum(y_pred, axis=-1)  # (batch, jets)
         mask = tf.cast(sum_probs > self.epsilon, y_pred.dtype)  # (batch, jets)
         mask_expanded = mask[..., tf.newaxis]  # (batch, jets, 1)
 
-        # Count valid jets per sample for normalization
-        num_valid = tf.maximum(tf.reduce_sum(mask, axis=-1), 1.0)  # (batch,)
+        # Number of true leptons (should be 2)
+        num_true = tf.reduce_sum(y_true * mask_expanded)
+        num_true = tf.maximum(num_true, 1.0)
 
-        # ============ Cross-Entropy Loss ============
-        # Ensure y_true is also masked (safety)
+        # Apply mask and clip predictions
         y_true_masked = y_true * mask_expanded
-
-        # Clip predictions to prevent log(0)
         y_pred_safe = tf.clip_by_value(y_pred, self.epsilon, 1.0)
 
-        # Replace masked positions with dummy value (won't affect loss since y_true is 0 there)
-        y_pred_masked = tf.where(
-            mask_expanded > 0,
-            y_pred_safe,
-            tf.ones_like(y_pred_safe),  # log(1) = 0, so no contribution
-        )
+        # Cross-entropy (per jet, per lepton)
+        ce = -y_true_masked * tf.math.log(y_pred_safe)
+        ce_total = tf.reduce_sum(ce, axis=[1, 2])
+        ce_loss = ce_total / num_true
 
-        # Compute cross-entropy
-        ce = -y_true_masked * tf.math.log(y_pred_masked)  # (batch, jets, 2)
-
-        # Sum over jets and leptons, then normalize by number of valid jets
-        ce_total = tf.reduce_sum(ce, axis=[1, 2])  # (batch,)
-        ce_loss = ce_total / num_valid  # (batch,)
-
-        # ============ Exclusion Penalty ============
+        # Exclusion penalty (soft exclusivity)
         if self.lambda_excl > 0:
-            # Penalize when sum of probabilities > 1 (jet assigned to both leptons)
-            penalty_per_jet = tf.nn.relu(sum_probs - 1.0) ** 2  # (batch, jets)
-
-            # Apply mask: only penalize valid jets
-            exclusion_penalty = tf.reduce_sum(
-                penalty_per_jet * mask, axis=-1
-            )  # (batch,)
-
-            # Normalize by number of valid jets
-            exclusion_penalty = exclusion_penalty / num_valid  # (batch,)
-
+            penalty_per_jet = tf.math.softplus(sum_probs - 1.0) ** 2
+            exclusion_penalty = tf.reduce_sum(penalty_per_jet * mask, axis=-1)
+            exclusion_penalty = exclusion_penalty / tf.maximum(tf.reduce_sum(mask, axis=-1), 1.0)
             excl_loss = self.lambda_excl * exclusion_penalty
         else:
             excl_loss = 0.0
 
-        # ============ Total Loss ============
-        total_loss = ce_loss + excl_loss  # (batch,)
+        total_loss = ce_loss + excl_loss
 
-        # ============ Apply Sample Weights ============
         if sample_weight is not None:
             sample_weight = tf.cast(sample_weight, total_loss.dtype)
-            # Ensure sample_weight has correct shape
-            sample_weight = tf.reshape(sample_weight, [-1])  # (batch,)
-            total_loss = total_loss * sample_weight  # (batch,)
+            sample_weight = tf.reshape(sample_weight, [-1])
+            total_loss = total_loss * sample_weight
 
         return total_loss
 
@@ -84,39 +51,81 @@ class AssignmentLoss(keras.losses.Loss):
         config.update({"lambda_excl": self.lambda_excl, "epsilon": self.epsilon})
         return config
 
+import tensorflow as tf
+from tensorflow import keras
 
 @keras.utils.register_keras_serializable()
-class RegressionLoss(keras.losses.Loss):
-    def __init__(self, name="regression_loss", **kwargs):
+class RelativeRegressionLoss(keras.losses.Loss):
+    def __init__(
+        self,
+        mode="component",   # "component" or "magnitude" or "log"
+        alpha=1.0,          # floor for denominator (in same units as momenta)
+        var_weights=None,   # shape (num_vars,) or None
+        name="relative_regression_loss",
+        **kwargs,
+    ):
         super().__init__(name=name, **kwargs)
-    
+        assert mode in ("component", "magnitude")
+        self.mode = mode
+        self.alpha = float(alpha)
+        self.var_weights = (
+            tf.constant(var_weights, dtype=tf.float32) if var_weights is not None else None
+        )
+
     def call(self, y_true, y_pred, sample_weight=None):
         """
-        Computes Relative Square Error (RAE) regression loss with sample weighting.
-
-        Args:
-            y_true: (batch_size, num_leptons, num_regression_vars) - true regression targets
-            y_pred: (batch_size, num_leptons, num_regression_vars) - predicted regression outputs
-            sample_weight: (batch_size,) - optional per-sample weights
-
-        Returns:
-            loss: (batch_size,) - per-sample loss
+        y_true, y_pred: shape (batch, n_items, n_vars)
         """
-        # ============ Relative Square Error ============
-        error = tf.square(y_true - y_pred)  # (batch, NUM_LEPTONS, regression_variables)
 
-        std = tf.math.reduce_std(y_true, axis=0)  # (NUM_LEPTONS, regression_variables)
-        std = tf.where(std < 1e-6, tf.ones_like(std), std)  # Prevent division by zero
-        error /= tf.square(std)  # Normalize by variance
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
 
-        # Mean over leptons and regression variables
-        error_mean = tf.reduce_mean(error, axis=[1, 2])  # (batch,)
+        if self.mode == "component":
+            # denom = max(alpha, |y_true|) per-component
+            denom = tf.maximum(tf.abs(y_true), self.alpha)
+            rel = (y_true - y_pred) / denom  # relative error per component
+            sq = tf.square(rel)  # (batch, n_items, n_vars)
 
-        # ============ Apply Sample Weights ============
+        elif self.mode == "magnitude":
+            # compute vector magnitude per item (excluding energy if present)
+            # assume last axis order: (px, py, pz, [E])
+            vec = y_true[..., :3]
+            vec_pred = y_pred[..., :3]
+            mag = tf.norm(vec, axis=-1, keepdims=True)  # (batch, n_items, 1)
+            mag_pred = tf.norm(vec_pred, axis=-1, keepdims=True)
+            denom = tf.maximum(mag, self.alpha)  # (batch, n_items, 1)
+            rel = (mag - mag_pred) / denom  # relative error on magnitude
+            sq = tf.square(rel)  # (batch, n_items, 1)
+            # If you want to include other vars (like E), append their component-wise relative errors:
+            if y_true.shape[-1] > 3:
+                extra_true = y_true[..., 3:]
+                extra_pred = y_pred[..., 3:]
+                denom_extra = tf.maximum(tf.abs(extra_true), self.alpha)
+                rel_extra = (extra_true - extra_pred) / denom_extra
+                sq_extra = tf.square(rel_extra)
+                # concatenate along last axis
+                sq = tf.concat([sq, sq_extra], axis=-1)
+
+        # apply per-variable weights if given
+        if self.var_weights is not None:
+            # Ensure shape broadcastable: (n_vars,) or (n_vars_of_sq)
+            sq = sq * self.var_weights
+
+        # reduce: mean over vars and items, produce per-sample loss
+        per_sample = tf.reduce_mean(sq, axis=[1, 2])  # (batch,)
+
+        # apply sample weights if provided
         if sample_weight is not None:
-            sample_weight = tf.cast(sample_weight, error_mean.dtype)
-            # Ensure sample_weight has correct shape
-            sample_weight = tf.reshape(sample_weight, [-1])  # (batch,)
-            error_mean = error_mean * sample_weight  # (batch,)
+            sample_weight = tf.reshape(tf.cast(sample_weight, per_sample.dtype), [-1])
+            per_sample = per_sample * sample_weight
 
-        return error_mean
+        return per_sample
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "mode": self.mode,
+            "alpha": self.alpha,
+            "var_weights": None if self.var_weights is None else self.var_weights.numpy().tolist(),
+        })
+        return config
