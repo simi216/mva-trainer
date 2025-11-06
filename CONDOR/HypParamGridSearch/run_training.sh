@@ -33,14 +33,16 @@ python train_hyperparameter.py \
     --num_layers "$num_layers" \
     --num_heads  "$num_heads"\
     --architecture "$architecture" \
+    --data_config "/afs/desy.de/user/a/aulich/mva-trainer/CONDOR/workspace_config.yaml" \
     --dropout_rate 0.1 \
     --learning_rate 1e-4 \
     --weight_decay 1e-4 \
-    --batch_size 1028 \
-    --epochs 100 \
+    --batch_size 2048 \
+    --epochs 50 \
     --patience 10 \
-    --max_events 10 \
+    --max_events 10000000 \
     --root_dir "/afs/desy.de/user/a/aulich/mva-trainer/" \
+    --data_type "nominal"
 
 
 # Check if the script succeeded
@@ -51,4 +53,4 @@ else
     echo "Training failed with exit code: $exit_code"
 fi
 
-exit $exit_code
+#exit $exit_code

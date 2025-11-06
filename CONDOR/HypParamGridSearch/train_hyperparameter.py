@@ -5,6 +5,7 @@ import numpy as np
 import keras
 import matplotlib.pyplot as plt
 from sklearn.metrics import ConfusionMatrixDisplay
+import yaml
 
 
 def parse_args():
@@ -76,10 +77,10 @@ def parse_args():
         help="Root directory for outputs",
     )
     parser.add_argument(
-        "--data_path",
+        "--data_type",
         type=str,
-        default="/data/dust/group/atlas/ttreco/full_training.root",
-        help="Path to training data",
+        default="nominal",
+        help="Type of data to use (default: nominal)",
     )
 
     return parser.parse_args()
@@ -106,15 +107,21 @@ def main():
 
     sys.path.append(args.root_dir)  # Ensure root directory is in the path
     import core.assignment_models as Models
-    from core.DataLoader import DataPreprocessor, DataConfig, LoadConfig, get_load_config_from_yaml
+    from core.DataLoader import (
+        DataPreprocessor,
+        DataConfig,
+        LoadConfig,
+        get_load_config_from_yaml,
+    )
     import core
 
     # Load data configuration
     load_config = get_load_config_from_yaml(args.data_config)
-    config = DataConfig(load_config)
 
     # Create model name with hyperparameters
-    MODEL_NAME = f"{args.architecture}_d{args.hidden_dim}_l{args.num_layers}_h{args.num_heads}"
+    MODEL_NAME = (
+        f"{args.architecture}_d{args.hidden_dim}_l{args.num_layers}_h{args.num_heads}"
+    )
 
     # Setup directories
     PLOTS_DIR, MODEL_DIR = setup_directories(args.root_dir, MODEL_NAME)
@@ -130,13 +137,17 @@ def main():
     print(f"  Model name: {MODEL_NAME}")
 
     # Configure data
-
-
+    with open(args.data_config, "r") as f:
+        data_config_yaml = yaml.safe_load(f)
 
     # Load and preprocess data
     print("Loading data...")
     DataProcessor = DataPreprocessor(load_config)
-    DataProcessor.load_data(args.data_path, "reco", max_events=args.max_events)
+    config = DataProcessor.load_data(
+        data_config_yaml["data_path"][args.data_type],
+        "reco",
+        max_events=args.max_events,
+    )
 
     print("Splitting data...")
     X_train, y_train, X_val, y_val = DataProcessor.split_data(
@@ -228,8 +239,8 @@ def main():
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ConfusionMatrixDisplay.from_predictions(
-        true_indices[:,:,0].argmax(axis=1),
-        predicted_indices[:,:,0].argmax(axis=1),
+        true_indices[:, :, 0].argmax(axis=1),
+        predicted_indices[:, :, 0].argmax(axis=1),
         normalize="true",
         ax=ax,
     )

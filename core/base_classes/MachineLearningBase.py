@@ -16,9 +16,11 @@ class KerasModelWrapper(keras.Model):
         predictions = super().predict(
             x, batch_size=batch_size, verbose=verbose, steps=steps, **kwargs
         )
-        if not isinstance(predictions, list):
-            predictions = [predictions]
-        return dict(zip(self.output_names, predictions))
+        if not isinstance(predictions, dict):
+            if not isinstance(predictions, list):
+                predictions = [predictions]
+            return dict(zip(self.output_names, predictions))
+        return predictions
 
 class MLWrapperBase(BaseUtilityModel, ABC):
     def __init__(self, config: DataConfig, name="ml_assigner"):
