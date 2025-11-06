@@ -22,6 +22,7 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
     def predict_indices(self, data_dict):
         pass
 
+    @abstractmethod
     def reconstruct_neutrinos(self, data_dict):
         pass
 
@@ -56,8 +57,11 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
         Returns:
             float: The mean squared error of the model's regression predictions.
         """
-        neutrino_prediction = self.reconstruct_neutrinos(data_dict)
-        mse = np.mean((neutrino_prediction - true_values) ** 2)
+        predicted_values = self.reconstruct_neutrinos(data_dict)
+        relative_errors = (predicted_values - true_values) / np.where(
+            true_values != 0, true_values, 1
+        )
+        mse = np.mean(np.square(relative_errors))
         return mse
 
 
@@ -70,11 +74,7 @@ class GroundTruthReconstructor(EventReconstructorBase):
         return data_dict["assignment_labels"]
 
     def reconstruct_neutrinos(self, data_dict):
-        if not self.neutrino_reconstruction:
-            raise ValueError(
-                "Neutrino reconstruction is not enabled for this reconstructor."
-            )
-        return data_dict["neutrino_momenta"]
+        return data_dict["neutrino_targets"]
 
 
 class FixedPrecisionReconstructor(EventReconstructorBase):
@@ -123,7 +123,9 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
             )
         else:
             if self.config.has_regression_targets and regression_output is None:
-                print("WARNING: Regression targets are specified in the config, but regression_output is None.")
+                print(
+                    "WARNING: Regression targets are specified in the config, but regression_output is None."
+                )
             if not self.config.has_regression_targets and regression_output is not None:
                 print(
                     "WARNING: Regression targets are not specified in the config, but regression_output is provided. Ignoring regression_output."

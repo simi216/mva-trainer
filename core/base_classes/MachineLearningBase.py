@@ -43,6 +43,10 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         self.padding_value: float = config.padding_value
         self.feature_index_dict = config.feature_indices
 
+        # initialize empty dicts to hold inputs and transformed inputs
+        self.inputs = {}
+        self.transformed_inputs = {}
+
         super().__init__(config=config, name=name)
 
     @abstractmethod
@@ -130,6 +134,11 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             "jet_inputs": jet_inputs,
             "lep_inputs": lep_inputs,
             "met_inputs": met_inputs,
+        }
+        self.transformed_inputs = {
+            "jet_inputs": transformed_jet_inputs,
+            "lep_inputs": transformed_lep_inputs,
+            "met_inputs": transformed_met_inputs,
         }
         return normed_jet_inputs, normed_lep_inputs, normed_met_inputs, jet_mask
 
