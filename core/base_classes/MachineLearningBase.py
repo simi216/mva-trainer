@@ -29,8 +29,6 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 that provides preprocessed data and metadata required for model initialization.
         """
         self.model: KerasModelWrapper = None
-        self.X_train = None
-        self.y_train: np.ndarray = None
         self.history = None
         self.sample_weights = None
         self.class_weights = None
@@ -42,6 +40,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         self.n_met: int = len(config.met_features) if config.met_features else 0
         self.padding_value: float = config.padding_value
         self.feature_index_dict = config.feature_indices
+        self.perform_regression = False
 
         # initialize empty dicts to hold inputs and transformed inputs
         self.inputs = {}
@@ -53,46 +52,49 @@ class MLWrapperBase(BaseUtilityModel, ABC):
     def build_model(self, input_as_four_vector=True, **kwargs):
         pass
 
-    def load_training_data(
+    def prepare_training_data(
         self, X_train, y_train, sample_weights=None, class_weights=None
     ):
-        self.X_train = X_train
-        y_train["assignment"] = y_train.pop("assignment_labels")
-        y_train["regression"] = y_train.pop("regression_targets")
-        self.y_train = y_train
         self.sample_weights = sample_weights
         self.class_weights = class_weights
 
+        y_train["assignment"] = y_train.pop("assignment_labels")
+        y_train["regression"] = y_train.pop("regression_targets")
+        if not self.perform_regression:
+            y_train = {"assignment": y_train["assignment"]}
+
+
         jet_data = None
-        for key in self.X_train.keys():
+        for key in X_train.keys():
             if "jet" in key:
-                jet_data = self.X_train.pop(key)
+                jet_data = X_train.pop(key)
                 break
 
         if jet_data is None:
             raise ValueError("Jet data not found in X_train.")
         else:
-            self.X_train["jet_inputs"] = jet_data
+            X_train["jet_inputs"] = jet_data
 
         lepton_data = None
-        for key in self.X_train.keys():
+        for key in X_train.keys():
             if "lepton" in key:
-                lepton_data = self.X_train.pop(key)
+                lepton_data = X_train.pop(key)
                 break
         if lepton_data is None:
             raise ValueError("Lepton data not found in X_train.")
         else:
-            self.X_train["lep_inputs"] = lepton_data
+            X_train["lep_inputs"] = lepton_data
         if self.n_met > 0:
             met_data = None
-            for key in self.X_train.keys():
+            for key in X_train.keys():
                 if "met" in key:
-                    met_data = self.X_train.pop(key)
+                    met_data = X_train.pop(key)
                     break
             if met_data is None:
                 raise ValueError("met data not found in X_train.")
             else:
-                self.X_train["met_inputs"] = met_data
+                X_train["met_inputs"] = met_data
+        return X_train, y_train, sample_weights
 
 
     def _prepare_inputs(self, input_as_four_vector, log_E = True):
@@ -158,15 +160,15 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 "Model has not been built yet. Call build_model() before train_model()."
             )
 
-        self.load_training_data(X_train, y_train, sample_weights=sample_weights)
+        X_train, y_train, sample_weights= self.prepare_training_data(X_train, y_train, sample_weights=sample_weights)
 
         if self.history is not None:
             print("Warning: Overwriting existing training history.")
 
         self.history = self.model.fit(
-            self.X_train,
-            self.y_train,
-            sample_weight=self.sample_weights,
+            X_train,
+            y_train,
+            sample_weight=sample_weights,
             class_weight=self.class_weights,
             epochs=epochs,
             batch_size=batch_size,

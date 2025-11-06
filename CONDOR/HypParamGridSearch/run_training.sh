@@ -39,7 +39,7 @@ python train_hyperparameter.py \
     --batch_size 1028 \
     --epochs 100 \
     --patience 10 \
-    --max_events 10000000 \
+    --max_events 10 \
     --root_dir "/afs/desy.de/user/a/aulich/mva-trainer/" \
 
 

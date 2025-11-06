@@ -17,6 +17,7 @@ class CrossAttentionModel(MLReconstructorBase):
     def __init__(self, config, name="CrossAttentionModel"):
         if config.has_regression_targets:
             print("CrossAttentionModel is designed for classification tasks; regression targets will be ignored.")
+        self.perform_regression = False
         super().__init__(config, name=name)
 
     def build_model(
@@ -125,6 +126,7 @@ class FeatureConcatTransformer(MLReconstructorBase):
     def __init__(self, config, name="FeatureConcatTransformer"):
         if config.has_regression_targets:
             print("FeatureConcatTransformer is designed for classification tasks; regression targets will be ignored.")
+        self.perform_regression = False
         super().__init__(config, name=name)
 
     def build_model(

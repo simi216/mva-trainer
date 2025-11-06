@@ -137,7 +137,8 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
                     self.inputs["lep_inputs"],
                     self.inputs["met_inputs"],
                 ],
-                outputs=jet_assignment_probs,
+                outputs=
+                    {"assignment": jet_assignment_probs},
                 **kwargs,
             )
 
@@ -253,3 +254,5 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
                     [data["jet"], data["lepton"]], verbose=0
                 )["regression"]
             return neutrino_prediction
+        else:
+            return data["neutrino_targets"]

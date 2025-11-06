@@ -29,6 +29,12 @@ def parse_args():
         default="FeatureConcatTransformer",
         help="Model architecture to use (default: FeatureConcatTransformer)",
     )
+    parser.add_argument(
+        "--data_config",
+        type=str,
+        default="workspace_config.yaml",
+        help="Path to data configuration YAML file",
+    )
 
     # Optional hyperparameters with defaults
     parser.add_argument(
@@ -57,9 +63,6 @@ def parse_args():
     )
 
     # Data and directory parameters
-    parser.add_argument(
-        "--max_jets", type=int, default=6, help="Maximum number of jets (default: 6)"
-    )
     parser.add_argument(
         "--max_events",
         type=int,
@@ -103,8 +106,12 @@ def main():
 
     sys.path.append(args.root_dir)  # Ensure root directory is in the path
     import core.assignment_models as Models
-    from core.DataLoader import DataPreprocessor, DataConfig, LoadConfig
+    from core.DataLoader import DataPreprocessor, DataConfig, LoadConfig, get_load_config_from_yaml
     import core
+
+    # Load data configuration
+    load_config = get_load_config_from_yaml(args.data_config)
+    config = DataConfig(load_config)
 
     # Create model name with hyperparameters
     MODEL_NAME = f"{args.architecture}_d{args.hidden_dim}_l{args.num_layers}_h{args.num_heads}"
@@ -123,24 +130,8 @@ def main():
     print(f"  Model name: {MODEL_NAME}")
 
     # Configure data
-    load_config = LoadConfig(
-        jet_features=[
-            "ordered_jet_pt",
-            "ordered_jet_eta",
-            "ordered_jet_phi",
-            "ordered_jet_e",
-            "ordered_jet_b_tag",
-        ],
-        lepton_features=["lep_pt", "lep_eta", "lep_phi", "lep_e"],
-        jet_truth_label="ordered_event_jet_truth_idx",
-        lepton_truth_label="event_lepton_truth_idx",
-        met_features=["met_met_NOSYS", "met_phi_NOSYS"],
-        NUM_LEPTONS=2,
-        max_jets=args.max_jets,
-        non_training_features=["truth_ttbar_mass", "truth_ttbar_pt", "N_jets"],
-        event_weight="weight_mc_NOSYS",
-    )
-    config = load_config.to_data_config()
+
+
 
     # Load and preprocess data
     print("Loading data...")

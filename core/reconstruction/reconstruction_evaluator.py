@@ -42,8 +42,13 @@ class PredictionManager:
                 neutrino_pred = reconstructor.reconstruct_neutrinos(
                     self.X_test
                 )
+            elif self.X_test.get("nu_flows_regression_targets") is not None:
+                neutrino_pred = self.X_test["nu_flows_regression_targets"]
             else:
-                neutrino_pred = self.X_test.get("regression_targets", None)
+                print(f"WARNING: {reconstructor.get_name()} does not provide neutrino predictions and nu-Flows are not available in the test data. Setting neutrino predictions to truth!")
+                neutrino_pred = self.X_test.get("neutrino_regression_targets", None)
+
+
             self.predictions.append(
                 {
                     "assignment": assignment_pred,

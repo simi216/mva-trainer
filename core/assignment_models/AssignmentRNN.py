@@ -14,6 +14,7 @@ class FeatureConcatRNN(MLReconstructorBase):
     def __init__(self, config : DataConfig, name="RNN"):
         if config.has_regression_targets:
             print("FeatureConcatRNN is designed for classification tasks; regression targets will be ignored.")
+        self.perform_regression = False
         super().__init__(config, name)
 
     def build_model(self, hidden_dim, num_layers, dropout_rate, recurrent_type="lstm",input_as_four_vector=True):
@@ -69,7 +70,7 @@ class FeatureConcatRNN(MLReconstructorBase):
             name="jet_assignment_mlp",
         )(x)
 
-        jet_assignment_probs = TemporalSoftmax(axis=1, name=assignment)(
+        jet_assignment_probs = TemporalSoftmax(axis=1, name="assignment")(
             jet_assignment_probs, mask=jet_mask
         )
         # Build model
