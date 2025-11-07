@@ -37,9 +37,8 @@ class RegressionRelativeError(keras.metrics.Metric):
         self.count = self.add_weight(name="count", initializer="zeros")
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        abs_error = tf.abs(y_true - y_pred)
-        relative_error = abs_error / (tf.abs(y_true) + 1e-6)  # Avoid division by zero
-        relative_error = tf.reduce_mean(relative_error, axis=-1)  # Mean over regression targets
+        abs_error = tf.norm(y_true - y_pred, axis=-1)
+        relative_error = abs_error / (tf.norm(y_true, axis=-1) + 1e-6)        
         relative_error = tf.cast(relative_error, self.dtype)  # shape: (batch_size,)
         count = tf.shape(y_true)[0]
         if sample_weight is not None:

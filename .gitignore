@@ -13,6 +13,8 @@ CONDOR/logs/
 CONDOR/plots**
 CONDOR/HypParamGridSearch/logs/
 CONDOR/HypParamGridSearch/*.txt
+CONDOR/RegHypParamGridSearch/logs/
+CONDOR/RegHypParamGridSearch/*.txt
 CONDOR/PreProcessing/logs/
 CONDOR/PreProcessing/*.txt
 bin/**
