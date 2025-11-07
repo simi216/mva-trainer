@@ -62,9 +62,8 @@ class MLWrapperBase(BaseUtilityModel, ABC):
 
         y_train["assignment"] = y_train.pop("assignment_labels")
         y_train["regression"] = y_train.pop("regression_targets")
-        if not self.perform_regression:
-            y_train = {"assignment": y_train["assignment"]}
-
+        if not self.model.output_names.__contains__("regression"):
+            y_train.pop("regression")
 
         jet_data = None
         for key in X_train.keys():

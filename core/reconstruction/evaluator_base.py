@@ -285,3 +285,78 @@ class AccuracyCalculator:
         """Compute random assignment baseline accuracy."""
         num_jets = np.all(X_test["jet"] != padding_value, axis=-1).sum(axis=-1)
         return 1 / (num_jets * (num_jets - 1))
+
+
+class NeutrinoDeviationCalculator:
+    """Utilities for computing neutrino reconstruction deviation metrics."""
+
+    @staticmethod
+    def compute_relative_deviation(
+        predicted_neutrinos: np.ndarray,
+        true_neutrinos: np.ndarray,
+        per_event: bool = True,
+    ) -> np.ndarray:
+        """
+        Compute relative deviation of neutrino predictions.
+
+        Args:
+            predicted_neutrinos: Predicted neutrino momenta (n_events, 2, 3)
+            true_neutrinos: True neutrino momenta (n_events, 2, 3)
+            per_event: If True, return per-event deviation; else overall mean
+
+        Returns:
+            Deviation value(s)
+        """
+        # Compute L2 norm of the difference for each neutrino
+        # Shape: (n_events, 2)
+        diff_norm = np.linalg.norm(predicted_neutrinos - true_neutrinos, axis=-1)
+        
+        # Compute L2 norm of true neutrinos for normalization
+        # Shape: (n_events, 2)
+        true_norm = np.linalg.norm(true_neutrinos, axis=-1)
+        
+        # Compute relative deviation per neutrino
+        # Shape: (n_events, 2)
+        relative_dev = np.divide(
+            diff_norm,
+            true_norm,
+            out=np.zeros_like(diff_norm, dtype=float),
+            where=true_norm != 0,
+        )
+        
+        # Average over both neutrinos
+        # Shape: (n_events,)
+        per_event_deviation = np.mean(relative_dev, axis=-1)
+        
+        if per_event:
+            return per_event_deviation
+        return np.mean(per_event_deviation)
+
+    @staticmethod
+    def compute_absolute_deviation(
+        predicted_neutrinos: np.ndarray,
+        true_neutrinos: np.ndarray,
+        per_event: bool = True,
+    ) -> np.ndarray:
+        """
+        Compute absolute deviation of neutrino predictions.
+
+        Args:
+            predicted_neutrinos: Predicted neutrino momenta (n_events, 2, 3)
+            true_neutrinos: True neutrino momenta (n_events, 2, 3)
+            per_event: If True, return per-event deviation; else overall mean
+
+        Returns:
+            Deviation value(s)
+        """
+        # Compute L2 norm of the difference for each neutrino
+        # Shape: (n_events, 2)
+        diff_norm = np.linalg.norm(predicted_neutrinos - true_neutrinos, axis=-1)
+        
+        # Average over both neutrinos
+        # Shape: (n_events,)
+        per_event_deviation = np.mean(diff_norm, axis=-1)
+        
+        if per_event:
+            return per_event_deviation
+        return np.mean(per_event_deviation)

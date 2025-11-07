@@ -15,11 +15,13 @@ from core.components import (
 class FeatureConcatTransformer(MLReconstructorBase):
     def __init__(self, config, name="FeatureConcatTransformer"):
         super().__init__(config, name=name)
+        self.perform_regression = True
 
     def build_model(
         self,
         hidden_dim,
-        num_layers,
+        central_transformer_stack_size,
+        regression_transformer_stack_size,
         dropout_rate,
         num_heads=8,
         input_as_four_vector=True,
@@ -42,6 +44,7 @@ class FeatureConcatTransformer(MLReconstructorBase):
         flatted_met_inputs = keras.layers.Flatten()(normed_met_inputs)
         flatted_lepton_inputs = keras.layers.Flatten()(normed_lep_inputs)
 
+
         # Concat met and lepton features to each jet
         met_repeated_jets = keras.layers.RepeatVector(self.max_jets)(flatted_met_inputs)
         lepton_repeated_jets = keras.layers.RepeatVector(self.max_jets)(
@@ -62,7 +65,7 @@ class FeatureConcatTransformer(MLReconstructorBase):
 
         # Transformer layers
         jets_transformed = jet_embedding
-        for i in range(num_layers):
+        for i in range(central_transformer_stack_size):
             jets_transformed = SelfAttentionBlock(
                 num_heads=num_heads,
                 key_dim=hidden_dim,
@@ -96,14 +99,24 @@ class FeatureConcatTransformer(MLReconstructorBase):
             mask=jet_mask,
             attention_mask=TransposeLayer(perm=(0,2,1), name="assignment_transpose")(jet_assignment_probs)
         )
+        # MET Residual Connection
+        neutrino_residual = keras.layers.RepeatVector(self.config.NUM_LEPTONS ,name="neutrino_residual" )(keras.layers.Dense(
+            hidden_dim, activation="relu", name="neutrino_residual_embedding"
+        )(flatted_met_inputs))
+        neutrino_momentum_head = keras.layers.Add(name="neutrino_residual_add")(
+            [neutrino_momentum_head, neutrino_residual]
+        )
 
-        neutrino_self_attention = SelfAttentionBlock(
-            num_heads=num_heads,
-            key_dim=hidden_dim,
-            dropout_rate=dropout_rate,
-            name="neutrino_self_attention",
-            pre_ln=True,
-        )(neutrino_momentum_head, mask=None)
+
+        neutrino_self_attention = neutrino_momentum_head
+        for i in range(regression_transformer_stack_size):
+            neutrino_self_attention = SelfAttentionBlock(
+                num_heads=num_heads,
+                key_dim=hidden_dim,
+                dropout_rate=dropout_rate,
+                name=f"neutrino_self_attention_{i}",
+                pre_ln=True,
+            )(neutrino_self_attention)
 
         neutrino_momentum_outputs = MLP(
             self.config.get_n_regression_targets(), num_layers=3, activation=None, name="regression_unscaled"

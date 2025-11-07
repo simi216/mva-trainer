@@ -122,9 +122,9 @@ class BaselineAssigner(EventReconstructorBase):
 
 class DeltaRAssigner(BaselineAssigner):
     def __init__(
-        self, config: DataConfig, name="delta_r_assigner", mode="min", b_tag_threshold=2
+        self, config: DataConfig, mode="min", b_tag_threshold=2
     ):
-        super().__init__(config, name, mode)
+        super().__init__(config, name = r"$\Delta R(\ell,j)$-Assigner", mode=mode)
         """Initializes the DeltaRAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
@@ -246,12 +246,11 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
     def __init__(
         self,
         config: DataConfig,
-        neutrino_momenta_branches: list,
+        use_nu_flows = True,
         top_mass=173.15e3,
-        name="mass_combinatorics_assigner",
         all_jets_considered=False,
     ):
-        super().__init__(config, name)
+        super().__init__(config, name = r"$\chi^2$-Method" + (r"($\nu^2$-Flows)" if use_nu_flows else r"(True $\nu$)"))
         """Initializes the MassCombinatoricsAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
@@ -259,26 +258,14 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         self.NUM_LEPTONS = config.NUM_LEPTONS
         self.feature_index_dict = config.feature_indices
         self.max_jets = config.max_jets
-        if neutrino_momenta_branches is not None:
-            if len(neutrino_momenta_branches) != 6:
-                raise ValueError(
-                    "neutrino_momenta_branches must contain exactly 6 elements."
-                )
-            if not all(
-                branch in config.feature_indices["non_training"]
-                for branch in neutrino_momenta_branches
-            ):
-                raise ValueError(
-                    "All neutrino_momenta_branches must be present in non_training_features."
-                )
-        else:
-            if not config.has_regression_targets:
-                raise ValueError(
-                    "Regression targets must be available in the data when neutrino_momenta_branches is None."
-                )
-        self.neutrino_momenta_branches = neutrino_momenta_branches
         self.top_mass = top_mass
         self.all_jets_considered = all_jets_considered
+        if use_nu_flows and config.nu_flows_neutrino_momentum_features is None:
+            raise ValueError(
+                "Neutrino flows momentum features must be specified in the config when use_nu_flows is True."
+            )
+        self.use_nu_flows = use_nu_flows
+
 
     def get_jets_mask(self, data_dict):
         padding_value = self.config.padding_value
@@ -334,69 +321,20 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         return jet_mask
 
     def get_neutrino_momenta(self, data_dict):
-        if self.neutrino_momenta_branches is None:
-            nu_px = data_dict["regression_targets"][
-                :,
-                0, 0,
-            ]
-            nu_py = data_dict["regression_targets"][
-                :,
-                0, 1,
-            ]
-            nu_pz = data_dict["regression_targets"][
-                :,
-                0, 2,
-            ]
-            anu_px = data_dict["regression_targets"][
-                :,
-                1, 0,
-            ]
-            anu_py = data_dict["regression_targets"][
-                :,
-                1, 1,
-            ]
-            anu_pz = data_dict["regression_targets"][
-                :,
-                1, 2,
-            ]
-            return nu_px, nu_py, nu_pz, anu_px, anu_py, anu_pz
+        if self.use_nu_flows:
+            return data_dict["nu_flows_regression_targets"]
         else:
-            nu_px = data_dict["non_training"][
-                :,
-                self.feature_index_dict["non_training"][self.neutrino_momenta_branches[0]],
-            ]
-            nu_py = data_dict["non_training"][
-                :,
-                self.feature_index_dict["non_training"][self.neutrino_momenta_branches[1]],
-            ]
-            nu_pz = data_dict["non_training"][
-                :,
-                self.feature_index_dict["non_training"][self.neutrino_momenta_branches[2]],
-            ]
-            anu_px = data_dict["non_training"][
-                :,
-                self.feature_index_dict["non_training"][self.neutrino_momenta_branches[3]],
-            ]
-            anu_py = data_dict["non_training"][
-                :,
-                self.feature_index_dict["non_training"][self.neutrino_momenta_branches[4]],
-            ]
-            anu_pz = data_dict["non_training"][
-                :,
-                self.feature_index_dict["non_training"][self.neutrino_momenta_branches[5]],
-            ]
-            return nu_px, nu_py, nu_pz, anu_px, anu_py, anu_pz
+            return data_dict["regression_targets"]
 
     def construct_neutrino_four_vectors(self, data_dict):
-        nu_px, nu_py, nu_pz, anu_px, anu_py, anu_pz = self.get_neutrino_momenta(
+        neutrino_3_vector = self.get_neutrino_momenta(
             data_dict
         )
-        nu_e = np.sqrt(nu_px**2 + nu_py**2 + nu_pz**2)
-        anu_e = np.sqrt(anu_px**2 + anu_py**2 + anu_pz**2)
-        return (
-            np.array([nu_px, nu_py, nu_pz, nu_e]).T,
-            np.array([anu_px, anu_py, anu_pz, anu_e]).T,
-        )
+        nu_e = np.linalg.norm(neutrino_3_vector[:, 0,:], axis=-1)
+        anu_e = np.linalg.norm(neutrino_3_vector[:, 1,:], axis=-1)
+        nu_four_vector = np.concatenate([neutrino_3_vector[:, 0,:], nu_e[:, np.newaxis]], axis=-1)
+        anu_four_vector = np.concatenate([neutrino_3_vector[:, 1,:], anu_e[:, np.newaxis]], axis=-1)
+        return nu_four_vector, anu_four_vector
 
     def get_invariant_mass(self, four_vector):
         px, py, pz, e = (

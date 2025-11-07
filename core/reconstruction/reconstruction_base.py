@@ -22,9 +22,13 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
     def predict_indices(self, data_dict):
         pass
 
-    @abstractmethod
     def reconstruct_neutrinos(self, data_dict):
-        pass
+        if "nu_flows_regression_targets" in data_dict:
+            print("Defaulting to 'nu_flows_regression_targets' for neutrino reconstruction.")
+            return data_dict["nu_flows_regression_targets"]
+        else:
+            print("WARNING: 'nu_flows_regression_targets' not found in data_dict. Returning 'regression_targets' instead.")
+            return data_dict["regression_targets"]
 
     def evaluate_accuracy(self, data_dict, true_labels, per_event=False):
         """
@@ -74,7 +78,7 @@ class GroundTruthReconstructor(EventReconstructorBase):
         return data_dict["assignment_labels"]
 
     def reconstruct_neutrinos(self, data_dict):
-        return data_dict["neutrino_targets"]
+        return data_dict["regression_targets"]
 
 
 class FixedPrecisionReconstructor(EventReconstructorBase):
@@ -244,7 +248,7 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
                 "Model not built. Please build the model using build_model() method."
             )
 
-        if self.model.outputs.get("regression", None) is not None:
+        if "regression" in self.model.output_names and self.perform_regression:
             if self.met_features is not None:
                 neutrino_prediction = self.model.predict_dict(
                     [data["jet"], data["lepton"], data["met"]], verbose=0
@@ -254,5 +258,12 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
                     [data["jet"], data["lepton"]], verbose=0
                 )["regression"]
             return neutrino_prediction
+        elif data.get("nu_flows_regression_targets") is not None:
+            print(
+                "WARNING: Regression targets are specified in the config, but the model does not have regression output. Returning 'nu_flows_regression_targets' from data_dict."
+            )
+            return data["nu_flows_regression_targets"]
         else:
-            return data["neutrino_targets"]
+            raise ValueError(
+                "Regression targets are not specified in the config, and the model does not have regression output."
+            )

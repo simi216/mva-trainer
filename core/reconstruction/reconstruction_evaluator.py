@@ -10,12 +10,14 @@ from .evaluator_base import (
     BinningUtility,
     FeatureExtractor,
     AccuracyCalculator,
+    NeutrinoDeviationCalculator,
 )
 from .plotting_utils import (
     AccuracyPlotter,
     ConfusionMatrixPlotter,
     ComplementarityPlotter,
     ResolutionPlotter,
+    NeutrinoDeviationPlotter,
 )
 from .physics_calculations import TopReconstructor, ResolutionCalculator
 
@@ -38,17 +40,11 @@ class PredictionManager:
         for reconstructor in self.reconstructors:
             assignment_pred = reconstructor.predict_indices(self.X_test)
 
-            if hasattr(reconstructor, "reconstruct_neutrinos") and reconstructor.neutrino_reconstruction:
-                neutrino_pred = reconstructor.reconstruct_neutrinos(
-                    self.X_test
-                )
-            elif self.X_test.get("nu_flows_regression_targets") is not None:
-                neutrino_pred = self.X_test["nu_flows_regression_targets"]
+            if hasattr(reconstructor, "reconstruct_neutrinos"):
+                neutrino_pred = reconstructor.reconstruct_neutrinos(self.X_test)
             else:
-                print(f"WARNING: {reconstructor.get_name()} does not provide neutrino predictions and nu-Flows are not available in the test data. Setting neutrino predictions to truth!")
-                neutrino_pred = self.X_test.get("neutrino_regression_targets", None)
-
-
+                print("WARNING: Reconstructor does not support neutrino regression.")
+                neutrino_pred = None
             self.predictions.append(
                 {
                     "assignment": assignment_pred,
@@ -86,7 +82,6 @@ class ComplementarityAnalyzer:
 
         # Get per-event accuracy for each reconstructor
         per_event_accuracies = self._get_all_per_event_accuracies()
-
 
         n_reconstructors = len(per_event_accuracies)
         complementarity_matrix = np.zeros((n_reconstructors, n_reconstructors))
@@ -158,9 +153,7 @@ class ReconstructionEvaluator:
         # Setup neutrino momenta
 
         # Initialize managers
-        self.prediction_manager = PredictionManager(
-            reconstructors, X_test
-        )
+        self.prediction_manager = PredictionManager(reconstructors, X_test)
         self.complementarity_analyzer = ComplementarityAnalyzer(
             self.prediction_manager, y_test
         )
@@ -223,6 +216,7 @@ class ReconstructionEvaluator:
         print("\nComputing bootstrap confidence intervals...")
         accuracies = []
 
+        names = []
         for i, reconstructor in enumerate(self.reconstructors):
             if isinstance(reconstructor, GroundTruthReconstructor):
                 print(f"{reconstructor.get_name()}: Ground Truth (skipping)")
@@ -233,9 +227,141 @@ class ReconstructionEvaluator:
                 f"{reconstructor.get_name()}: {mean_acc:.4f} "
                 f"[{lower:.4f}, {upper:.4f}]"
             )
+            names.append(reconstructor.get_name())
 
-        names = [r.get_name() for r in self.reconstructors if not isinstance(r, GroundTruthReconstructor)]
         return AccuracyPlotter.plot_overall_accuracies(names, accuracies, config)
+
+    # ==================== Neutrino Deviation Methods ====================
+
+    def evaluate_neutrino_deviation(
+        self,
+        reconstructor_index: int,
+        per_event: bool = False,
+        deviation_type: str = "relative",
+    ) -> Union[float, np.ndarray]:
+        """
+        Evaluate neutrino reconstruction deviation for a specific reconstructor.
+
+        Args:
+            reconstructor_index: Index of the reconstructor
+            per_event: If True, return per-event deviation; else overall mean
+            deviation_type: Type of deviation ('relative' or 'absolute')
+
+        Returns:
+            Deviation value(s)
+        """
+        if self.y_test.get("regression_targets") is None:
+            raise ValueError(
+                "No regression targets found in y_test. "
+                "Cannot evaluate neutrino deviation."
+            )
+
+        predictions = self.prediction_manager.get_neutrino_predictions(
+            reconstructor_index
+        )
+        true_neutrinos = self.y_test["regression_targets"]
+
+        if deviation_type == "relative":
+            return NeutrinoDeviationCalculator.compute_relative_deviation(
+                predictions,
+                true_neutrinos,
+                per_event=per_event,
+            )
+        elif deviation_type == "absolute":
+            return NeutrinoDeviationCalculator.compute_absolute_deviation(
+                predictions,
+                true_neutrinos,
+                per_event=per_event,
+            )
+        else:
+            raise ValueError(
+                f"Unknown deviation_type: {deviation_type}. "
+                "Must be 'relative' or 'absolute'."
+            )
+
+    def _bootstrap_neutrino_deviation(
+        self,
+        reconstructor_index: int,
+        config: PlotConfig,
+        deviation_type: str = "relative",
+    ) -> Tuple[float, float, float]:
+        """Compute neutrino deviation with bootstrap confidence intervals."""
+        deviation_data = self.evaluate_neutrino_deviation(
+            reconstructor_index, per_event=True, deviation_type=deviation_type
+        )
+        return BootstrapCalculator.compute_bootstrap_ci(
+            deviation_data,
+            n_bootstrap=config.n_bootstrap,
+            confidence=config.confidence,
+        )
+
+    def plot_all_neutrino_deviations(
+        self,
+        n_bootstrap: int = 1000,
+        confidence: float = 0.95,
+        figsize: Tuple[int, int] = (10, 6),
+        deviation_type: str = "relative",
+    ):
+        """
+        Plot neutrino deviations for all reconstructors with error bars.
+
+        Args:
+            n_bootstrap: Number of bootstrap samples
+            confidence: Confidence level for intervals
+            figsize: Figure size
+            deviation_type: Type of deviation ('relative' or 'absolute')
+
+        Returns:
+            Tuple of (figure, axis)
+        """
+        if self.y_test.get("regression_targets") is None:
+            raise ValueError(
+                "No regression targets found in y_test. "
+                "Cannot evaluate neutrino deviation."
+            )
+
+        config = PlotConfig(
+            figsize=figsize,
+            confidence=confidence,
+            n_bootstrap=n_bootstrap,
+        )
+
+        print("\nComputing bootstrap confidence intervals for neutrino deviation...")
+        deviations = []
+        names = []
+
+        for i, reconstructor in enumerate(self.reconstructors):
+            if isinstance(reconstructor, GroundTruthReconstructor):
+                print(f"{reconstructor.get_name()}: Ground Truth (skipping)")
+                #continue
+
+            # Check if reconstructor supports neutrino reconstruction
+            neutrino_pred = self.prediction_manager.get_neutrino_predictions(i)
+            if neutrino_pred is None:
+                print(
+                    f"{reconstructor.get_name()}: No neutrino reconstruction (skipping)"
+                )
+                continue
+
+            mean_dev, lower, upper = self._bootstrap_neutrino_deviation(
+                i, config, deviation_type
+            )
+            deviations.append((mean_dev, lower, upper))
+            print(
+                f"{reconstructor.get_name()}: {mean_dev:.4f} "
+                f"[{lower:.4f}, {upper:.4f}]"
+            )
+            names.append(reconstructor.get_name())
+
+        if not deviations:
+            raise ValueError(
+                "No reconstructors with neutrino reconstruction found. "
+                "Cannot plot neutrino deviations."
+            )
+
+        return NeutrinoDeviationPlotter.plot_overall_deviations(
+            names, deviations, config
+        )
 
     # ==================== Binned Accuracy Methods ====================
 
@@ -328,7 +454,7 @@ class ReconstructionEvaluator:
             show_combinatoric,
             combinatoric_accuracy,
         )
-    
+
     def plot_feature_assignment_success(
         self,
         feature_data_type: str,
@@ -364,16 +490,10 @@ class ReconstructionEvaluator:
         correct_weights = event_weights * correct_mask
         incorrect_weights = event_weights * incorrect_mask
         correct_hist = np.histogram(
-            feature_data,
-            bins=bin_edges,
-            weights=correct_weights,
-            density=True
+            feature_data, bins=bin_edges, weights=correct_weights, density=True
         )[0]
         incorrect_hist = np.histogram(
-            feature_data,
-            bins=bin_edges,
-            weights=incorrect_weights,
-            density=True
+            feature_data, bins=bin_edges, weights=incorrect_weights, density=True
         )[0]
 
         # Plot
@@ -385,9 +505,11 @@ class ReconstructionEvaluator:
             feature_label,
             figsize,
         )
-        ax.set_title(f"{self.reconstructors[assigner_index].get_name()} Assignment Success vs {feature_label}")
+        ax.set_title(
+            f"{self.reconstructors[assigner_index].get_name()} Assignment Success vs {feature_label}"
+        )
         return fig, ax
-    
+
     def plot_top_mass_deviation_assignment_success(
         self,
         assigner_index: int,
@@ -439,16 +561,10 @@ class ReconstructionEvaluator:
         correct_weights = event_weights * correct_mask
         incorrect_weights = event_weights * incorrect_mask
         correct_hist = np.histogram(
-            mass_deviation,
-            bins=bin_edges,
-            weights=correct_weights,
-            density=True
+            mass_deviation, bins=bin_edges, weights=correct_weights, density=True
         )[0]
         incorrect_hist = np.histogram(
-            mass_deviation,
-            bins=bin_edges,
-            weights=incorrect_weights,
-            density=True
+            mass_deviation, bins=bin_edges, weights=incorrect_weights, density=True
         )[0]
 
         # Plot
@@ -460,8 +576,262 @@ class ReconstructionEvaluator:
             feature_label,
             figsize,
         )
-        ax.set_title(f"{self.reconstructors[assigner_index].get_name()} Assignment Success vs {feature_label}")
+        ax.set_title(
+            f"{self.reconstructors[assigner_index].get_name()} Assignment Success vs {feature_label}"
+        )
         return fig, ax
+
+    def plot_binned_neutrino_deviation(
+        self,
+        feature_data_type: str,
+        feature_name: str,
+        fancy_feature_label: Optional[str] = None,
+        bins: int = 20,
+        xlims: Optional[Tuple[float, float]] = None,
+        n_bootstrap: int = 1000,
+        confidence: float = 0.95,
+        show_errorbar: bool = True,
+        deviation_type: str = "relative",
+    ):
+        """
+        Plot binned neutrino deviation vs. a feature with bootstrap error bars.
+
+        Args:
+            feature_data_type: Type of feature data ('jet', 'lepton', 'met', etc.)
+            feature_name: Name of the feature
+            fancy_feature_label: Optional fancy label for the feature
+            bins: Number of bins or bin edges
+            xlims: Optional x-axis limits
+            n_bootstrap: Number of bootstrap samples
+            confidence: Confidence level for intervals
+            show_errorbar: Whether to show error bars
+            deviation_type: Type of deviation ('relative' or 'absolute')
+
+        Returns:
+            Tuple of (figure, axis)
+        """
+        if self.y_test.get("regression_targets") is None:
+            raise ValueError(
+                "No regression targets found in y_test. "
+                "Cannot evaluate neutrino deviation."
+            )
+
+        config = PlotConfig(
+            confidence=confidence,
+            n_bootstrap=n_bootstrap,
+            show_errorbar=show_errorbar,
+        )
+
+        # Extract feature data
+        feature_data = FeatureExtractor.extract_feature(
+            self.X_test,
+            self.config.feature_indices,
+            feature_data_type,
+            feature_name,
+        )
+
+        # Create bins
+        bin_edges = BinningUtility.create_bins(feature_data, bins, xlims)
+        binning_mask = BinningUtility.create_binning_mask(feature_data, bin_edges)
+        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
+
+        # Get event weights
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+
+        # Compute binned deviations for each reconstructor
+        print(f"\nComputing binned neutrino deviation for {feature_name}...")
+        binned_deviations = []
+
+        for i, reconstructor in enumerate(self.reconstructors):
+            if isinstance(reconstructor, GroundTruthReconstructor):
+                continue
+
+            # Check if reconstructor supports neutrino reconstruction
+            neutrino_pred = self.prediction_manager.get_neutrino_predictions(i)
+            if neutrino_pred is None:
+                print(
+                    f"{reconstructor.get_name()}: No neutrino reconstruction (skipping)"
+                )
+                continue
+
+            deviation_data = self.evaluate_neutrino_deviation(
+                i, per_event=True, deviation_type=deviation_type
+            )
+
+            if show_errorbar:
+                mean_dev, lower, upper = BootstrapCalculator.compute_binned_bootstrap(
+                    binning_mask,
+                    event_weights,
+                    deviation_data,
+                    config.n_bootstrap,
+                    config.confidence,
+                )
+                binned_deviations.append((mean_dev, lower, upper))
+            else:
+                binned_dev = BinningUtility.compute_weighted_binned_statistic(
+                    binning_mask, deviation_data, event_weights
+                )
+                binned_deviations.append((binned_dev, binned_dev, binned_dev))
+
+        if not binned_deviations:
+            raise ValueError(
+                "No reconstructors with neutrino reconstruction found. "
+                "Cannot plot binned neutrino deviations."
+            )
+
+        # Compute bin counts
+        bin_counts = np.sum(
+            event_weights.reshape(1, -1) * binning_mask, axis=1
+        ) / np.sum(event_weights)
+
+        # Plot
+        feature_label = fancy_feature_label or feature_name
+        names = [
+            r.get_name()
+            for r in self.reconstructors
+            if not isinstance(r, GroundTruthReconstructor)
+            and self.prediction_manager.get_neutrino_predictions(
+                self.reconstructors.index(r)
+            )
+            is not None
+        ]
+
+        return NeutrinoDeviationPlotter.plot_binned_deviation(
+            bin_centers,
+            binned_deviations,
+            names,
+            bin_counts,
+            bin_edges,
+            feature_label,
+            config,
+        )
+
+    def plot_neutrino_component_deviations(
+        self,
+        bins: int = 50,
+        xlims: Optional[Tuple[float, float]] = None,
+        figsize: Tuple[int, int] = (15, 10),
+        component_labels: List[str] = ["$p_x$", "$p_y$", "$p_z$"],
+    ):
+        """
+        Plot histograms of relative deviation for each neutrino momentum component.
+
+        Args:
+            bins: Number of bins for histograms
+            xlims: Optional x-axis limits (min, max)
+            figsize: Figure size
+            component_labels: Labels for momentum components
+
+        Returns:
+            Tuple of (figure, axes)
+        """
+        if self.y_test.get("regression_targets") is None:
+            raise ValueError(
+                "No regression targets found in y_test. "
+                "Cannot evaluate neutrino component deviations."
+            )
+
+        # Get event weights
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+        true_neutrinos = self.y_test["regression_targets"]
+
+        # Collect predictions from all reconstructors
+        predicted_neutrinos = []
+        names = []
+
+        for i, reconstructor in enumerate(self.reconstructors):
+            if isinstance(reconstructor, GroundTruthReconstructor):
+                continue
+
+            # Check if reconstructor supports neutrino reconstruction
+            neutrino_pred = self.prediction_manager.get_neutrino_predictions(i)
+            if neutrino_pred is None:
+                print(
+                    f"{reconstructor.get_name()}: No neutrino reconstruction (skipping)"
+                )
+                continue
+
+            predicted_neutrinos.append(neutrino_pred)
+            names.append(reconstructor.get_name())
+
+        if not predicted_neutrinos:
+            raise ValueError(
+                "No reconstructors with neutrino reconstruction found. "
+                "Cannot plot component deviations."
+            )
+
+        return NeutrinoDeviationPlotter.plot_component_deviation_histograms(
+            predicted_neutrinos,
+            true_neutrinos,
+            names,
+            event_weights,
+            bins,
+            xlims,
+            figsize,
+            component_labels,
+        )
+
+    def plot_overall_neutrino_deviation_distribution(
+        self,
+        bins: int = 50,
+        xlims: Optional[Tuple[float, float]] = None,
+        figsize: Tuple[int, int] = (12, 6),
+    ):
+        """
+        Plot histogram of overall relative deviation distribution for all reconstructors.
+
+        Args:
+            bins: Number of bins for histogram
+            xlims: Optional x-axis limits (min, max)
+            figsize: Figure size
+
+        Returns:
+            Tuple of (figure, axis)
+        """
+        if self.y_test.get("regression_targets") is None:
+            raise ValueError(
+                "No regression targets found in y_test. "
+                "Cannot evaluate neutrino deviation distribution."
+            )
+
+        # Get event weights
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+        true_neutrinos = self.y_test["regression_targets"]
+
+        # Collect predictions from all reconstructors
+        predicted_neutrinos = []
+        names = []
+
+        for i, reconstructor in enumerate(self.reconstructors):
+            if isinstance(reconstructor, GroundTruthReconstructor):
+                continue
+
+            # Check if reconstructor supports neutrino reconstruction
+            neutrino_pred = self.prediction_manager.get_neutrino_predictions(i)
+            if neutrino_pred is None:
+                print(
+                    f"{reconstructor.get_name()}: No neutrino reconstruction (skipping)"
+                )
+                continue
+
+            predicted_neutrinos.append(neutrino_pred)
+            names.append(reconstructor.get_name())
+
+        if not predicted_neutrinos:
+            raise ValueError(
+                "No reconstructors with neutrino reconstruction found. "
+                "Cannot plot deviation distribution."
+            )
+
+        return NeutrinoDeviationPlotter.plot_overall_deviation_distribution(
+            predicted_neutrinos,
+            true_neutrinos,
+            names,
+            event_weights,
+            bins,
+            xlims,
+            figsize,
+        )
 
     # ==================== Confusion Matrix Methods ====================
 
@@ -473,7 +843,8 @@ class ReconstructionEvaluator:
         """Plot confusion matrices for all reconstructors."""
         predictions_list = [
             self.prediction_manager.get_assignment_predictions(i)
-            for i in range(len(self.reconstructors)) if not isinstance(
+            for i in range(len(self.reconstructors))
+            if not isinstance(
                 self.reconstructors[i],
                 GroundTruthReconstructor,
             )
@@ -500,7 +871,11 @@ class ReconstructionEvaluator:
     ):
         """Plot complementarity matrix between reconstructors."""
         matrix = self.compute_complementarity_matrix()
-        names = [r.get_name() for r in self.reconstructors if not isinstance(r, GroundTruthReconstructor)]
+        names = [
+            r.get_name()
+            for r in self.reconstructors
+            if not isinstance(r, GroundTruthReconstructor)
+        ]
         return ComplementarityPlotter.plot_complementarity_matrix(
             matrix, names, figsize
         )
