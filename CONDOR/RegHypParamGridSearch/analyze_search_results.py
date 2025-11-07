@@ -10,14 +10,28 @@ import argparse
 
 def parse_model_name(model_name):
     """Extract hyperparameters from model name."""
-    pattern = r"_d(\d+)_l(\d+)_h(\d+)"
-    match = re.search(pattern, model_name)
+    # Try regression model pattern first: Regression{arch}_d{dim}_cl{central_layers}_rl{regression_layers}
+    regression_pattern = r"_d(\d+)_cl(\d+)_rl(\d+)"
+    match = re.search(regression_pattern, model_name)
+    if match:
+        return {
+            "hidden_dim": int(match.group(1)),
+            "num_central_layers": int(match.group(2)),
+            "num_regression_layers": int(match.group(3)),
+            "model_type": "regression"
+        }
+    
+    # Try assignment model pattern: {arch}_d{dim}_l{layers}_h{heads}
+    assignment_pattern = r"_d(\d+)_l(\d+)_h(\d+)"
+    match = re.search(assignment_pattern, model_name)
     if match:
         return {
             "hidden_dim": int(match.group(1)),
             "num_layers": int(match.group(2)),
-            "num_heads": int(match.group(3)), 
+            "num_heads": int(match.group(3)),
+            "model_type": "assignment"
         }
+    
     return None
 
 
@@ -27,6 +41,7 @@ def collect_results(models_dir, model_type="Raw_Transformer_Assignment"):
     # Find all model directories
     model_dirs = glob(os.path.join(models_dir, f"{model_type}_*"))
 
+    is_regression = "Regression" in model_type
 
     print(f"Looking for {model_type} models in {models_dir}...")
     for model_dir in model_dirs:
@@ -68,17 +83,38 @@ def collect_results(models_dir, model_type="Raw_Transformer_Assignment"):
             else:
                 best_val_acc = None
 
+            # Build base result dictionary
             result = {
                 "model_name": model_name,
                 "hidden_dim": hyperparams["hidden_dim"],
-                "num_layers": hyperparams["num_layers"],
-                "num_heads": hyperparams["num_heads"],
                 "trainable_params": trainable_params,
                 "best_val_loss": best_val_loss,
                 "best_val_acc": best_val_acc,
                 "best_epoch": best_epoch,
                 "total_epochs": len(val_loss),
             }
+
+            # Add model-specific hyperparameters
+            if hyperparams["model_type"] == "regression":
+                result["num_central_layers"] = hyperparams["num_central_layers"]
+                result["num_regression_layers"] = hyperparams["num_regression_layers"]
+                
+                # Get regression-specific metrics
+                if "val_regression_relative_error" in history:
+                    val_reg_err = history["val_regression_relative_error"]
+                    result["best_val_regression_error"] = val_reg_err[best_epoch]
+                else:
+                    result["best_val_regression_error"] = None
+                
+                # Try to get saved best relative deviation
+                if "best_val_rel_dev" in history:
+                    result["best_val_rel_dev"] = float(history["best_val_rel_dev"])
+                else:
+                    result["best_val_rel_dev"] = None
+                    
+            else:  # assignment model
+                result["num_layers"] = hyperparams["num_layers"]
+                result["num_heads"] = hyperparams["num_heads"]
 
             results.append(result)
 
@@ -93,14 +129,24 @@ def plot_grid_search_results(df, output_dir):
     """Create visualization of grid search results."""
     os.makedirs(output_dir, exist_ok=True)
 
+    # Determine if this is regression or assignment model
+    is_regression = "num_central_layers" in df.columns
+    
+    if is_regression:
+        layer_col = "num_central_layers"
+        layer_label = "Number of Central Layers"
+    else:
+        layer_col = "num_layers"
+        layer_label = "Number of Layers"
+
     # 1. Heatmap of validation loss
     plt.figure(figsize=(10, 8))
     pivot_loss = df.pivot_table(
-        values="best_val_loss", index="num_layers", columns="hidden_dim", aggfunc="mean"
+        values="best_val_loss", index=layer_col, columns="hidden_dim", aggfunc="mean"
     )
     sns.heatmap(pivot_loss, annot=True, fmt=".4f", cmap="viridis_r")
     plt.title("Best Validation Loss by Hyperparameters")
-    plt.ylabel("Number of Layers")
+    plt.ylabel(layer_label)
     plt.xlabel("Hidden Dimension")
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "grid_search_loss_heatmap.png"), dpi=150)
@@ -111,17 +157,55 @@ def plot_grid_search_results(df, output_dir):
         plt.figure(figsize=(10, 8))
         pivot_acc = df.pivot_table(
             values="best_val_acc",
-            index="num_layers",
+            index=layer_col,
             columns="hidden_dim",
             aggfunc="mean",
         )
         sns.heatmap(pivot_acc, annot=True, fmt=".4f", cmap="viridis")
         plt.title("Best Validation Accuracy by Hyperparameters")
-        plt.ylabel("Number of Layers")
+        plt.ylabel(layer_label)
         plt.xlabel("Hidden Dimension")
         plt.tight_layout()
         plt.savefig(
             os.path.join(output_dir, "grid_search_accuracy_heatmap.png"), dpi=150
+        )
+        plt.close()
+
+    # 2b. Heatmap of regression relative error (if available)
+    if is_regression and "best_val_regression_error" in df.columns and df["best_val_regression_error"].notna().any():
+        plt.figure(figsize=(10, 8))
+        pivot_reg_err = df.pivot_table(
+            values="best_val_regression_error",
+            index=layer_col,
+            columns="hidden_dim",
+            aggfunc="mean",
+        )
+        sns.heatmap(pivot_reg_err, annot=True, fmt=".4f", cmap="viridis_r")
+        plt.title("Best Validation Regression Relative Error by Hyperparameters")
+        plt.ylabel(layer_label)
+        plt.xlabel("Hidden Dimension")
+        plt.tight_layout()
+        plt.savefig(
+            os.path.join(output_dir, "grid_search_regression_error_heatmap.png"), dpi=150
+        )
+        plt.close()
+
+    # 2c. Heatmap of regression relative deviation (if available)
+    if is_regression and "best_val_rel_dev" in df.columns and df["best_val_rel_dev"].notna().any():
+        plt.figure(figsize=(10, 8))
+        pivot_rel_dev = df.pivot_table(
+            values="best_val_rel_dev",
+            index=layer_col,
+            columns="hidden_dim",
+            aggfunc="mean",
+        )
+        sns.heatmap(pivot_rel_dev, annot=True, fmt=".4f", cmap="viridis_r")
+        plt.title("Best Validation Relative Deviation by Hyperparameters")
+        plt.ylabel(layer_label)
+        plt.xlabel("Hidden Dimension")
+        plt.tight_layout()
+        plt.savefig(
+            os.path.join(output_dir, "grid_search_relative_deviation_heatmap.png"), dpi=150
         )
         plt.close()
 
@@ -130,13 +214,13 @@ def plot_grid_search_results(df, output_dir):
         plt.figure(figsize=(10, 8))
         pivot_params = df.pivot_table(
             values="trainable_params",
-            index="num_layers",
+            index=layer_col,
             columns="hidden_dim",
             aggfunc="mean",
         )
         sns.heatmap(pivot_params, annot=True, fmt=".0f", cmap="YlOrRd")
         plt.title("Trainable Parameters by Hyperparameters")
-        plt.ylabel("Number of Layers")
+        plt.ylabel(layer_label)
         plt.xlabel("Hidden Dimension")
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, "grid_search_params_heatmap.png"), dpi=150)
@@ -150,9 +234,16 @@ def plot_grid_search_results(df, output_dir):
 
     # Top models by loss
     top_models = df_sorted.head(top_n)
-    model_labels = [
-        f"d{row['hidden_dim']}_l{row['num_layers']}_h{row['num_heads']}" for _, row in top_models.iterrows()
-    ]
+    if is_regression:
+        model_labels = [
+            f"d{row['hidden_dim']}_cl{row['num_central_layers']}_rl{row['num_regression_layers']}" 
+            for _, row in top_models.iterrows()
+        ]
+    else:
+        model_labels = [
+            f"d{row['hidden_dim']}_l{row['num_layers']}_h{row['num_heads']}" 
+            for _, row in top_models.iterrows()
+        ]
 
     ax1.barh(range(top_n), top_models["best_val_loss"])
     ax1.set_yticks(range(top_n))
@@ -177,7 +268,7 @@ def plot_grid_search_results(df, output_dir):
     plt.figure(figsize=(10, 8))
     scatter = plt.scatter(
         df["hidden_dim"],
-        df["num_layers"],
+        df[layer_col],
         c=df["best_val_loss"],
         s=200,
         cmap="viridis_r",
@@ -186,7 +277,7 @@ def plot_grid_search_results(df, output_dir):
     )
     plt.colorbar(scatter, label="Best Validation Loss")
     plt.xlabel("Hidden Dimension")
-    plt.ylabel("Number of Layers")
+    plt.ylabel(layer_label)
     plt.title("Grid Search Results: Loss Landscape")
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -195,13 +286,19 @@ def plot_grid_search_results(df, output_dir):
 
     # 6. Efficiency plot: Loss vs Parameters
     if df["trainable_params"].notna().any():
-        plt.figure(figsize=(12, 6))
+        # Create subplots based on available metrics
+        n_plots = 2 if df["best_val_acc"].notna().any() else 1
+        if is_regression and "best_val_regression_error" in df.columns and df["best_val_regression_error"].notna().any():
+            n_plots += 1
+        
+        fig, axes = plt.subplots(1, n_plots, figsize=(8 * n_plots, 6))
+        if n_plots == 1:
+            axes = [axes]
 
-        # Create two subplots
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-
+        plot_idx = 0
+        
         # Plot 1: Loss vs Parameters
-        scatter1 = ax1.scatter(
+        scatter1 = axes[plot_idx].scatter(
             df["trainable_params"] / 1e6,  # Convert to millions
             df["best_val_loss"],
             c=df["hidden_dim"],
@@ -210,15 +307,16 @@ def plot_grid_search_results(df, output_dir):
             alpha=0.7,
             edgecolors="black",
         )
-        ax1.set_xlabel("Trainable Parameters (Millions)")
-        ax1.set_ylabel("Best Validation Loss")
-        ax1.set_title("Model Efficiency: Loss vs Model Size")
-        ax1.grid(True, alpha=0.3)
-        plt.colorbar(scatter1, ax=ax1, label="Hidden Dimension")
+        axes[plot_idx].set_xlabel("Trainable Parameters (Millions)")
+        axes[plot_idx].set_ylabel("Best Validation Loss")
+        axes[plot_idx].set_title("Model Efficiency: Loss vs Model Size")
+        axes[plot_idx].grid(True, alpha=0.3)
+        plt.colorbar(scatter1, ax=axes[plot_idx], label="Hidden Dimension")
+        plot_idx += 1
 
         # Plot 2: Accuracy vs Parameters (if available)
         if df["best_val_acc"].notna().any():
-            scatter2 = ax2.scatter(
+            scatter2 = axes[plot_idx].scatter(
                 df["trainable_params"] / 1e6,
                 df["best_val_acc"],
                 c=df["hidden_dim"],
@@ -227,11 +325,29 @@ def plot_grid_search_results(df, output_dir):
                 alpha=0.7,
                 edgecolors="black",
             )
-            ax2.set_xlabel("Trainable Parameters (Millions)")
-            ax2.set_ylabel("Best Validation Accuracy")
-            ax2.set_title("Model Efficiency: Accuracy vs Model Size")
-            ax2.grid(True, alpha=0.3)
-            plt.colorbar(scatter2, ax=ax2, label="Hidden Dimension")
+            axes[plot_idx].set_xlabel("Trainable Parameters (Millions)")
+            axes[plot_idx].set_ylabel("Best Validation Accuracy")
+            axes[plot_idx].set_title("Model Efficiency: Accuracy vs Model Size")
+            axes[plot_idx].grid(True, alpha=0.3)
+            plt.colorbar(scatter2, ax=axes[plot_idx], label="Hidden Dimension")
+            plot_idx += 1
+
+        # Plot 3: Regression Error vs Parameters (if available)
+        if is_regression and "best_val_regression_error" in df.columns and df["best_val_regression_error"].notna().any():
+            scatter3 = axes[plot_idx].scatter(
+                df["trainable_params"] / 1e6,
+                df["best_val_regression_error"],
+                c=df["hidden_dim"],
+                s=100,
+                cmap="viridis",
+                alpha=0.7,
+                edgecolors="black",
+            )
+            axes[plot_idx].set_xlabel("Trainable Parameters (Millions)")
+            axes[plot_idx].set_ylabel("Best Validation Regression Error")
+            axes[plot_idx].set_title("Model Efficiency: Regression Error vs Model Size")
+            axes[plot_idx].grid(True, alpha=0.3)
+            plt.colorbar(scatter3, ax=axes[plot_idx], label="Hidden Dimension")
 
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, "grid_search_efficiency.png"), dpi=150)
@@ -246,7 +362,7 @@ def parse_args():
         "--model_type",
         type=str,
         default="Raw_Transformer_Assignment",
-        help="Type of model to analyze (default: Raw_Transformer_Assignment)",
+        help="Type of model to analyze (e.g., Raw_Transformer_Assignment, RegressionFeatureConcatTransformer)",
     )
     parser.add_argument(
         "--root_dir",
@@ -283,6 +399,8 @@ def main():
     print(f"Results saved to {csv_path}")
 
     # Print summary statistics
+    is_regression = "num_central_layers" in results_df.columns
+    
     print("\n" + "=" * 60)
     print("GRID SEARCH SUMMARY")
     print("=" * 60)
@@ -290,23 +408,35 @@ def main():
     best_model = results_df.loc[results_df["best_val_loss"].idxmin()]
     print(f"  Model: {best_model['model_name']}")
     print(f"  Hidden dim: {best_model['hidden_dim']}")
-    print(f"  Num layers: {best_model['num_layers']}")
+    if is_regression:
+        print(f"  Central layers: {best_model['num_central_layers']}")
+        print(f"  Regression layers: {best_model['num_regression_layers']}")
+    else:
+        print(f"  Num layers: {best_model['num_layers']}")
+        print(f"  Num heads: {best_model['num_heads']}")
     print(f"  Val loss: {best_model['best_val_loss']:.6f}")
     if best_model["best_val_acc"] is not None:
         print(f"  Val accuracy: {best_model['best_val_acc']:.6f}")
+    if is_regression and "best_val_regression_error" in best_model and best_model["best_val_regression_error"] is not None:
+        print(f"  Val regression error: {best_model['best_val_regression_error']:.6f}")
+    if is_regression and "best_val_rel_dev" in best_model and best_model["best_val_rel_dev"] is not None:
+        print(f"  Val relative deviation: {best_model['best_val_rel_dev']:.6f}")
     if best_model["trainable_params"] is not None:
         print(f"  Trainable params: {best_model['trainable_params']:,}")
     print(f"  Best epoch: {best_model['best_epoch']}")
 
     print("\nTop 5 models:")
-    display_cols = [
-        "hidden_dim",
-        "num_layers",
-        "trainable_params",
-        "best_val_loss",
-        "best_val_acc",
-        "best_epoch",
-    ]
+    display_cols = ["hidden_dim", "trainable_params", "best_val_loss", "best_val_acc", "best_epoch"]
+    if is_regression:
+        display_cols.insert(1, "num_central_layers")
+        display_cols.insert(2, "num_regression_layers")
+        if "best_val_regression_error" in results_df.columns:
+            display_cols.insert(-1, "best_val_regression_error")
+        if "best_val_rel_dev" in results_df.columns:
+            display_cols.insert(-1, "best_val_rel_dev")
+    else:
+        display_cols.insert(1, "num_layers")
+        display_cols.insert(2, "num_heads")
     # Only include columns that exist and have data
     display_cols = [col for col in display_cols if col in results_df.columns]
     print(results_df.nsmallest(5, "best_val_loss")[display_cols].to_string(index=False))
@@ -318,13 +448,19 @@ def main():
         print("=" * 60)
         print("\nSmallest model:")
         smallest = results_df.loc[results_df["trainable_params"].idxmin()]
-        print(f"  Config: h{smallest['hidden_dim']}_l{smallest['num_layers']}")
+        if is_regression:
+            print(f"  Config: d{smallest['hidden_dim']}_cl{smallest['num_central_layers']}_rl{smallest['num_regression_layers']}")
+        else:
+            print(f"  Config: d{smallest['hidden_dim']}_l{smallest['num_layers']}_h{smallest['num_heads']}")
         print(f"  Parameters: {smallest['trainable_params']:,}")
         print(f"  Val loss: {smallest['best_val_loss']:.6f}")
 
         print("\nLargest model:")
         largest = results_df.loc[results_df["trainable_params"].idxmax()]
-        print(f"  Config: h{largest['hidden_dim']}_l{largest['num_layers']}")
+        if is_regression:
+            print(f"  Config: d{largest['hidden_dim']}_cl{largest['num_central_layers']}_rl{largest['num_regression_layers']}")
+        else:
+            print(f"  Config: d{largest['hidden_dim']}_l{largest['num_layers']}_h{largest['num_heads']}")
         print(f"  Parameters: {largest['trainable_params']:,}")
         print(f"  Val loss: {largest['best_val_loss']:.6f}")
 
@@ -333,12 +469,35 @@ def main():
             results_df["trainable_params"] / 1e6
         )
         most_efficient = results_df.loc[results_df["loss_per_mparam"].idxmin()]
-        print(
-            f"  Config: h{most_efficient['hidden_dim']}_l{most_efficient['num_layers']}"
-        )
+        if is_regression:
+            print(f"  Config: d{most_efficient['hidden_dim']}_cl{most_efficient['num_central_layers']}_rl{most_efficient['num_regression_layers']}")
+        else:
+            print(f"  Config: d{most_efficient['hidden_dim']}_l{most_efficient['num_layers']}_h{most_efficient['num_heads']}")
         print(f"  Parameters: {most_efficient['trainable_params']:,}")
         print(f"  Val loss: {most_efficient['best_val_loss']:.6f}")
         print(f"  Efficiency: {most_efficient['loss_per_mparam']:.6f} loss/Mparam")
+        
+    # Print regression-specific analysis
+    if is_regression:
+        print("\n" + "=" * 60)
+        print("REGRESSION PERFORMANCE ANALYSIS")
+        print("=" * 60)
+        
+        if "best_val_regression_error" in results_df.columns and results_df["best_val_regression_error"].notna().any():
+            print("\nBest model by regression error:")
+            best_reg = results_df.loc[results_df["best_val_regression_error"].idxmin()]
+            print(f"  Config: d{best_reg['hidden_dim']}_cl{best_reg['num_central_layers']}_rl{best_reg['num_regression_layers']}")
+            print(f"  Regression error: {best_reg['best_val_regression_error']:.6f}")
+            print(f"  Val loss: {best_reg['best_val_loss']:.6f}")
+            print(f"  Val accuracy: {best_reg['best_val_acc']:.6f}" if best_reg['best_val_acc'] is not None else "")
+            
+        if "best_val_rel_dev" in results_df.columns and results_df["best_val_rel_dev"].notna().any():
+            print("\nBest model by relative deviation:")
+            best_dev = results_df.loc[results_df["best_val_rel_dev"].idxmin()]
+            print(f"  Config: d{best_dev['hidden_dim']}_cl{best_dev['num_central_layers']}_rl{best_dev['num_regression_layers']}")
+            print(f"  Relative deviation: {best_dev['best_val_rel_dev']:.6f}")
+            print(f"  Val loss: {best_dev['best_val_loss']:.6f}")
+            print(f"  Val accuracy: {best_dev['best_val_acc']:.6f}" if best_dev['best_val_acc'] is not None else "")
 
     # Create visualizations
     print("\nCreating visualizations...")
