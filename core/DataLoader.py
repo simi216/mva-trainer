@@ -160,11 +160,19 @@ class FeatureBuilder:
         if self.config.event_weight:
             features["event_weight"] = self._build_event_weight()
 
-        if self.config.neutrino_momentum_features and self.config.antineutrino_momentum_features:
+        if (
+            self.config.neutrino_momentum_features
+            and self.config.antineutrino_momentum_features
+        ):
             features["regression_targets"] = self._build_regression_targets()
 
-        if self.config.nu_flows_neutrino_momentum_features and self.config.nu_flows_antineutrino_momentum_features:
-            features["nu_flows_regression_targets"] = self._build_nu_flows_regression_targets()
+        if (
+            self.config.nu_flows_neutrino_momentum_features
+            and self.config.nu_flows_antineutrino_momentum_features
+        ):
+            features["nu_flows_regression_targets"] = (
+                self._build_nu_flows_regression_targets()
+            )
 
         return features
 
@@ -189,7 +197,7 @@ class FeatureBuilder:
         ]
 
         data = self.data[columns].to_numpy()
-        data = data.reshape(self.data_length,  self.config.max_jets, -1)
+        data = data.reshape(self.data_length, self.config.max_jets, -1)
         return data
 
     def _build_met_features(self) -> np.ndarray:
@@ -220,10 +228,13 @@ class FeatureBuilder:
         data = self.data[columns].to_numpy()
         data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)  # n_targets
         return data
-    
+
     def _build_nu_flows_regression_targets(self) -> np.ndarray:
         """Build NuFlows regression target array (n_events, NUM_LEPTONS, n_targets)."""
-        nu_flows_vars = self.config.nu_flows_neutrino_momentum_features + self.config.nu_flows_antineutrino_momentum_features
+        nu_flows_vars = (
+            self.config.nu_flows_neutrino_momentum_features
+            + self.config.nu_flows_antineutrino_momentum_features
+        )
 
         columns = []
         for var in nu_flows_vars:
@@ -544,7 +555,7 @@ class DataPreprocessor:
         elif data_type in ["non_training", "custom"]:
             return self.feature_data[data_type][:, feature_idx].copy()
         elif data_type == "event_weight":
-            return self.get_event_weight()
+            return self.get_event_weight().copy()
         else:
             raise ValueError(f"Unsupported data type: {data_type}")
 
@@ -613,10 +624,14 @@ class DataPreprocessor:
                 X_train[key], X_test[key] = train_test_split(
                     data, test_size=test_size, random_state=random_state
                 )
-        y_train = {"assignment_labels": X_train["assignment_labels"], 
-                   "regression_targets": X_train.get("regression_targets", None)}
-        y_test = {"assignment_labels": X_test["assignment_labels"],
-                    "regression_targets": X_test.get("regression_targets", None)}
+        y_train = {
+            "assignment_labels": X_train["assignment_labels"],
+            "regression_targets": X_train.get("regression_targets", None),
+        }
+        y_test = {
+            "assignment_labels": X_test["assignment_labels"],
+            "regression_targets": X_test.get("regression_targets", None),
+        }
 
         return X_train, y_train, X_test, y_test
 
@@ -656,9 +671,7 @@ class DataPreprocessor:
 
         for split_idx in range(n_splits):
             start = split_idx * split_size
-            end = (
-                (split_idx + 1) * split_size
-            )
+            end = (split_idx + 1) * split_size
 
             split_len = end - start
             fold_size = split_len // n_folds
@@ -681,8 +694,12 @@ class DataPreprocessor:
                     "regression_targets": X_train.get("regression_targets", None),
                 }
                 y_test = {
-                    "assignment_labels": self.feature_data["assignment_labels"][test_indices],
-                    "regression_targets": self.feature_data.get("regression_targets", None)[test_indices]
+                    "assignment_labels": self.feature_data["assignment_labels"][
+                        test_indices
+                    ],
+                    "regression_targets": self.feature_data.get(
+                        "regression_targets", None
+                    )[test_indices],
                 }
 
                 X_test = {

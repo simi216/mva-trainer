@@ -136,7 +136,6 @@ class ReconstructionEvaluator:
         reconstructors: Union[List[EventReconstructorBase], EventReconstructorBase],
         X_test: dict,
         y_test: dict,
-        neutrino_momenta_branches: Optional[List[str]] = None,
     ):
         # Handle single reconstructor
         if isinstance(reconstructors, EventReconstructorBase):

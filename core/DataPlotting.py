@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
+
 class DataPlotter:
     def __init__(self, data_processor: DataPreprocessor, plots_dir: str):
         self.data_processor = data_processor
@@ -11,10 +12,12 @@ class DataPlotter:
         self.max_jets = data_processor.data_config.max_jets
         self.NUM_LEPTONS = data_processor.data_config.NUM_LEPTONS
         self.feature_index_dict = data_processor.data_config.feature_indices
-        self.event_cuts = np.ones(data_processor.data_length , dtype=bool) 
+        self.event_cuts = np.ones(data_processor.data_length, dtype=bool)
         os.makedirs(self.plots_dir, exist_ok=True)
 
-    def plot_feature_distribution(self, feature_type: str, feature_name: str, bins: int = 50):
+    def plot_feature_distribution(
+        self, feature_type: str, feature_name: str, bins: int = 50
+    ):
         """
         Plots the distribution of a specified feature.
 
@@ -25,12 +28,22 @@ class DataPlotter:
         """
         feature_data = self.get_feature_data(feature_type, feature_name)
         plt.figure(figsize=(10, 6))
-        plt.hist(feature_data.flatten()[feature_data.flatten() != self.padding_value], bins=bins, alpha=0.7, color='blue', edgecolor='black')
-        plt.title(f'Distribution of {feature_name} ({feature_type})')
+        plt.hist(
+            feature_data.flatten()[feature_data.flatten() != self.padding_value],
+            bins=bins,
+            alpha=0.7,
+            color="blue",
+            edgecolor="black",
+        )
+        plt.title(f"Distribution of {feature_name} ({feature_type})")
         plt.xlabel(feature_name)
-        plt.ylabel('Frequency')
+        plt.ylabel("Frequency")
         plt.grid(True)
-        plt.savefig(os.path.join(self.plots_dir, f'{feature_type}_{feature_name}_distribution.png'))
+        plt.savefig(
+            os.path.join(
+                self.plots_dir, f"{feature_type}_{feature_name}_distribution.png"
+            )
+        )
         plt.close()
 
     def add_feature(self, function, name: str):
@@ -50,9 +63,8 @@ class DataPlotter:
         features_list = []
         feature_names = []
 
-
         # Collect all features
-        for feature_type in ['jet', 'lepton', 'met']:
+        for feature_type in ["jet", "lepton", "met"]:
             for feature_name in self.data_processor.feature_index_dict[feature_type]:
                 feature_data = self.get_feature_data(feature_type, feature_name)
                 if feature_data.shape[-1] > 1:
@@ -63,29 +75,32 @@ class DataPlotter:
                     features_list.append(feature_data.flatten())
                     feature_names.append(feature_name)
 
-
         # Compute correlation matrix
         correlation_matrix = np.zeros((len(features_list), len(features_list)))
         for i in range(len(features_list)):
             for j in range(len(features_list)):
                 if i <= j:
-                    valid_mask = (features_list[i] != self.padding_value) & (features_list[j] != self.padding_value)
+                    valid_mask = (features_list[i] != self.padding_value) & (
+                        features_list[j] != self.padding_value
+                    )
                     if np.sum(valid_mask) > 1:
-                        corr = np.corrcoef(features_list[i][valid_mask], features_list[j][valid_mask])[0, 1]
+                        corr = np.corrcoef(
+                            features_list[i][valid_mask], features_list[j][valid_mask]
+                        )[0, 1]
                     else:
                         corr = 0
                     correlation_matrix[i, j] = corr
                     correlation_matrix[j, i] = corr
         fig, ax = plt.subplots(figsize=(12, 10))
-        cax = ax.matshow(correlation_matrix, cmap='coolwarm', vmin=-1, vmax=1)
+        cax = ax.matshow(correlation_matrix, cmap="coolwarm", vmin=-1, vmax=1)
         fig.colorbar(cax)
         ax.set_xticks(np.arange(len(feature_names)))
         ax.set_yticks(np.arange(len(feature_names)))
         ax.set_xticklabels(feature_names, rotation=90)
         ax.set_yticklabels(feature_names)
-        ax.set_title('Feature Correlation Matrix', pad=20)
+        ax.set_title("Feature Correlation Matrix", pad=20)
         fig.tight_layout()
-        fig.savefig(os.path.join(self.plots_dir, 'feature_correlation_matrix.png'))
+        fig.savefig(os.path.join(self.plots_dir, "feature_correlation_matrix.png"))
         return fig, ax
 
     def register_data_cut(self, feature_type: str, feature_name: str, cut_function):
@@ -120,7 +135,7 @@ class DataPlotter:
         """
         feature_data = self.data_processor.get_feature_data(feature_type, feature_name)
         return feature_data[self.event_cuts]
-    
+
     def get_all_feature_data(self, feature_type: str):
         """
         Retrieves all feature data of a specified type after applying registered data cuts.
@@ -134,16 +149,17 @@ class DataPlotter:
         feature_data = self.data_processor.get_all_feature_data(feature_type)
         return feature_data[self.event_cuts]
 
-
-    def plot_relational_jet_lepton_features(self, feature_function, name = "relational_feature", **kwargs):
+    def plot_relational_jet_lepton_features(
+        self, feature_function, name="relational_feature", **kwargs
+    ):
         """
         Plots the value of a relational feature between jets and leptons.
         Args:
             feature_function (function): A function that takes jet and lepton feature arrays and computes a relational feature.
         """
-        jet_features = self.get_all_feature_data('jet')
-        lepton_features = self.get_all_feature_data('lepton')
-        labels = self.get_all_feature_data('assignment_labels')
+        jet_features = self.get_all_feature_data("jet")
+        lepton_features = self.get_all_feature_data("lepton")
+        labels = self.get_all_feature_data("assignment_labels")
         num_events = jet_features.shape[0]
 
         matched_relational_features = []
@@ -154,24 +170,53 @@ class DataPlotter:
                 for k in range(self.NUM_LEPTONS):
                     jet = jet_features[i, j]
                     lepton = lepton_features[i, k]
-                    if (jet != self.padding_value).all() and (lepton != self.padding_value).all():
-                        if labels[i,j,k] == 1:
-                            matched_relational_features.append(feature_function(jet, lepton))
+                    if (jet != self.padding_value).all() and (
+                        lepton != self.padding_value
+                    ).all():
+                        if labels[i, j, k] == 1:
+                            matched_relational_features.append(
+                                feature_function(jet, lepton)
+                            )
                         else:
-                            unmatched_relational_features.append(feature_function(jet, lepton))
+                            unmatched_relational_features.append(
+                                feature_function(jet, lepton)
+                            )
         fig, ax = plt.subplots(figsize=(10, 6))
-        _, bins = np.histogram(matched_relational_features + unmatched_relational_features, **kwargs)
-        ax.hist(matched_relational_features, bins=bins, alpha=0.7, label='Matched', color='tab:blue' , density=True)
-        ax.hist(unmatched_relational_features, bins=bins, alpha=0.7, label='Unmatched', color='tab:red', density=True)
-        ax.set_xlabel(f'{name}')
-        ax.set_ylabel('Normalized Frequency')
+        _, bins = np.histogram(
+            matched_relational_features + unmatched_relational_features, **kwargs
+        )
+        ax.hist(
+            matched_relational_features,
+            bins=bins,
+            alpha=0.7,
+            label="Matched",
+            color="tab:blue",
+            density=True,
+        )
+        ax.hist(
+            unmatched_relational_features,
+            bins=bins,
+            alpha=0.7,
+            label="Unmatched",
+            color="tab:red",
+            density=True,
+        )
+        ax.set_xlabel(f"{name}")
+        ax.set_ylabel("Normalized Frequency")
         ax.legend()
         ax.grid(True)
         return fig, ax
-    
 
-    def plot_2d_feature_distribution(self, feature_type_x: str, feature_name_x: str,
-                                     feature_type_y: str, feature_name_y: str, normalise = "none", plot_average = False, **kwargs):
+    def plot_2d_feature_distribution(
+        self,
+        feature_type_x: str,
+        feature_name_x: str,
+        feature_type_y: str,
+        feature_name_y: str,
+        normalise="none",
+        plot_average=False,
+        **kwargs,
+    ):
         """
         Plots a 2D histogram of two specified features.
         Args:
@@ -185,8 +230,11 @@ class DataPlotter:
         """
         feature_data_x = self.get_feature_data(feature_type_x, feature_name_x)
         feature_data_y = self.get_feature_data(feature_type_y, feature_name_y)
-        hist2d, bins_x, bins_y = np.histogram2d(feature_data_x.flatten()[feature_data_x.flatten() != self.padding_value],
-                                           feature_data_y.flatten()[feature_data_y.flatten() != self.padding_value], **kwargs)
+        hist2d, bins_x, bins_y = np.histogram2d(
+            feature_data_x.flatten()[feature_data_x.flatten() != self.padding_value],
+            feature_data_y.flatten()[feature_data_y.flatten() != self.padding_value],
+            **kwargs,
+        )
         # Normalisation
         if normalise == "x":
             hist2d = hist2d / hist2d.sum(axis=1, keepdims=True)
@@ -194,27 +242,41 @@ class DataPlotter:
             hist2d = hist2d / hist2d.sum(axis=0, keepdims=True)
         elif normalise == "all":
             hist2d = hist2d / hist2d.sum()
+
+        fig, ax = plt.subplots(figsize=(10, 8))
+        cax = ax.imshow(
+            hist2d.T,
+            origin="lower",
+            aspect="auto",
+            extent=[bins_x[0], bins_x[-1], bins_y[0], bins_y[-1]],
+            cmap="viridis",
+        )
         if plot_average:
             # Get average of the y feature in each x bin
             bin_centers_x = 0.5 * (bins_x[:-1] + bins_x[1:])
             bin_centers_y = 0.5 * (bins_y[:-1] + bins_y[1:])
             avg_y = []
             for i in range(len(bins_x) - 1):
-                mask = (feature_data_x.flatten() >= bins_x[i]) & (feature_data_x.flatten() < bins_x[i+1]) & (feature_data_y.flatten() != self.padding_value)
+                mask = (
+                    (feature_data_x.flatten() >= bins_x[i])
+                    & (feature_data_x.flatten() < bins_x[i + 1])
+                    & (feature_data_y.flatten() != self.padding_value)
+                )
                 if np.sum(mask) > 0:
                     avg_y.append(np.mean(feature_data_y.flatten()[mask]))
                 else:
                     avg_y.append(np.nan)
-
-        fig, ax = plt.subplots(figsize=(10, 8))
-        cax = ax.imshow(hist2d.T, origin='lower', aspect='auto',
-                        extent=[bins_x[0], bins_x[-1], bins_y[0], bins_y[-1]],
-                        cmap='viridis')
-        if plot_average:
-            ax.plot(bin_centers_x, avg_y, color='red', marker='o', linestyle='-', label=f'Average {feature_name_y}')
+            ax.plot(
+                bin_centers_x,
+                avg_y,
+                color="red",
+                marker="o",
+                linestyle="-",
+                label=f"Average {feature_name_y}",
+            )
             ax.legend()
         fig.colorbar(cax, ax=ax)
-        ax.set_xlabel(f'{feature_name_x}')
-        ax.set_ylabel(f'{feature_name_y} ')
-        ax.set_title(f'2D Distribution of {feature_name_x} and {feature_name_y}')
+        ax.set_xlabel(f"{feature_name_x}")
+        ax.set_ylabel(f"{feature_name_y} ")
+        ax.set_title(f"2D Distribution of {feature_name_x} and {feature_name_y}")
         return fig, ax

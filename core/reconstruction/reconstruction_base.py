@@ -11,19 +11,26 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
         self,
         config: DataConfig,
         name="event_reconstructor",
-        neutrino_reconstruction=False,
+        perform_regression=True,
+        use_nu_flows=False,
     ):
         super().__init__(config=config, name=name)
         self.max_jets = config.max_jets
         self.NUM_LEPTONS = config.NUM_LEPTONS
-        self.neutrino_reconstruction = neutrino_reconstruction
+        self.perform_regression = perform_regression
+        self.use_nu_flows = use_nu_flows
+
 
     @abstractmethod
     def predict_indices(self, data_dict):
         pass
 
     def reconstruct_neutrinos(self, data_dict):
-        if "nu_flows_regression_targets" in data_dict:
+        if self.perform_regression:
+            raise NotImplementedError(
+                "This method should be implemented in subclasses that perform regression."
+            )
+        if self.use_nu_flows and "nu_flows_regression_targets" in data_dict:
             print("Defaulting to 'nu_flows_regression_targets' for neutrino reconstruction.")
             return data_dict["nu_flows_regression_targets"]
         else:
@@ -258,12 +265,5 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
                     [data["jet"], data["lepton"]], verbose=0
                 )["regression"]
             return neutrino_prediction
-        elif data.get("nu_flows_regression_targets") is not None:
-            print(
-                "WARNING: Regression targets are specified in the config, but the model does not have regression output. Returning 'nu_flows_regression_targets' from data_dict."
-            )
-            return data["nu_flows_regression_targets"]
         else:
-            raise ValueError(
-                "Regression targets are not specified in the config, and the model does not have regression output."
-            )
+            super().reconstruct_neutrinos(data)
