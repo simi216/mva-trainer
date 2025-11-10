@@ -8,8 +8,8 @@ from core.utils.four_vector_arithmetics import (
 
 
 class BaselineAssigner(EventReconstructorBase):
-    def __init__(self, config: DataConfig, name="baseline_assigner", mode="min"):
-        super().__init__(config, name)
+    def __init__(self, config: DataConfig, name="baseline_assigner", mode="min", use_nu_flows=False):
+        super().__init__(config, name, perform_regression=False, use_nu_flows=use_nu_flows)
         """Initializes the BaselineAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
@@ -122,9 +122,9 @@ class BaselineAssigner(EventReconstructorBase):
 
 class DeltaRAssigner(BaselineAssigner):
     def __init__(
-        self, config: DataConfig, mode="min", b_tag_threshold=2
+        self, config: DataConfig, mode="min", b_tag_threshold=2, use_nu_flows=False
     ):
-        super().__init__(config, name = r"$\Delta R(\ell,j)$-Assigner", mode=mode)
+        super().__init__(config, name = r"$\Delta R(\ell,j)$-Assigner", mode=mode, use_nu_flows=use_nu_flows)
         """Initializes the DeltaRAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
@@ -178,8 +178,8 @@ class DeltaRAssigner(BaselineAssigner):
 
 
 class LeptonJetMassAssigner(BaselineAssigner):
-    def __init__(self, config: DataConfig, name="lepton_jet_mass_assigner", mode="min"):
-        super().__init__(config, name, mode)
+    def __init__(self, config: DataConfig, mode="min", use_nu_flows=False):
+        super().__init__(config, mode=mode, use_nu_flows=use_nu_flows, name= r"$m(\ell,j)$-Assigner")
         """Initializes the LeptonJetMassAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
@@ -250,7 +250,7 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         top_mass=173.15e3,
         all_jets_considered=False,
     ):
-        super().__init__(config, name = r"$\chi^2$-Method" + (r"($\nu^2$-Flows)" if use_nu_flows else r"(True $\nu$)"))
+        super().__init__(config, name = r"$\chi^2$-Method" + (r"($\nu^2$-Flows)" if use_nu_flows else r"(True $\nu$)"), perform_regression=False, use_nu_flows=use_nu_flows)
         """Initializes the MassCombinatoricsAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
@@ -264,7 +264,6 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
             raise ValueError(
                 "Neutrino flows momentum features must be specified in the config when use_nu_flows is True."
             )
-        self.use_nu_flows = use_nu_flows
 
 
     def get_jets_mask(self, data_dict):

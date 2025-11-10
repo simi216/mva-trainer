@@ -3,7 +3,7 @@
 import numpy as np
 from typing import Union, Optional, List, Tuple
 
-from . import EventReconstructorBase, GroundTruthReconstructor
+from . import EventReconstructorBase, GroundTruthReconstructor, MLReconstructorBase
 from .evaluator_base import (
     PlotConfig,
     BootstrapCalculator,
@@ -38,19 +38,29 @@ class PredictionManager:
     def _compute_all_predictions(self):
         """Compute predictions for all reconstructors."""
         for reconstructor in self.reconstructors:
-            assignment_pred = reconstructor.predict_indices(self.X_test)
-
-            if hasattr(reconstructor, "reconstruct_neutrinos"):
-                neutrino_pred = reconstructor.reconstruct_neutrinos(self.X_test)
+            if isinstance(reconstructor, MLReconstructorBase):
+                assignment_pred, neutrino_regression = reconstructor.complete_forward_pass(
+                    self.X_test
+                )
+                self.predictions.append(
+                    {
+                        "assignment": assignment_pred,
+                        "regression": neutrino_regression,
+                    }
+                )
             else:
-                print("WARNING: Reconstructor does not support neutrino regression.")
-                neutrino_pred = None
-            self.predictions.append(
-                {
-                    "assignment": assignment_pred,
-                    "regression": neutrino_pred,
-                }
-            )
+                assignment_pred = reconstructor.predict_indices(self.X_test)
+                if hasattr(reconstructor, "reconstruct_neutrinos"):
+                    neutrino_pred = reconstructor.reconstruct_neutrinos(self.X_test)
+                else:
+                    print("WARNING: Reconstructor does not support neutrino regression.")
+                    neutrino_pred = None
+                self.predictions.append(
+                    {
+                        "assignment": assignment_pred,
+                        "regression": neutrino_pred,
+                    }
+                )
 
     def get_assignment_predictions(self, index: int) -> np.ndarray:
         """Get assignment predictions for a specific reconstructor."""

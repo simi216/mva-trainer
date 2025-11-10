@@ -124,8 +124,7 @@ class FeatureConcatTransformer(MLReconstructorBase):
     def __init__(self, config, name="FeatureConcatTransformer"):
         if config.has_regression_targets:
             print("FeatureConcatTransformer is designed for classification tasks; regression targets will be ignored.")
-        self.perform_regression = False
-        super().__init__(config, name=name)
+        super().__init__(config, name=name, perform_regression=False)
 
     def build_model(
         self,

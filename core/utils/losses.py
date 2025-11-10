@@ -61,7 +61,7 @@ class RegressionLoss(keras.losses.Loss):
         mode="component",   # "component" or "magnitude" or "log"
         alpha=1.0,          # floor for denominator (in same units as momenta)
         var_weights=None,   # shape (num_vars,) or None
-        name="relative_regression_loss",
+        name="regression_loss",
         **kwargs,
     ):
         super().__init__(name=name, **kwargs)

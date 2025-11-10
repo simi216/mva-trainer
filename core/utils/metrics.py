@@ -31,13 +31,13 @@ class AssignmentAccuracy(keras.metrics.Metric):
 
 
 @keras.utils.register_keras_serializable()
-class RelativeRegressionLoss(keras.losses.Loss):
+class RelativeRegressionDeviation(keras.losses.Loss):
     def __init__(
         self,
         mode="component",   # "component" or "magnitude" or "log"
         alpha=1.0,          # floor for denominator (in same units as momenta)
         var_weights=None,   # shape (num_vars,) or None
-        name="relative_regression_loss",
+        name="relative_regression_deviation",
         **kwargs,
     ):
         super().__init__(name=name, **kwargs)

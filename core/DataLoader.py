@@ -160,6 +160,9 @@ class FeatureBuilder:
         if self.config.event_weight:
             features["event_weight"] = self._build_event_weight()
 
+        if self.config.mc_event_number:
+            features["event_number"] = self._build_event_number()
+
         if (
             self.config.neutrino_momentum_features
             and self.config.antineutrino_momentum_features
@@ -213,6 +216,10 @@ class FeatureBuilder:
     def _build_event_weight(self) -> np.ndarray:
         """Build event weight array (n_events,)."""
         return self.data[self.config.event_weight].to_numpy()
+    
+    def _build_event_number(self) -> np.ndarray:
+        """Build event number array (n_events,)."""
+        return self.data[self.config.mc_event_number].to_numpy()
 
     def _build_regression_targets(self) -> np.ndarray:
         """Build regression target array (n_events, NUM_LEPTONS, n_targets)."""
@@ -384,7 +391,6 @@ class DataPreprocessor:
         self.data = loader.get_data()
 
         # Apply preprocessing
-        self._apply_cuts()
         self._filter_negative_weights(cut_neg_weights)
         self.data_length = len(self.data)
 
@@ -410,25 +416,6 @@ class DataPreprocessor:
         if self.data_config is None:
             raise ValueError("Data not loaded. Call load_data() first.")
         return self.data_config
-
-    def _apply_cuts(self) -> None:
-        """Apply all registered feature cuts."""
-        for cut_feature, (cut_low, cut_high) in self.cut_dict.items():
-            if cut_feature not in self.data.columns:
-                raise ValueError(f"Cut feature '{cut_feature}' not found in data")
-
-            print(f"Applying cut on '{cut_feature}': [{cut_low}, {cut_high}]")
-            print(
-                f"  Range before: [{self.data[cut_feature].min():.2f}, "
-                f"{self.data[cut_feature].max():.2f}]"
-            )
-
-            if cut_low is not None:
-                self.data = self.data[self.data[cut_feature] >= cut_low]
-            if cut_high is not None:
-                self.data = self.data[self.data[cut_feature] <= cut_high]
-
-            print(f"  Events remaining: {len(self.data)}")
 
     def _filter_negative_weights(self, cut_neg_weights: bool) -> None:
         """Remove events with negative weights if requested."""
@@ -460,32 +447,6 @@ class DataPreprocessor:
 
         # Clear DataFrame to save memory
         self.data = None
-
-    # -------------------------------------------------------------------------
-    # Cut Management
-    # -------------------------------------------------------------------------
-
-    def add_cut(
-        self,
-        cut_feature: str,
-        cut_low: Optional[float] = None,
-        cut_high: Optional[float] = None,
-    ) -> None:
-        """
-        Register a cut to be applied on a feature.
-
-        Args:
-            cut_feature: Name of feature to cut on
-            cut_low: Lower bound (inclusive)
-            cut_high: Upper bound (inclusive)
-        """
-        if cut_low is None and cut_high is None:
-            raise ValueError("Must specify at least one of cut_low or cut_high")
-
-        if cut_low is not None and cut_high is not None and cut_low >= cut_high:
-            raise ValueError("cut_low must be less than cut_high")
-
-        self.cut_dict[cut_feature] = (cut_low, cut_high)
 
     # -------------------------------------------------------------------------
     # Custom Features
@@ -556,6 +517,8 @@ class DataPreprocessor:
             return self.feature_data[data_type][:, feature_idx].copy()
         elif data_type == "event_weight":
             return self.get_event_weight().copy()
+        elif data_type == "event_number":
+            return self.get_event_number().copy()
         else:
             raise ValueError(f"Unsupported data type: {data_type}")
 
@@ -594,6 +557,23 @@ class DataPreprocessor:
         weights = weights / np.sum(weights)
 
         return weights
+    
+    def get_event_number(self) -> np.ndarray:
+        """
+        Get event numbers.
+
+        Returns:
+            Event numbers
+        """
+        if self.feature_data is None:
+            raise ValueError("Feature data not prepared. Call load_data() first.")
+
+        if self.load_config.mc_event_number is None:
+            raise ValueError("Event number not configured")
+
+        event_numbers = self.feature_data["event_number"]
+
+        return event_numbers
 
     # -------------------------------------------------------------------------
     # Data Splitting
@@ -709,3 +689,36 @@ class DataPreprocessor:
                 folds.append((X_train, y_train, X_test, y_test))
 
         return folds
+
+    def split_even_odd(
+        self,
+    ) -> Tuple[Dict[str, np.ndarray], np.ndarray, Dict[str, np.ndarray], np.ndarray]:
+        """
+        Split data into even and odd event number sets.
+
+        Returns:
+            X_even, y_even, X_odd, y_odd
+        """
+        if self.feature_data is None:
+            raise ValueError("Data not prepared. Call load_data() first.")
+
+        if "event_number" not in self.feature_data:
+            raise ValueError("Event number feature not available for splitting.")
+
+        event_numbers = self.feature_data["event_number"]
+        even_mask = (event_numbers % 2) == 0
+        odd_mask = ~even_mask
+
+        X_even = {k: v[even_mask] for k, v in self.feature_data.items()}
+        y_even = {
+            "assignment_labels": X_even["assignment_labels"],
+            "regression_targets": X_even.get("regression_targets", None),
+        }
+
+        X_odd = {k: v[odd_mask] for k, v in self.feature_data.items()}
+        y_odd = {
+            "assignment_labels": X_odd["assignment_labels"],
+            "regression_targets": X_odd.get("regression_targets", None),
+        }
+
+        return X_even, y_even, X_odd, y_odd

@@ -42,6 +42,7 @@ class LoadConfig:
     nu_flows_neutrino_momentum_features: Optional[List[str]] = None
     nu_flows_antineutrino_momentum_features: Optional[List[str]] = None
     event_weight: Optional[str] = None
+    mc_event_number: Optional[str] = None
 
     # Loading options
     padding_value: float = -999.0
@@ -60,6 +61,8 @@ class LoadConfig:
 
         if self.event_weight:
             clipping[self.event_weight] = 1
+        if self.mc_event_number:
+            clipping[self.mc_event_number] = 1
 
         if (not self.neutrino_momentum_features is None) ^ (not self.antineutrino_momentum_features is None):
             raise ValueError(
@@ -93,6 +96,7 @@ class LoadConfig:
             clipping.update({feat: 1 for feat in self.nu_flows_neutrino_momentum_features})
             clipping.update({feat: 1 for feat in self.nu_flows_antineutrino_momentum_features})
 
+
         return clipping
 
     def to_data_config(self) -> "DataConfig":
@@ -117,6 +121,7 @@ class LoadConfig:
             nu_flows_neutrino_momentum_features=self.nu_flows_neutrino_momentum_features,
             nu_flows_antineutrino_momentum_features=self.nu_flows_antineutrino_momentum_features,
             has_event_weight=self.event_weight is not None,
+            has_event_number=self.mc_event_number is not None,
         )
     
 def get_load_config_from_yaml(yaml_path: str) -> LoadConfig:
@@ -188,6 +193,7 @@ class DataConfig:
     nu_flows_antineutrino_momentum_features: Optional[List[str]] = None
 
     has_event_weight: bool = False
+    has_event_number: bool = False
 
     # Computed properties (populated after loading)
     feature_indices: Dict[str, Dict[str, int]] = field(default_factory=dict, init=False)
@@ -217,6 +223,9 @@ class DataConfig:
 
         if self.has_event_weight:
             self.feature_indices["event_weight"] = {"weight": 0}
+        
+        if self.has_event_number:
+            self.feature_indices["event_number"] = {"event_number": 0}
 
         if self.has_regression_targets and self.neutrino_momentum_features:
             self.feature_indices["regression_targets"] = {
@@ -229,6 +238,7 @@ class DataConfig:
                 target: idx
                 for idx, target in enumerate(self.nu_flows_neutrino_momentum_features)
             }
+        
 
     def _build_data_shapes(self) -> None:
         """Build expected data shapes for each feature type."""
@@ -249,6 +259,10 @@ class DataConfig:
         if self.has_event_weight:
             # Shape: (n_events,)
             self.data_shapes["event_weight"] = (None,)
+        
+        if self.has_event_number:
+            # Shape: (n_events,)
+            self.data_shapes["event_number"] = (None,)
 
         if self.has_regression_targets:
             # Shape: (n_events, n_targets)

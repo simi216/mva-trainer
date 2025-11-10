@@ -19,6 +19,7 @@ from .evaluator_base import (
     BinningUtility,
     FeatureExtractor,
     AccuracyCalculator,
+    NeutrinoDeviationCalculator,
 )
 from .plotting_utils import (
     AccuracyPlotter,

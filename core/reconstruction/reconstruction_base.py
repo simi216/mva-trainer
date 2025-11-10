@@ -25,12 +25,12 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
     def predict_indices(self, data_dict):
         pass
 
-    def reconstruct_neutrinos(self, data_dict):
+    def reconstruct_neutrinos(self, data_dict : dict[str : np.ndarray]):
         if self.perform_regression:
             raise NotImplementedError(
                 "This method should be implemented in subclasses that perform regression."
             )
-        if self.use_nu_flows and "nu_flows_regression_targets" in data_dict:
+        if self.use_nu_flows and "nu_flows_regression_targets" in data_dict.keys():
             print("Defaulting to 'nu_flows_regression_targets' for neutrino reconstruction.")
             return data_dict["nu_flows_regression_targets"]
         else:
@@ -113,8 +113,8 @@ class FixedPrecisionReconstructor(EventReconstructorBase):
 
 
 class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
-    def __init__(self, config: DataConfig, name="ml_assigner"):
-        super().__init__(config=config, name=name)
+    def __init__(self, config: DataConfig, name="ml_assigner", perform_regression=True):
+        super().__init__(config=config, name=name, perform_regression=perform_regression)
 
     def _build_model_base(self, jet_assignment_probs, regression_output=None, **kwargs):
         jet_assignment_probs.name = "assignment"
@@ -266,4 +266,48 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
                 )["regression"]
             return neutrino_prediction
         else:
-            super().reconstruct_neutrinos(data)
+            print("Model does not perform regression. Using base class method for neutrino reconstruction.")
+            return super().reconstruct_neutrinos(data)
+
+    def complete_forward_pass(self, data: dict[str : np.ndarray]):
+        """
+        Performs a complete forward pass through the model, returning both
+        jet-lepton assignment predictions and neutrino kinematics reconstruction.
+        This method processes the input data through the model and returns
+        both the assignment predictions and the reconstructed neutrino kinematics.
+        Args:
+            data (dict): A dictionary containing input data for prediction. It should
+                include keys "jet" and "lepton", and optionally "met" if met
+                features are used by the model.
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: A tuple containing:
+                - A one-hot encoded array of shape (batch_size, max_jets, 2),
+                  representing jet-lepton assignments.
+                - An array containing the reconstructed neutrino kinematics.
+        Raises:
+            ValueError: If the model is not built (i.e., `self.model` is None).
+        """
+
+        if self.model is None:
+            raise ValueError(
+                "Model not built. Please build the model using build_model() method."
+            )
+
+        if self.perform_regression:
+            if self.met_features is not None:
+                predictions = self.model.predict_dict(
+                    [data["jet"], data["lepton"], data["met"]], verbose=0
+                )
+            else:
+                predictions = self.model.predict_dict(
+                    [data["jet"], data["lepton"]], verbose=0
+                )
+            assignment_predictions = self.generate_one_hot_encoding(
+                predictions["assignment"], exclusive=True
+            )
+            neutrino_reconstruction = predictions["regression"]
+            return assignment_predictions, neutrino_reconstruction
+        else:
+            assignment_predictions = self.predict_indices(data, exclusive=True)
+            neutrino_reconstruction = self.reconstruct_neutrinos(data)
+            return assignment_predictions, neutrino_reconstruction
