@@ -55,7 +55,7 @@ import tensorflow as tf
 from tensorflow import keras
 
 @keras.utils.register_keras_serializable()
-class RelativeRegressionLoss(keras.losses.Loss):
+class RegressionLoss(keras.losses.Loss):
     def __init__(
         self,
         mode="component",   # "component" or "magnitude" or "log"

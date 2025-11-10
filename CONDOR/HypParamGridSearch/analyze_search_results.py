@@ -245,8 +245,8 @@ def parse_args():
     parser.add_argument(
         "--model_type",
         type=str,
-        default="Raw_Transformer_Assignment",
-        help="Type of model to analyze (default: Raw_Transformer_Assignment)",
+        default="FeatureConcatTransformer",
+        help="Type of model to analyze (default: FeatureConcatTransformer)",
     )
     parser.add_argument(
         "--root_dir",

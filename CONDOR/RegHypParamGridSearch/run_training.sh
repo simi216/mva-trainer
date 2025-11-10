@@ -35,7 +35,7 @@ python train_regression_model.py \
     --learning_rate 1e-4 \
     --weight_decay 1e-4 \
     --batch_size 2048 \
-    --epochs 1 \
+    --epochs 50 \
     --patience 10 \
     --max_events 10000000\
     --root_dir "/afs/desy.de/user/a/aulich/mva-trainer/" \
