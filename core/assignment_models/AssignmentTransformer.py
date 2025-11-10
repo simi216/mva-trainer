@@ -15,9 +15,8 @@ from core.components import (
 
 class CrossAttentionModel(MLReconstructorBase):
     def __init__(self, config, name="CrossAttentionModel"):
-        if config.has_regression_targets:
-            raise Warning("CrossAttentionModel is designed for classification tasks; regression targets will be ignored.")
         super().__init__(config, name=name)
+        self.perform_regression = False
 
     def build_model(
         self,
@@ -50,7 +49,7 @@ class CrossAttentionModel(MLReconstructorBase):
             [normed_jet_inputs, met_repeated_jets]
         )
 
-        met_repeated_leps = keras.layers.RepeatVector(self.max_leptons)(
+        met_repeated_leps = keras.layers.RepeatVector(self.NUM_LEPTONS)(
             flatted_met_inputs
         )
         lep_features = keras.layers.Concatenate(axis=-1)(
@@ -115,7 +114,7 @@ class CrossAttentionModel(MLReconstructorBase):
 
         # Output layers
         jet_assignment_probs = JetLeptonAssignment(
-            name="jet_assignment_probs", dim=hidden_dim
+            name="assignment", dim=hidden_dim
         )(jets_attent_leptons, leptons_attent_jets, jet_mask=jet_mask)
 
         self._build_model_base(jet_assignment_probs, name="CrossAttentionModel")
@@ -124,8 +123,8 @@ class CrossAttentionModel(MLReconstructorBase):
 class FeatureConcatTransformer(MLReconstructorBase):
     def __init__(self, config, name="FeatureConcatTransformer"):
         if config.has_regression_targets:
-            raise Warning("FeatureConcatTransformer is designed for classification tasks; regression targets will be ignored.")
-        super().__init__(config, name=name)
+            print("FeatureConcatTransformer is designed for classification tasks; regression targets will be ignored.")
+        super().__init__(config, name=name, perform_regression=False)
 
     def build_model(
         self,
@@ -184,13 +183,13 @@ class FeatureConcatTransformer(MLReconstructorBase):
 
         # Output layers
         jet_output_embedding = MLP(
-            self.max_leptons,
+            self.NUM_LEPTONS,
             num_layers=3,
             activation=None,
             name="jet_output_embedding",
         )(jets_transformed)
 
-        jet_assignment_probs = TemporalSoftmax(axis=1, name="jet_assignment_probs")(
+        jet_assignment_probs = TemporalSoftmax(axis=1, name="assignment")(
             jet_output_embedding, mask=jet_mask
         )
         self._build_model_base(

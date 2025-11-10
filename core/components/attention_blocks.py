@@ -74,6 +74,7 @@ class MultiHeadAttentionBlock(layers.Layer):
         query,
         value=None,
         key=None,
+        attention_mask=None,
         query_mask=None,
         key_mask=None,
         value_mask=None,
@@ -89,15 +90,23 @@ class MultiHeadAttentionBlock(layers.Layer):
                 query_mask=query_mask,
                 value_mask=value_mask,
                 key_mask=key_mask,
+                attention_mask=attention_mask,
                 training=training,
             )
         else:
             return self._call_post_ln(
-                query, value, key, query_mask, value_mask, key_mask, training
+                query=query,
+                value=value,
+                key=key,
+                query_mask=query_mask,
+                value_mask=value_mask,
+                key_mask=key_mask,
+                attention_mask=attention_mask,
+                training=training,
             )
 
     def _call_pre_ln(
-        self, query, value, key, query_mask, value_mask, key_mask, training
+        self, query, value, key, query_mask, value_mask, key_mask,attention_mask, training
     ):
         if key is None:
             key = value
@@ -124,6 +133,7 @@ class MultiHeadAttentionBlock(layers.Layer):
             query_mask=query_mask,
             key_mask=key_mask,
             value_mask=value_mask,
+            attention_mask=attention_mask,
             training=training,
         )
         attn_out = self.dropout_attn(attn_out, training=training)
@@ -140,7 +150,7 @@ class MultiHeadAttentionBlock(layers.Layer):
         return x + ffn_out
 
     def _call_post_ln(
-        self, query, value, key, query_mask, value_mask, key_mask, training
+        self, query, value, key, query_mask, value_mask, key_mask,attention_mask, training
     ):
         if key is None:
             key = value
@@ -154,6 +164,7 @@ class MultiHeadAttentionBlock(layers.Layer):
                 query_mask=query_mask,
                 key_mask=query_mask,
                 value_mask=query_mask,
+                attention_mask=attention_mask,
                 training=training,
             )
         else:
@@ -847,7 +858,7 @@ class PoolingAttentionBlock(layers.Layer):
         self.input_ff_2.build((*input_shape[:-1], self.ff_dim))
         self.MHA.build(seed_shape, processed_input_shape)
 
-    def call(self, inputs, mask=None):
+    def call(self, inputs, mask=None, attention_mask=None, training=None):
         """
         Implements PMA_k(Z) = MAB(S, rFF(Z)) from Set Transformer paper
 
@@ -874,6 +885,8 @@ class PoolingAttentionBlock(layers.Layer):
             value=processed_inputs,
             key=processed_inputs,
             key_mask=mask,
+            attention_mask=attention_mask,
+            training=training,
         )
 
         return output

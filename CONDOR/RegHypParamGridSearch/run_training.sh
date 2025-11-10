@@ -4,8 +4,8 @@
 # This script is called by HTCondor with environment variables
 
 hidden_dim=$1
-num_layers=$2
-num_heads=$3
+num_central_layers=$2
+num_regression_layers=$3
 architecture=$4
 
 # Print environment info for debugging
@@ -22,16 +22,13 @@ source ~/mva-trainer/venv/bin/activate
 # conda activate your_env_name
 
 # Change to the script directory
-cd /afs/desy.de/user/a/aulich/mva-trainer/CONDOR/HypParamGridSearch || exit 1
-
-# Create logs directory if it doesn't exist
-#mkdir -p logs
+cd /afs/desy.de/user/a/aulich/mva-trainer/CONDOR/RegHypParamGridSearch || exit 1
 
 # Run the Python script with the hyperparameters
-python train_hyperparameter.py \
+python train_regression_model.py \
     --hidden_dim "$hidden_dim" \
-    --num_layers "$num_layers" \
-    --num_heads  "$num_heads"\
+    --num_central_layers "$num_central_layers" \
+    --num_regression_layers  "$num_regression_layers"\
     --architecture "$architecture" \
     --data_config "/afs/desy.de/user/a/aulich/mva-trainer/CONDOR/workspace_config.yaml" \
     --dropout_rate 0.1 \
@@ -40,7 +37,7 @@ python train_hyperparameter.py \
     --batch_size 2048 \
     --epochs 50 \
     --patience 10 \
-    --max_events 10000000 \
+    --max_events 10000000\
     --root_dir "/afs/desy.de/user/a/aulich/mva-trainer/" \
     --data_type "nominal"
 

@@ -22,7 +22,10 @@ def parse_args():
         help="Hidden dimension size for the transformer",
     )
     parser.add_argument(
-        "--num_layers", type=int, required=True, help="Number of transformer layers"
+        "--num_central_layers", type=int, required=True, help="Number of central transformer layers"
+    )
+    parser.add_argument(
+        "--num_regression_layers", type=int, required=True, help="Number of regression transformer layers"
     )
     parser.add_argument(
         "--architecture",
@@ -59,9 +62,7 @@ def parse_args():
     parser.add_argument(
         "--patience", type=int, default=50, help="Early stopping patience (default: 50)"
     )
-    parser.add_argument(
-        "--num_heads", type=int, required=True, help="Number of attention heads"
-    )
+
 
     # Data and directory parameters
     parser.add_argument(
@@ -106,7 +107,7 @@ def main():
     args = parse_args()
 
     sys.path.append(args.root_dir)  # Ensure root directory is in the path
-    import core.assignment_models as Models
+    import core.regression_models as Models
     from core.DataLoader import (
         DataPreprocessor,
         DataConfig,
@@ -120,7 +121,7 @@ def main():
 
     # Create model name with hyperparameters
     MODEL_NAME = (
-        f"{args.architecture}_d{args.hidden_dim}_l{args.num_layers}_h{args.num_heads}"
+        f"Regression{args.architecture}_d{args.hidden_dim}_cl{args.num_central_layers}_rl{args.num_regression_layers}"
     )
 
     # Setup directories
@@ -128,7 +129,8 @@ def main():
 
     print(f"Starting training with hyperparameters:")
     print(f"  Hidden dim: {args.hidden_dim}")
-    print(f"  Num layers: {args.num_layers}")
+    print(f"  Central Transformer layers: {args.num_central_layers}")
+    print(f"  Regression Layers {args.num_regression_layers}")
     print(f"  Dropout rate: {args.dropout_rate}")
     print(f"  Learning rate: {args.learning_rate}")
     print(f"  Weight decay: {args.weight_decay}")
@@ -161,42 +163,31 @@ def main():
         Model = Models.FeatureConcatTransformer(config, name="Transformer")
         Model.build_model(
             hidden_dim=args.hidden_dim,
-            num_layers=args.num_layers,
-            num_heads=args.num_heads,
-            dropout_rate=args.dropout_rate,
-            input_as_four_vector=True,
-        )
-    elif args.architecture == "FeatureConcatRNN":
-        Model = Models.FeatureConcatRNN(config, name="RNN")
-        Model.build_model(
-            hidden_dim=args.hidden_dim,
-            num_layers=args.num_layers,
-            dropout_rate=args.dropout_rate,
-            input_as_four_vector=True,
-        )
-    elif args.architecture == "CrossAttentionTransformer":
-        Model = Models.CrossAttentionModel(config, name="RNN")
-        Model.build_model(
-            hidden_dim=args.hidden_dim,
-            num_layers=args.num_layers,
-            num_heads=args.num_heads,
+            central_transformer_stack_size=args.num_central_layers,
+            regression_transformer_stack_size=args.num_regression_layers,
+            num_heads=8,
             dropout_rate=args.dropout_rate,
             input_as_four_vector=True,
         )
     else:
         raise ValueError(f"Unknown architecture: {args.architecture}")
-
     # Adapt normalization and compile
     print("Adapting normalization layers...")
     Model.adapt_normalization_layers(X_train)
 
     print("Compiling model...")
     Model.compile_model(
-        loss=core.utils.AssignmentLoss(lambda_excl=0),
+        loss={
+            "assignment": core.utils.AssignmentLoss(lambda_excl=0),
+            "regression": core.utils.RegressionLoss()
+        },
         optimizer=keras.optimizers.AdamW(
             learning_rate=args.learning_rate, weight_decay=args.weight_decay
         ),
-        metrics=[core.utils.AssignmentAccuracy()],
+        metrics={
+            "assignment": core.utils.AssignmentAccuracy(),
+            "regression": core.utils.RelativeRegressionLoss()
+        }
     )
 
     # Count trainable parameters
@@ -232,26 +223,86 @@ def main():
     print(f"Exporting to ONNX: {onnx_path}...")
     Model.export_to_onnx(onnx_path)
 
-    # Make predictions and create confusion matrix
-    print("Generating predictions and confusion matrix...")
-    predicted_indices = Model.predict_indices(X_val)
-    true_indices = y_val["assignment_labels"]
+    # Evaluate model
+    print("Evaluating model...")
+    import core.assignment_models.BaselineAssignmentMethods as BaselineMethods
+    import core.reconstruction as Evaluation
 
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ConfusionMatrixDisplay.from_predictions(
-        true_indices[:, :, 0].argmax(axis=1),
-        predicted_indices[:, :, 0].argmax(axis=1),
-        normalize="true",
-        ax=ax,
+    chi_square_true_nu = BaselineMethods.MassCombinatoricsAssigner(
+        config,
+        top_mass=173.5e3,
+    )
+    ground_truth_assigner = Evaluation.GroundTruthReconstructor(config, name = "Perfect Reconstructor")
+    evaluator = Evaluation.ReconstructionEvaluator(
+        [
+            chi_square_true_nu,
+            Model,
+            ground_truth_assigner,
+        ],
+        X_val,
+        y_val,
     )
 
-    confusion_matrix_path = os.path.join(PLOTS_DIR, "confusion_matrix_lepton.png")
-    plt.savefig(confusion_matrix_path)
-    print(f"Confusion matrix saved to {confusion_matrix_path}")
+    fig, ax = evaluator.plot_binned_accuracy(
+        feature_data_type="non_training",
+        feature_name="truth_ttbar_mass",
+        fancy_feature_label=r"$m(t\overline{t})$ [GeV]",
+        xlims=(340e3, 800e3),
+        bins=10,
+    )
+    ticks = ax.get_xticks()
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([f"{int(tick/1e3)}" for tick in ticks])
+    ax.set_xlim(340e3, 800e3)
+    fig.savefig(os.path.join(PLOTS_DIR , "binned_accuracy_ttbar_mass.pdf"))
+
+    fig, ax = evaluator.plot_binned_accuracy(
+        feature_data_type="non_training",
+        feature_name="N_jets",
+        fancy_feature_label=r"$\# \text{jets}$",
+        xlims=(2, config.max_jets + 1),
+        bins= config.max_jets -1,
+    )
+    ax.set_xticks([i + 0.5 for i in range(2, config.max_jets+ 1)])
+    ax.set_xticklabels([i for i in range(2, config.max_jets + 1)])
+    fig.savefig(os.path.join(PLOTS_DIR , "binned_accuracy_N_jets.pdf"))
+
+    # Plot neutrino component deviation histograms
+    fig, axes = evaluator.plot_neutrino_component_deviations(
+        bins=50,
+        xlims=(0, 5),  # Optional: limit x-axis range
+        figsize=(15, 10),
+        component_labels=["$p_x$", "$p_y$", "$p_z$"]
+    )
+    fig.savefig(os.path.join(PLOTS_DIR, "neutrino_component_deviation.pdf"))
+
+    # Plot overall relative deviation distribution
+    fig, ax = evaluator.plot_overall_neutrino_deviation_distribution(
+        bins=50,
+        xlims=(0, 2),  # Optional: limit x-axis range
+        figsize=(12, 6)
+    )
+    fig.savefig(os.path.join(PLOTS_DIR, "overall_neutrino_deviation.pdf"))
+
+    # Compute best regression deviation metrics
+    best_val_rel_dev = None
+    best_val_rel_dev_epoch = None
+    if "val_assignment_relative_deviation" in history.history:
+        val_rel_devs = history.history["val_assignment_relative_deviation"]
+        best_val_rel_dev = min(val_rel_devs)
+        best_val_rel_dev_epoch = np.argmin(val_rel_devs)
 
     # Save training history and model info
     history_path = os.path.join(MODEL_DIR, f"{MODEL_NAME}_history.npz")
-    np.savez(history_path, trainable_params=trainable_params, **history.history)
+    save_dict = {
+        "trainable_params": trainable_params,
+        **history.history
+    }
+    if best_val_rel_dev is not None:
+        save_dict["best_val_rel_dev"] = best_val_rel_dev
+        save_dict["best_val_rel_dev_epoch"] = best_val_rel_dev_epoch
+    
+    np.savez(history_path, **save_dict)
     print(f"Training history saved to {history_path}")
 
     # Save model configuration summary
@@ -260,7 +311,8 @@ def main():
         f.write(f"Model Configuration:\n")
         f.write(f"==================\n")
         f.write(f"Hidden Dimension: {args.hidden_dim}\n")
-        f.write(f"Number of Layers: {args.num_layers}\n")
+        f.write(f"Central Transformer Layers: {args.num_central_layers}")
+        f.write(f"Regression Transformer Layers: {args.num_regression_layers}")
         f.write(f"Dropout Rate: {args.dropout_rate}\n")
         f.write(f"Learning Rate: {args.learning_rate}\n")
         f.write(f"Weight Decay: {args.weight_decay}\n")
@@ -287,6 +339,10 @@ def main():
         )
         best_val_acc = max(history.history[metric_key])
         print(f"Best validation accuracy: {best_val_acc:.6f}")
+
+    if "val_assignment_relative_deviation" in history.history:
+        best_val_rel_dev = min(history.history["val_assignment_relative_deviation"])
+        print(f"Best validation relative deviation: {best_val_rel_dev:.6f}")
 
     print("=" * 60)
 

@@ -8,8 +8,8 @@ from core.utils.four_vector_arithmetics import (
 
 
 class BaselineAssigner(EventReconstructorBase):
-    def __init__(self, config: DataConfig, name="baseline_assigner", mode="min"):
-        super().__init__(config, name)
+    def __init__(self, config: DataConfig, name="baseline_assigner", mode="min", use_nu_flows=False):
+        super().__init__(config, name, perform_regression=False, use_nu_flows=use_nu_flows)
         """Initializes the BaselineAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
@@ -18,9 +18,9 @@ class BaselineAssigner(EventReconstructorBase):
         if mode not in ["min", "max"]:
             raise ValueError("Mode must be either 'min' or 'max'.")
         if config.has_regression_targets:
-            raise ValueError("BaselineAssigner does not support regression targets.")
+            print("WARNING: BaselineAssigner does not support regression targets.")
         self.mode = mode
-        self.max_leptons = config.max_leptons
+        self.NUM_LEPTONS = config.NUM_LEPTONS
         self.max_jets = config.max_jets
 
     def compute_comparison_feature(self, data_dict):
@@ -31,7 +31,7 @@ class BaselineAssigner(EventReconstructorBase):
         Args:
             data_dict (dict): A dictionary containing input data for the model.
         Returns:
-            np.ndarray: A 3D array of shape (num_events, max_jets,max_leptons) representing the comparison feature.
+            np.ndarray: A 3D array of shape (num_events, max_jets,NUM_LEPTONS) representing the comparison feature.
         """
         raise NotImplementedError(
             "This method should be implemented with actual logic."
@@ -43,7 +43,7 @@ class BaselineAssigner(EventReconstructorBase):
             axis=-1
         )  # Shape: (num_events, max_jets)
 
-        jet_mask = np.repeat(jet_mask[:, :, np.newaxis], self.max_leptons, axis=2)
+        jet_mask = np.repeat(jet_mask[:, :, np.newaxis], self.NUM_LEPTONS, axis=2)
         return jet_mask
 
     def get_viable_jets_mask(self, data_dict):
@@ -53,7 +53,7 @@ class BaselineAssigner(EventReconstructorBase):
         Args:
             data_dict (dict): A dictionary containing input data for the model.
         Returns:
-            np.ndarray: A 3D boolean array of shape (num_events, max_leptons, max_jets) indicating viable jets.
+            np.ndarray: A 3D boolean array of shape (num_events, NUM_LEPTONS, max_jets) indicating viable jets.
         """
         jet_mask = self.get_jets_mask(data_dict)
         jet_b_tag = None
@@ -95,14 +95,14 @@ class BaselineAssigner(EventReconstructorBase):
         Args:
             data_dict (dict): A dictionary containing input data for the model.
         Returns:
-            np.ndarray: A 3D array of shape (num_events, max_jets,max_leptons) representing the predicted indices.
+            np.ndarray: A 3D array of shape (num_events, max_jets,NUM_LEPTONS) representing the predicted indices.
         """
         comparison_feature = self.compute_comparison_feature(data_dict)
         viable_jets_mask = self.get_viable_jets_mask(data_dict)
         num_events = comparison_feature.shape[0]
-        predicted_indices = np.zeros((num_events, self.max_jets, self.max_leptons))
+        predicted_indices = np.zeros((num_events, self.max_jets, self.NUM_LEPTONS))
         for i in range(num_events):
-            for j in range(self.max_leptons):
+            for j in range(self.NUM_LEPTONS):
                 valid_indices = np.where(viable_jets_mask[i, :, j])[0]
                 if valid_indices.size > 0:
                     if self.mode == "min":
@@ -122,9 +122,9 @@ class BaselineAssigner(EventReconstructorBase):
 
 class DeltaRAssigner(BaselineAssigner):
     def __init__(
-        self, config: DataConfig, name="delta_r_assigner", mode="min", b_tag_threshold=2
+        self, config: DataConfig, mode="min", b_tag_threshold=2, use_nu_flows=False
     ):
-        super().__init__(config, name, mode)
+        super().__init__(config, name = r"$\Delta R(\ell,j)$-Assigner", mode=mode, use_nu_flows=use_nu_flows)
         """Initializes the DeltaRAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
@@ -143,7 +143,7 @@ class DeltaRAssigner(BaselineAssigner):
         Args:
             data_dict (dict): A dictionary containing input data for the model.
         Returns:
-            np.ndarray: A 3D array of shape (num_events, max_jets, max_leptons) representing the Delta R values.
+            np.ndarray: A 3D array of shape (num_events, max_jets, NUM_LEPTONS) representing the Delta R values.
         """
         leptons = data_dict["lepton"]
         jets = data_dict["jet"]
@@ -178,8 +178,8 @@ class DeltaRAssigner(BaselineAssigner):
 
 
 class LeptonJetMassAssigner(BaselineAssigner):
-    def __init__(self, config: DataConfig, name="lepton_jet_mass_assigner", mode="min"):
-        super().__init__(config, name, mode)
+    def __init__(self, config: DataConfig, mode="min", use_nu_flows=False):
+        super().__init__(config, mode=mode, use_nu_flows=use_nu_flows, name= r"$m(\ell,j)$-Assigner")
         """Initializes the LeptonJetMassAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
@@ -197,7 +197,7 @@ class LeptonJetMassAssigner(BaselineAssigner):
         Args:
             data_dict (dict): A dictionary containing input data for the model.
         Returns:
-            np.ndarray: A 3D array of shape (num_events, max_jets,max_leptons) representing the Delta R values.
+            np.ndarray: A 3D array of shape (num_events, max_jets,NUM_LEPTONS) representing the Delta R values.
         """
         leptons = data_dict["lepton"]
         jets = data_dict["jet"]
@@ -246,33 +246,25 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
     def __init__(
         self,
         config: DataConfig,
-        neutrino_momenta_branches: list,
+        use_nu_flows = True,
         top_mass=173.15e3,
-        name="mass_combinatorics_assigner",
         all_jets_considered=False,
     ):
-        super().__init__(config, name)
+        super().__init__(config, name = r"$\chi^2$-Method" + (r"($\nu^2$-Flows)" if use_nu_flows else r"(True $\nu$)"), perform_regression=False, use_nu_flows=use_nu_flows)
         """Initializes the MassCombinatoricsAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
         """
-        self.max_leptons = config.max_leptons
+        self.NUM_LEPTONS = config.NUM_LEPTONS
         self.feature_index_dict = config.feature_indices
         self.max_jets = config.max_jets
-        if len(neutrino_momenta_branches) != 6:
-            raise ValueError(
-                "neutrino_momenta_branches must contain exactly 6 elements."
-            )
-        if not all(
-            branch in config.feature_indices["non_training"]
-            for branch in neutrino_momenta_branches
-        ):
-            raise ValueError(
-                "All neutrino_momenta_branches must be present in non_training_features."
-            )
-        self.neutrino_momenta_branches = neutrino_momenta_branches
         self.top_mass = top_mass
         self.all_jets_considered = all_jets_considered
+        if use_nu_flows and config.nu_flows_neutrino_momentum_features is None:
+            raise ValueError(
+                "Neutrino flows momentum features must be specified in the config when use_nu_flows is True."
+            )
+
 
     def get_jets_mask(self, data_dict):
         padding_value = self.config.padding_value
@@ -280,7 +272,7 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
             axis=-1
         )  # Shape: (num_events, max_jets)
 
-        jet_mask = np.repeat(jet_mask[:, :, np.newaxis], self.max_leptons, axis=2)
+        jet_mask = np.repeat(jet_mask[:, :, np.newaxis], self.NUM_LEPTONS, axis=2)
         return jet_mask
 
     def get_viable_jets_mask(self, data_dict):
@@ -290,7 +282,7 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         Args:
             data_dict (dict): A dictionary containing input data for the model.
         Returns:
-            np.ndarray: A 3D boolean array of shape (num_events, max_leptons, max_jets) indicating viable jets.
+            np.ndarray: A 3D boolean array of shape (num_events, NUM_LEPTONS, max_jets) indicating viable jets.
         """
         jet_mask = self.get_jets_mask(data_dict)
         if self.all_jets_considered:
@@ -328,42 +320,20 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         return jet_mask
 
     def get_neutrino_momenta(self, data_dict):
-        nu_px = data_dict["non_training"][
-            :,
-            self.feature_index_dict["non_training"][self.neutrino_momenta_branches[0]],
-        ]
-        nu_py = data_dict["non_training"][
-            :,
-            self.feature_index_dict["non_training"][self.neutrino_momenta_branches[1]],
-        ]
-        nu_pz = data_dict["non_training"][
-            :,
-            self.feature_index_dict["non_training"][self.neutrino_momenta_branches[2]],
-        ]
-        anu_px = data_dict["non_training"][
-            :,
-            self.feature_index_dict["non_training"][self.neutrino_momenta_branches[3]],
-        ]
-        anu_py = data_dict["non_training"][
-            :,
-            self.feature_index_dict["non_training"][self.neutrino_momenta_branches[4]],
-        ]
-        anu_pz = data_dict["non_training"][
-            :,
-            self.feature_index_dict["non_training"][self.neutrino_momenta_branches[5]],
-        ]
-        return nu_px, nu_py, nu_pz, anu_px, anu_py, anu_pz
+        if self.use_nu_flows:
+            return data_dict["nu_flows_regression_targets"]
+        else:
+            return data_dict["regression_targets"]
 
     def construct_neutrino_four_vectors(self, data_dict):
-        nu_px, nu_py, nu_pz, anu_px, anu_py, anu_pz = self.get_neutrino_momenta(
+        neutrino_3_vector = self.get_neutrino_momenta(
             data_dict
         )
-        nu_e = np.sqrt(nu_px**2 + nu_py**2 + nu_pz**2)
-        anu_e = np.sqrt(anu_px**2 + anu_py**2 + anu_pz**2)
-        return (
-            np.array([nu_px, nu_py, nu_pz, nu_e]).T,
-            np.array([anu_px, anu_py, anu_pz, anu_e]).T,
-        )
+        nu_e = np.linalg.norm(neutrino_3_vector[:, 0,:], axis=-1)
+        anu_e = np.linalg.norm(neutrino_3_vector[:, 1,:], axis=-1)
+        nu_four_vector = np.concatenate([neutrino_3_vector[:, 0,:], nu_e[:, np.newaxis]], axis=-1)
+        anu_four_vector = np.concatenate([neutrino_3_vector[:, 1,:], anu_e[:, np.newaxis]], axis=-1)
+        return nu_four_vector, anu_four_vector
 
     def get_invariant_mass(self, four_vector):
         px, py, pz, e = (
@@ -390,7 +360,7 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         Args:
             data_dict (dict): A dictionary containing input data for the model.
         Returns:
-            np.ndarray: A 3D array of shape (num_events, max_jets, max_leptons) representing the predicted indices.
+            np.ndarray: A 3D array of shape (num_events, max_jets, NUM_LEPTONS) representing the predicted indices.
         """
         leptons = data_dict["lepton"]
         jets = data_dict["jet"][
@@ -416,29 +386,29 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         )
         viable_jets_mask = self.get_viable_jets_mask(
             data_dict
-        )  # Shape: (num_events, max_jets, max_leptons)
+        )  # Shape: (num_events, max_jets, NUM_LEPTONS)
         W_boson_candidates = lepton_four_vectors + np.stack(
             [nu_four_vector,anu_four_vector], axis=1
-        )  # Shape: (num_events, max_leptons,4)
+        )  # Shape: (num_events, NUM_LEPTONS,4)
         W_boson_candidates = W_boson_candidates[:, np.newaxis, :, :]
         top_candidates = W_boson_candidates + jet_four_vectors[:, :, np.newaxis, :]
-        # Shape: (num_events, max_jets, max_leptons,4)
+        # Shape: (num_events, max_jets, NUM_LEPTONS,4)
 
 
         top_masses = self.get_invariant_mass(
             top_candidates
-        )  # Shape: (num_events, max_jets, max_leptons)
+        )  # Shape: (num_events, max_jets, NUM_LEPTONS)
         mass_differences = np.abs(
             top_masses - self.top_mass
-        )  # Shape: (num_events, max_jets, max_leptons)
+        )  # Shape: (num_events, max_jets, NUM_LEPTONS)
         mass_differences_masked = np.where(
             viable_jets_mask, mass_differences, np.inf
-        )  # Shape: (num_events, max_jets, max_leptons)
+        )  # Shape: (num_events, max_jets, NUM_LEPTONS)
         num_events = mass_differences_masked.shape[0]
-        predicted_indices = np.zeros((num_events, self.max_jets, self.max_leptons))
+        predicted_indices = np.zeros((num_events, self.max_jets, self.NUM_LEPTONS))
         from scipy.optimize import linear_sum_assignment
         for e in range(num_events):
-            cost_matrix = mass_differences_masked[e].T  # Shape: (max_leptons, max_jets)
+            cost_matrix = mass_differences_masked[e].T  # Shape: (NUM_LEPTONS, max_jets)
             try:
                 row_ind, col_ind = linear_sum_assignment(cost_matrix)
             except ValueError:

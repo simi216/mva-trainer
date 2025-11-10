@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from typing import Optional
 from copy import deepcopy
 
-from .evaluator_base import BootstrapCalculator
+from .evaluator_base import BootstrapCalculator, AccuracyCalculator, NeutrinoDeviationCalculator
 from . import MLReconstructorBase
 
 
@@ -24,7 +24,9 @@ class FeatureImportanceCalculator:
         self.config = reconstructor.config
         self.padding_value = reconstructor.padding_value
 
-    def compute_permutation_importance(self, num_repeats: int = 5) -> dict:
+    def compute_permutation_importance(
+        self, num_repeats: int = 5, evaluate_regression=False
+    ) -> dict:
         """
         Compute feature importance using permutation importance.
 
@@ -40,49 +42,96 @@ class FeatureImportanceCalculator:
                 "permutation importance."
             )
 
-        baseline_performance = self.reconstructor.evaluate_accuracy(
-            self.X_test, self.y_test["assignment_labels"]
+        assignment_baseline_prediction, regression_baseline_prediction = (
+            self.reconstructor.complete_forward_pass(self.X_test)
         )
-        print(f"Baseline Performance: {baseline_performance:.4f}")
 
-        importances = {}
+        assignment_baseline_performance = AccuracyCalculator.compute_accuracy(
+            assignment_baseline_prediction,
+            self.y_test["assignment_labels"],
+        )
+        regression_baseline_prediction = None
+        print(f"Baseline Assignment Performance: {assignment_baseline_performance:.4f}")
+
+        if evaluate_regression:
+            regression_baseline_performance = (
+                NeutrinoDeviationCalculator.compute_relative_deviation(
+                    regression_baseline_prediction,
+                    self.y_test["nu_flows_regression_targets"],
+                )
+            )
+            print(
+                f"Baseline Regression Performance: {regression_baseline_performance:.4f}"
+            )
+
+        assingment_importances = {}
+        regression_importances = {}
 
         # Compute importance for jet features
-        importances.update(
+
+        assingment_jet_importances, regression_jet_importances = (
             self._compute_feature_type_importance(
-                "jet", num_repeats, baseline_performance
+                "jet",
+                num_repeats,
+                assignment_baseline_performance,
+                regression_baseline_performance,
             )
         )
+
+        assingment_importances.update(assingment_jet_importances)
+        if evaluate_regression:
+            regression_importances.update(regression_jet_importances)
 
         # Compute importance for lepton features
-        importances.update(
+        assignment_lepton_importances, regression_lepton_importances = (
             self._compute_feature_type_importance(
-                "lepton", num_repeats, baseline_performance
+                "lepton",
+                num_repeats,
+                assignment_baseline_performance,
+                regression_baseline_performance,
             )
         )
 
+        assingment_importances.update(assignment_lepton_importances)
+        if evaluate_regression:
+            regression_importances.update(regression_lepton_importances)
+
         # Compute importance for MET features if available
-        if self.reconstructor.met_features:
-            importances.update(
+        if "met" in self.X_test:
+            assignment_met_importances, regression_met_importances = (
                 self._compute_feature_type_importance(
-                    "met", num_repeats, baseline_performance
+                    "met",
+                    num_repeats,
+                    assignment_baseline_performance,
+                    regression_baseline_performance,
                 )
             )
 
-        return importances
+            assingment_importances.update(assignment_met_importances)
+            if evaluate_regression:
+                regression_importances.update(regression_met_importances)
+
+        return (
+            assingment_importances
+            if not evaluate_regression
+            else (assingment_importances, regression_importances)
+        )
 
     def _compute_feature_type_importance(
         self,
         feature_type: str,
         num_repeats: int,
-        baseline_performance: float,
+        assignment_baseline_performance: float,
+        regression_baseline_performance: Optional[float] = None,
     ) -> dict:
         """Compute importance for a specific feature type."""
-        importances = {}
+        assignment_importances = {}
+        regression_importances = {}
         feature_indices = self.config.feature_indices[feature_type]
 
         for feature_name, feature_idx in feature_indices.items():
-            scores = []
+            assignment_scores = []
+            regression_scores = []
 
             for _ in range(num_repeats):
                 X_permuted = deepcopy(self.X_test)
@@ -99,14 +148,27 @@ class FeatureImportanceCalculator:
                         X_permuted[feature_type][:, :, feature_idx]
                     )
 
-                permuted_performance = self.reconstructor.evaluate_accuracy(
-                    X_permuted, self.y_test["assignment_labels"]
+                permutated_assignment_pred, permutated_regression_pred = (
+                    self.reconstructor.complete_forward_pass(X_permuted)
                 )
-                scores.append(baseline_performance - permuted_performance)
+                assignment_performance = (
+                    AccuracyCalculator.compute_accuracy(
+                        permutated_assignment_pred, self.y_test["assignment_labels"]
+                    )
+                    - assignment_baseline_performance
+                )
+                assignment_scores.append(assignment_performance)
+                if regression_baseline_performance is not None:
+                    regression_performance = (
+                        NeutrinoDeviationCalculator.compute_relative_deviation(
+                            permutated_regression_pred,
+                            self.y_test["nu_flows_regression_targets"],
+                        )
+                        - regression_baseline_performance
+                    )
+                    regression_scores.append(regression_performance)
 
-            importances[feature_name] = np.mean(scores)
-
-        return importances
+        return assignment_importances, regression_importances
 
 
 class MLEvaluator:
@@ -123,7 +185,7 @@ class MLEvaluator:
         self.y_test = y_test
 
         # Store configuration from reconstructor
-        self.max_leptons = reconstructor.max_leptons
+        self.NUM_LEPTONS = reconstructor.NUM_LEPTONS
         self.max_jets = reconstructor.max_jets
         self.met_features = reconstructor.met_features
         self.n_jets = reconstructor.n_jets

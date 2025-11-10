@@ -16,9 +16,11 @@ class KerasModelWrapper(keras.Model):
         predictions = super().predict(
             x, batch_size=batch_size, verbose=verbose, steps=steps, **kwargs
         )
-        if not isinstance(predictions, list):
-            predictions = [predictions]
-        return dict(zip(self.output_names, predictions))
+        if not isinstance(predictions, dict):
+            if not isinstance(predictions, list):
+                predictions = [predictions]
+            return dict(zip(self.output_names, predictions))
+        return predictions
 
 class MLWrapperBase(BaseUtilityModel, ABC):
     def __init__(self, config: DataConfig, name="ml_assigner"):
@@ -29,12 +31,10 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 that provides preprocessed data and metadata required for model initialization.
         """
         self.model: KerasModelWrapper = None
-        self.X_train = None
-        self.y_train: np.ndarray = None
         self.history = None
         self.sample_weights = None
         self.class_weights = None
-        self.max_leptons = config.max_leptons
+        self.NUM_LEPTONS = config.NUM_LEPTONS
         self.max_jets = config.max_jets
         self.met_features = config.met_features
         self.n_jets: int = len(config.jet_features)
@@ -42,6 +42,11 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         self.n_met: int = len(config.met_features) if config.met_features else 0
         self.padding_value: float = config.padding_value
         self.feature_index_dict = config.feature_indices
+        self.perform_regression = False
+
+        # initialize empty dicts to hold inputs and transformed inputs
+        self.inputs = {}
+        self.transformed_inputs = {}
 
         super().__init__(config=config, name=name)
 
@@ -49,53 +54,54 @@ class MLWrapperBase(BaseUtilityModel, ABC):
     def build_model(self, input_as_four_vector=True, **kwargs):
         pass
 
-    def load_training_data(
+    def prepare_training_data(
         self, X_train, y_train, sample_weights=None, class_weights=None
     ):
-        self.X_train = X_train
-        self.y_train = y_train
         self.sample_weights = sample_weights
         self.class_weights = class_weights
 
+        y_train["assignment"] = y_train.pop("assignment_labels")
+        y_train["regression"] = y_train.pop("regression_targets")
+        if not self.model.output_names.__contains__("regression"):
+            y_train.pop("regression")
+
         jet_data = None
-        for key in self.X_train.keys():
+        for key in X_train.keys():
             if "jet" in key:
-                jet_data = self.X_train.pop(key)
+                jet_data = X_train.pop(key)
                 break
 
         if jet_data is None:
             raise ValueError("Jet data not found in X_train.")
         else:
-            self.X_train["jet_inputs"] = jet_data
+            X_train["jet_inputs"] = jet_data
 
         lepton_data = None
-        for key in self.X_train.keys():
+        for key in X_train.keys():
             if "lepton" in key:
-                lepton_data = self.X_train.pop(key)
+                lepton_data = X_train.pop(key)
                 break
         if lepton_data is None:
             raise ValueError("Lepton data not found in X_train.")
         else:
-            self.X_train["lep_inputs"] = lepton_data
+            X_train["lep_inputs"] = lepton_data
         if self.n_met > 0:
             met_data = None
-            for key in self.X_train.keys():
+            for key in X_train.keys():
                 if "met" in key:
-                    met_data = self.X_train.pop(key)
+                    met_data = X_train.pop(key)
                     break
             if met_data is None:
                 raise ValueError("met data not found in X_train.")
             else:
-                self.X_train["met_inputs"] = met_data
+                X_train["met_inputs"] = met_data
+        return X_train, y_train, sample_weights
 
-        if "assignment_labels" not in self.y_train:
-            raise ValueError("Assignment labels not found in y_train.")
-        self.y_train = self.y_train["assignment_labels"]
 
     def _prepare_inputs(self, input_as_four_vector, log_E = True):
         jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
         lep_inputs = keras.Input(
-            shape=(self.max_leptons, self.n_leptons), name="lep_inputs"
+            shape=(self.NUM_LEPTONS, self.n_leptons), name="lep_inputs"
         )
         met_inputs = keras.Input(shape=(1, self.n_met), name="met_inputs")
 
@@ -132,6 +138,11 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             "lep_inputs": lep_inputs,
             "met_inputs": met_inputs,
         }
+        self.transformed_inputs = {
+            "jet_inputs": transformed_jet_inputs,
+            "lep_inputs": transformed_lep_inputs,
+            "met_inputs": transformed_met_inputs,
+        }
         return normed_jet_inputs, normed_lep_inputs, normed_met_inputs, jet_mask
 
     def train_model(
@@ -150,15 +161,15 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 "Model has not been built yet. Call build_model() before train_model()."
             )
 
-        self.load_training_data(X_train, y_train, sample_weights=sample_weights)
+        X_train, y_train, sample_weights= self.prepare_training_data(X_train, y_train, sample_weights=sample_weights)
 
         if self.history is not None:
             print("Warning: Overwriting existing training history.")
 
         self.history = self.model.fit(
-            self.X_train,
-            self.y_train,
-            sample_weight=self.sample_weights,
+            X_train,
+            y_train,
+            sample_weight=sample_weights,
             class_weight=self.class_weights,
             epochs=epochs,
             batch_size=batch_size,
@@ -362,7 +373,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
 
         # Define input shapes
         jet_shape = (self.max_jets, self.n_jets)
-        lep_shape = (self.max_leptons, self.n_leptons)
+        lep_shape = (self.NUM_LEPTONS, self.n_leptons)
         input_shapes = [jet_shape, lep_shape]
         if self.n_met > 0:
             met_shape = (1, self.n_met)
@@ -408,7 +419,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                         flat_feature_index_dict[flat_index] = f"jet_{j}_{feature}"
             elif feature_type == "lepton":
                 for i, feature in enumerate(features):
-                    for j in range(self.max_leptons):
+                    for j in range(self.NUM_LEPTONS):
                         flat_index = (
                             self.max_jets * self.n_jets + j * self.n_leptons + i
                         )
@@ -417,7 +428,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 for i, feature in enumerate(features):
                     flat_index = (
                         self.max_jets * self.n_jets
-                        + self.max_leptons * self.n_leptons
+                        + self.NUM_LEPTONS * self.n_leptons
                         + i
                     )
                     flat_feature_index_dict[flat_index] = f"met_{feature}"

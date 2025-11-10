@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from typing import Optional, Dict, List, Tuple
 
-from .Configs import LoadConfig, DataConfig
+from .Configs import LoadConfig, DataConfig, get_load_config_from_yaml
 
 
 # =============================================================================
@@ -160,34 +160,48 @@ class FeatureBuilder:
         if self.config.event_weight:
             features["event_weight"] = self._build_event_weight()
 
-        if self.config.regression_targets:
+        if self.config.mc_event_number:
+            features["event_number"] = self._build_event_number()
+
+        if (
+            self.config.neutrino_momentum_features
+            and self.config.antineutrino_momentum_features
+        ):
             features["regression_targets"] = self._build_regression_targets()
+
+        if (
+            self.config.nu_flows_neutrino_momentum_features
+            and self.config.nu_flows_antineutrino_momentum_features
+        ):
+            features["nu_flows_regression_targets"] = (
+                self._build_nu_flows_regression_targets()
+            )
 
         return features
 
     def _build_lepton_features(self) -> np.ndarray:
-        """Build lepton feature array (n_events, max_leptons, n_features)."""
+        """Build lepton feature array (n_events, NUM_LEPTONS, n_features)."""
         lepton_vars = self.config.lepton_features
         columns = [
             f"{var}_{idx}"
+            for idx in range(self.config.NUM_LEPTONS)
             for var in lepton_vars
-            for idx in range(self.config.max_leptons)
         ]
 
         data = self.data[columns].to_numpy()
-        data = data.reshape(self.data_length, -1, self.config.max_leptons)
-        return data.transpose((0, 2, 1))
+        data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)
+        return data
 
     def _build_jet_features(self) -> np.ndarray:
         """Build jet feature array (n_events, max_jets, n_features)."""
         jet_vars = self.config.jet_features
         columns = [
-            f"{var}_{idx}" for var in jet_vars for idx in range(self.config.max_jets)
+            f"{var}_{idx}" for idx in range(self.config.max_jets) for var in jet_vars
         ]
 
         data = self.data[columns].to_numpy()
-        data = data.reshape(self.data_length, -1, self.config.max_jets)
-        return data.transpose((0, 2, 1))
+        data = data.reshape(self.data_length, self.config.max_jets, -1)
+        return data
 
     def _build_met_features(self) -> np.ndarray:
         """Build MET feature array (n_events, 1, n_features)."""
@@ -202,10 +216,40 @@ class FeatureBuilder:
     def _build_event_weight(self) -> np.ndarray:
         """Build event weight array (n_events,)."""
         return self.data[self.config.event_weight].to_numpy()
+    
+    def _build_event_number(self) -> np.ndarray:
+        """Build event number array (n_events,)."""
+        return self.data[self.config.mc_event_number].to_numpy()
 
     def _build_regression_targets(self) -> np.ndarray:
-        """Build regression target array (n_events, n_targets)."""
-        return self.data[self.config.regression_targets].to_numpy()
+        """Build regression target array (n_events, NUM_LEPTONS, n_targets)."""
+        neutrino_vars = self.config.neutrino_momentum_features
+        antineutrino_vars = self.config.antineutrino_momentum_features
+
+        columns = []
+        for var in neutrino_vars:
+            columns.append(f"{var}")  # Neutrino for lepton 1
+        for var in antineutrino_vars:
+            columns.append(f"{var}")  # Antineutrino for lepton 2
+
+        data = self.data[columns].to_numpy()
+        data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)  # n_targets
+        return data
+
+    def _build_nu_flows_regression_targets(self) -> np.ndarray:
+        """Build NuFlows regression target array (n_events, NUM_LEPTONS, n_targets)."""
+        nu_flows_vars = (
+            self.config.nu_flows_neutrino_momentum_features
+            + self.config.nu_flows_antineutrino_momentum_features
+        )
+
+        columns = []
+        for var in nu_flows_vars:
+            columns.append(f"{var}")  # Neutrino momenta
+
+        data = self.data[columns].to_numpy()
+        data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)  # n_targets
+        return data
 
 
 class LabelBuilder:
@@ -220,7 +264,7 @@ class LabelBuilder:
         Build labels from jet and lepton truth information.
 
         Returns:
-            pair_truth: Binary pairing labels (n_events, max_jets, max_leptons)
+            pair_truth: Binary pairing labels (n_events, max_jets, NUM_LEPTONS)
             reco_mask: Boolean mask for successfully reconstructed events
         """
         jet_truth = self._extract_jet_truth()
@@ -257,11 +301,11 @@ class LabelBuilder:
         """Build binary tensor indicating correct jet-lepton pairs."""
         n_events = len(jet_truth)
         pair_truth = np.zeros(
-            (n_events, self.config.max_jets, self.config.max_leptons), dtype=np.float32
+            (n_events, self.config.max_jets, self.config.NUM_LEPTONS), dtype=np.float32
         )
 
         for evt_idx in range(n_events):
-            for lep_idx in range(self.config.max_leptons):
+            for lep_idx in range(self.config.NUM_LEPTONS):
                 for jet_idx in range(self.config.max_jets):
                     # Check both possible pairings
                     if (
@@ -347,7 +391,6 @@ class DataPreprocessor:
         self.data = loader.get_data()
 
         # Apply preprocessing
-        self._apply_cuts()
         self._filter_negative_weights(cut_neg_weights)
         self.data_length = len(self.data)
 
@@ -373,25 +416,6 @@ class DataPreprocessor:
         if self.data_config is None:
             raise ValueError("Data not loaded. Call load_data() first.")
         return self.data_config
-
-    def _apply_cuts(self) -> None:
-        """Apply all registered feature cuts."""
-        for cut_feature, (cut_low, cut_high) in self.cut_dict.items():
-            if cut_feature not in self.data.columns:
-                raise ValueError(f"Cut feature '{cut_feature}' not found in data")
-
-            print(f"Applying cut on '{cut_feature}': [{cut_low}, {cut_high}]")
-            print(
-                f"  Range before: [{self.data[cut_feature].min():.2f}, "
-                f"{self.data[cut_feature].max():.2f}]"
-            )
-
-            if cut_low is not None:
-                self.data = self.data[self.data[cut_feature] >= cut_low]
-            if cut_high is not None:
-                self.data = self.data[self.data[cut_feature] <= cut_high]
-
-            print(f"  Events remaining: {len(self.data)}")
 
     def _filter_negative_weights(self, cut_neg_weights: bool) -> None:
         """Remove events with negative weights if requested."""
@@ -423,32 +447,6 @@ class DataPreprocessor:
 
         # Clear DataFrame to save memory
         self.data = None
-
-    # -------------------------------------------------------------------------
-    # Cut Management
-    # -------------------------------------------------------------------------
-
-    def add_cut(
-        self,
-        cut_feature: str,
-        cut_low: Optional[float] = None,
-        cut_high: Optional[float] = None,
-    ) -> None:
-        """
-        Register a cut to be applied on a feature.
-
-        Args:
-            cut_feature: Name of feature to cut on
-            cut_low: Lower bound (inclusive)
-            cut_high: Upper bound (inclusive)
-        """
-        if cut_low is None and cut_high is None:
-            raise ValueError("Must specify at least one of cut_low or cut_high")
-
-        if cut_low is not None and cut_high is not None and cut_low >= cut_high:
-            raise ValueError("cut_low must be less than cut_high")
-
-        self.cut_dict[cut_feature] = (cut_low, cut_high)
 
     # -------------------------------------------------------------------------
     # Custom Features
@@ -518,7 +516,9 @@ class DataPreprocessor:
         elif data_type in ["non_training", "custom"]:
             return self.feature_data[data_type][:, feature_idx].copy()
         elif data_type == "event_weight":
-            return self.get_event_weight()
+            return self.get_event_weight().copy()
+        elif data_type == "event_number":
+            return self.get_event_number().copy()
         else:
             raise ValueError(f"Unsupported data type: {data_type}")
 
@@ -557,6 +557,23 @@ class DataPreprocessor:
         weights = weights / np.sum(weights)
 
         return weights
+    
+    def get_event_number(self) -> np.ndarray:
+        """
+        Get event numbers.
+
+        Returns:
+            Event numbers
+        """
+        if self.feature_data is None:
+            raise ValueError("Feature data not prepared. Call load_data() first.")
+
+        if self.load_config.mc_event_number is None:
+            raise ValueError("Event number not configured")
+
+        event_numbers = self.feature_data["event_number"]
+
+        return event_numbers
 
     # -------------------------------------------------------------------------
     # Data Splitting
@@ -587,10 +604,14 @@ class DataPreprocessor:
                 X_train[key], X_test[key] = train_test_split(
                     data, test_size=test_size, random_state=random_state
                 )
-        y_train = {"assignment_labels": X_train["assignment_labels"], 
-                   "regression_targets": X_train.get("regression_targets", None)}
-        y_test = {"assignment_labels": X_test["assignment_labels"],
-                    "regression_targets": X_test.get("regression_targets", None)}
+        y_train = {
+            "assignment_labels": X_train["assignment_labels"],
+            "regression_targets": X_train.get("regression_targets", None),
+        }
+        y_test = {
+            "assignment_labels": X_test["assignment_labels"],
+            "regression_targets": X_test.get("regression_targets", None),
+        }
 
         return X_train, y_train, X_test, y_test
 
@@ -630,9 +651,7 @@ class DataPreprocessor:
 
         for split_idx in range(n_splits):
             start = split_idx * split_size
-            end = (
-                (split_idx + 1) * split_size
-            )
+            end = (split_idx + 1) * split_size
 
             split_len = end - start
             fold_size = split_len // n_folds
@@ -655,8 +674,12 @@ class DataPreprocessor:
                     "regression_targets": X_train.get("regression_targets", None),
                 }
                 y_test = {
-                    "assignment_labels": self.feature_data["assignment_labels"][test_indices],
-                    "regression_targets": self.feature_data.get("regression_targets", None)[test_indices]
+                    "assignment_labels": self.feature_data["assignment_labels"][
+                        test_indices
+                    ],
+                    "regression_targets": self.feature_data.get(
+                        "regression_targets", None
+                    )[test_indices],
                 }
 
                 X_test = {
@@ -666,3 +689,36 @@ class DataPreprocessor:
                 folds.append((X_train, y_train, X_test, y_test))
 
         return folds
+
+    def split_even_odd(
+        self,
+    ) -> Tuple[Dict[str, np.ndarray], np.ndarray, Dict[str, np.ndarray], np.ndarray]:
+        """
+        Split data into even and odd event number sets.
+
+        Returns:
+            X_even, y_even, X_odd, y_odd
+        """
+        if self.feature_data is None:
+            raise ValueError("Data not prepared. Call load_data() first.")
+
+        if "event_number" not in self.feature_data:
+            raise ValueError("Event number feature not available for splitting.")
+
+        event_numbers = self.feature_data["event_number"]
+        even_mask = (event_numbers % 2) == 0
+        odd_mask = ~even_mask
+
+        X_even = {k: v[even_mask] for k, v in self.feature_data.items()}
+        y_even = {
+            "assignment_labels": X_even["assignment_labels"],
+            "regression_targets": X_even.get("regression_targets", None),
+        }
+
+        X_odd = {k: v[odd_mask] for k, v in self.feature_data.items()}
+        y_odd = {
+            "assignment_labels": X_odd["assignment_labels"],
+            "regression_targets": X_odd.get("regression_targets", None),
+        }
+
+        return X_even, y_even, X_odd, y_odd
