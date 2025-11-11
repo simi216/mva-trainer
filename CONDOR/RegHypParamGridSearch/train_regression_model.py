@@ -186,7 +186,7 @@ def main():
         ),
         metrics={
             "assignment": core.utils.AssignmentAccuracy(),
-            "regression": core.utils.RelativeRegressionLoss()
+            "regression": core.utils.RelativeRegressionDeviation()
         }
     )
 
