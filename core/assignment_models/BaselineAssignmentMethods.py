@@ -17,8 +17,6 @@ class BaselineAssigner(EventReconstructorBase):
         """
         if mode not in ["min", "max"]:
             raise ValueError("Mode must be either 'min' or 'max'.")
-        if config.has_regression_targets:
-            print("WARNING: BaselineAssigner does not support regression targets.")
         self.mode = mode
         self.NUM_LEPTONS = config.NUM_LEPTONS
         self.max_jets = config.max_jets
@@ -122,7 +120,7 @@ class BaselineAssigner(EventReconstructorBase):
 
 class DeltaRAssigner(BaselineAssigner):
     def __init__(
-        self, config: DataConfig, mode="min", b_tag_threshold=2, use_nu_flows=False
+        self, config: DataConfig, mode="min", b_tag_threshold=2, use_nu_flows=True
     ):
         super().__init__(config, name = r"$\Delta R(\ell,j)$-Assigner", mode=mode, use_nu_flows=use_nu_flows)
         """Initializes the DeltaRAssigner class.
@@ -247,6 +245,7 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         self,
         config: DataConfig,
         use_nu_flows = True,
+        use_nu_flows_for_assignment = True,
         top_mass=173.15e3,
         all_jets_considered=False,
     ):
@@ -264,6 +263,7 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
             raise ValueError(
                 "Neutrino flows momentum features must be specified in the config when use_nu_flows is True."
             )
+        self.use_nu_flows_for_assignment = use_nu_flows_for_assignment
 
 
     def get_jets_mask(self, data_dict):
@@ -320,7 +320,7 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         return jet_mask
 
     def get_neutrino_momenta(self, data_dict):
-        if self.use_nu_flows:
+        if self.use_nu_flows_for_assignment:
             return data_dict["nu_flows_regression_targets"]
         else:
             return data_dict["regression_targets"]
@@ -412,7 +412,7 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
             try:
                 row_ind, col_ind = linear_sum_assignment(cost_matrix)
             except ValueError:
-                print("Linear sum assignment failed for event", e)
+                print("WARNING: Linear sum assignment failed for event", e)
                 row_ind, col_ind = [], []
                 continue
             predicted_indices[e, col_ind, row_ind] = 1

@@ -111,6 +111,7 @@ class DataLoader:
         """Pad variable-length features and convert to DataFrame."""
         data_dict = {}
 
+
         for feature in self.features:
             if feature not in self.data.fields:
                 raise ValueError(f"Feature '{feature}' not found in data")
@@ -127,8 +128,9 @@ class DataLoader:
 
                 for i in range(clip_size):
                     data_dict[f"{feature}_{i}"] = filled[:, i]
-
-        self.data = pd.DataFrame(data_dict)
+        data = pd.DataFrame(data_dict)
+        nan_filter = ~data.isna().any(axis=1)
+        self.data = data[nan_filter].reset_index(drop=True)
 
 
 # =============================================================================

@@ -121,10 +121,10 @@ class CrossAttentionModel(MLReconstructorBase):
 
 
 class FeatureConcatTransformer(MLReconstructorBase):
-    def __init__(self, config, name="FeatureConcatTransformer"):
+    def __init__(self, config, name="FeatureConcatTransformer", use_nu_flows=True):
         if config.has_regression_targets:
             print("FeatureConcatTransformer is designed for classification tasks; regression targets will be ignored.")
-        super().__init__(config, name=name, perform_regression=False)
+        super().__init__(config, name=name, perform_regression=False, use_nu_flows=use_nu_flows)
 
     def build_model(
         self,

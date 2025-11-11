@@ -12,11 +12,27 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
         config: DataConfig,
         name="event_reconstructor",
         perform_regression=True,
-        use_nu_flows=False,
+        use_nu_flows=True,
     ):
         super().__init__(config=config, name=name)
         self.max_jets = config.max_jets
         self.NUM_LEPTONS = config.NUM_LEPTONS
+        if perform_regression and not config.has_regression_targets:
+            print(
+                "WARNING: perform_regression is set to True, but config.has_regression_targets is False. Setting perform_regression to False."
+            )
+            perform_regression = False
+        if use_nu_flows and not config.has_nu_flows_regression_targets:
+            print(
+                "WARNING: use_nu_flows is set to True, but config.use_nu_flows is False. Setting use_nu_flows to False."
+            )
+            use_nu_flows = False
+        if perform_regression and use_nu_flows:
+            print(
+                "WARNING: perform_regression is set to True, but use_nu_flows, is also True. Setting use_nu_flows False to make us of neutrino regression implementation."
+            )
+
+
         self.perform_regression = perform_regression
         self.use_nu_flows = use_nu_flows
 
@@ -31,7 +47,6 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
                 "This method should be implemented in subclasses that perform regression."
             )
         if self.use_nu_flows and "nu_flows_regression_targets" in data_dict.keys():
-            print("Defaulting to 'nu_flows_regression_targets' for neutrino reconstruction.")
             return data_dict["nu_flows_regression_targets"]
         else:
             print("WARNING: 'nu_flows_regression_targets' not found in data_dict. Returning 'regression_targets' instead.")
@@ -78,7 +93,7 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
 
 class GroundTruthReconstructor(EventReconstructorBase):
     def __init__(self, config: DataConfig, name="ground_truth_reconstructor"):
-        super().__init__(config=config, name=name)
+        super().__init__(config=config, name=name, perform_regression=True, use_nu_flows=False)
         self.config = config
 
     def predict_indices(self, data_dict):
@@ -113,8 +128,8 @@ class FixedPrecisionReconstructor(EventReconstructorBase):
 
 
 class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
-    def __init__(self, config: DataConfig, name="ml_assigner", perform_regression=True):
-        super().__init__(config=config, name=name, perform_regression=perform_regression)
+    def __init__(self, config: DataConfig, name="ml_assigner", perform_regression=True, use_nu_flows=True):
+        super().__init__(config=config, name=name, perform_regression=perform_regression, use_nu_flows=use_nu_flows)
 
     def _build_model_base(self, jet_assignment_probs, regression_output=None, **kwargs):
         jet_assignment_probs.name = "assignment"

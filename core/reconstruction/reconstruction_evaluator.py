@@ -422,7 +422,7 @@ class ReconstructionEvaluator:
         # Compute binned accuracies for each reconstructor
         print(f"\nComputing binned accuracy for {feature_name}...")
         binned_accuracies = []
-
+        names = []
         for i, reconstructor in enumerate(self.reconstructors):
             if isinstance(reconstructor, GroundTruthReconstructor):
                 continue
@@ -442,7 +442,7 @@ class ReconstructionEvaluator:
                     binning_mask, accuracy_data, event_weights
                 )
                 binned_accuracies.append((binned_acc, binned_acc, binned_acc))
-
+            names.append(reconstructor.get_name())
         # Compute bin counts
         bin_counts = np.sum(
             event_weights.reshape(1, -1) * binning_mask, axis=1
@@ -450,7 +450,6 @@ class ReconstructionEvaluator:
 
         # Plot
         feature_label = fancy_feature_label or feature_name
-        names = [r.get_name() for r in self.reconstructors]
 
         return AccuracyPlotter.plot_binned_accuracy(
             bin_centers,
@@ -650,11 +649,11 @@ class ReconstructionEvaluator:
         # Compute binned deviations for each reconstructor
         print(f"\nComputing binned neutrino deviation for {feature_name}...")
         binned_deviations = []
-
+        names = []
         for i, reconstructor in enumerate(self.reconstructors):
             if isinstance(reconstructor, GroundTruthReconstructor):
                 continue
-
+            names.append(reconstructor.get_name())
             # Check if reconstructor supports neutrino reconstruction
             neutrino_pred = self.prediction_manager.get_neutrino_predictions(i)
             if neutrino_pred is None:
@@ -695,15 +694,6 @@ class ReconstructionEvaluator:
 
         # Plot
         feature_label = fancy_feature_label or feature_name
-        names = [
-            r.get_name()
-            for r in self.reconstructors
-            if not isinstance(r, GroundTruthReconstructor)
-            and self.prediction_manager.get_neutrino_predictions(
-                self.reconstructors.index(r)
-            )
-            is not None
-        ]
 
         return NeutrinoDeviationPlotter.plot_binned_deviation(
             bin_centers,
@@ -858,7 +848,7 @@ class ReconstructionEvaluator:
                 GroundTruthReconstructor,
             )
         ]
-        names = [r.get_name() for r in self.reconstructors]
+        names = [r.get_name() for r in self.reconstructors if not isinstance(r, GroundTruthReconstructor)]
 
         return ConfusionMatrixPlotter.plot_confusion_matrices(
             self.y_test["assignment_labels"],

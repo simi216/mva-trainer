@@ -10,6 +10,7 @@ from core.components import GenerateMask, InputPtEtaPhiELayer, InputMetPhiLayer
 import core.components as components
 import core.utils as utils
 
+
 @keras.utils.register_keras_serializable()
 class KerasModelWrapper(keras.Model):
     def predict_dict(self, x, batch_size=None, verbose=0, steps=None, **kwargs):
@@ -21,6 +22,7 @@ class KerasModelWrapper(keras.Model):
                 predictions = [predictions]
             return dict(zip(self.output_names, predictions))
         return predictions
+
 
 class MLWrapperBase(BaseUtilityModel, ABC):
     def __init__(self, config: DataConfig, name="ml_assigner"):
@@ -97,8 +99,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 X_train["met_inputs"] = met_data
         return X_train, y_train, sample_weights
 
-
-    def _prepare_inputs(self, input_as_four_vector, log_E = True):
+    def _prepare_inputs(self, input_as_four_vector, log_E=True):
         jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
         lep_inputs = keras.Input(
             shape=(self.NUM_LEPTONS, self.n_leptons), name="lep_inputs"
@@ -107,12 +108,16 @@ class MLWrapperBase(BaseUtilityModel, ABC):
 
         # Normalise inputs
         if input_as_four_vector:
-            transformed_jet_inputs = InputPtEtaPhiELayer(name="jet_input_transform", log_E=log_E, padding_value=self.padding_value)(
-                jet_inputs
-            )
-            transformed_lep_inputs = InputPtEtaPhiELayer(name="lep_input_transform", log_E=log_E, padding_value=self.padding_value)(
-                lep_inputs
-            )
+            transformed_jet_inputs = InputPtEtaPhiELayer(
+                name="jet_input_transform",
+                log_E=log_E,
+                padding_value=self.padding_value,
+            )(jet_inputs)
+            transformed_lep_inputs = InputPtEtaPhiELayer(
+                name="lep_input_transform",
+                log_E=log_E,
+                padding_value=self.padding_value,
+            )(lep_inputs)
             transformed_met_inputs = InputMetPhiLayer(name="met_input_transform")(
                 met_inputs
             )
@@ -154,14 +159,16 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         sample_weights=None,
         validation_split=0.2,
         callbacks=None,
-        **kwargs
+        **kwargs,
     ):
         if self.model is None:
             raise ValueError(
                 "Model has not been built yet. Call build_model() before train_model()."
             )
 
-        X_train, y_train, sample_weights= self.prepare_training_data(X_train, y_train, sample_weights=sample_weights)
+        X_train, y_train, sample_weights = self.prepare_training_data(
+            X_train, y_train, sample_weights=sample_weights
+        )
 
         if self.history is not None:
             print("Warning: Overwriting existing training history.")
@@ -175,7 +182,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             batch_size=batch_size,
             validation_split=validation_split,
             callbacks=callbacks,
-            **kwargs
+            **kwargs,
         )
         return self.history
 
@@ -453,7 +460,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             f.write("\telectrons: ")
             f.write("\tmuons: ")
             f.write("\tmet: ")
-            f.write("\tbtagger: \"GN2v01\"")
+            f.write('\tbtagger: "GN2v01"')
             f.write("\teventSelection: \n")
             f.write("\tn_jets: {}\n".format(self.max_jets))
             f.write("\tNN_padding_value: {}\n".format(self.padding_value))

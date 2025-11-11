@@ -369,11 +369,12 @@ class ResolutionPlotter:
         """Plot binned resolution vs. a feature."""
         fig, ax = plt.subplots(figsize=config.figsize)
         color_map = plt.get_cmap("tab10")
-
+        fmt_map = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '8']
         # Plot each reconstructor
         for index, (name, (mean_res, lower, upper)) in enumerate(
             zip(reconstructor_names, binned_resolutions)
         ):
+            
             if config.show_errorbar:
                 errors_lower = mean_res - lower
                 errors_upper = upper - mean_res
@@ -381,10 +382,11 @@ class ResolutionPlotter:
                     bin_centers,
                     mean_res,
                     yerr=[errors_lower, errors_upper],
-                    fmt="x",
+                    fmt = fmt_map[index % len(fmt_map)],
                     label=name,
                     color=color_map(index),
                     linestyle="None",
+
                 )
             else:
                 ax.plot(
