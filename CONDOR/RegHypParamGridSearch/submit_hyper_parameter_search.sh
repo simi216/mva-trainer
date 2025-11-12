@@ -5,8 +5,10 @@ executable = run_training.sh
 universe = vanilla
 
 # Resource requirements
-RequestCPUs    = 20
 RequestMemory  = 60000
+RequestGPUs    = 1
+Requirements = (GPUs_DeviceName == "Tesla V100-PCIE-32GB")
+
 +RequestRuntime = 1000000
 +MaxRuntime     = 1000000
 

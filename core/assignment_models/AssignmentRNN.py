@@ -1,6 +1,6 @@
 import keras
 import tensorflow as tf
-
+from keras.layers import LSTM, GRU, RNN, LSTMCell, Bidirectional, GRUCell
 
 from core.reconstruction import MLReconstructorBase
 from core.Configs import DataConfig
@@ -11,11 +11,10 @@ from core.components import (
 
 
 class FeatureConcatRNN(MLReconstructorBase):
-    def __init__(self, config : DataConfig, name="RNN", perform_regression=False):
+    def __init__(self, config : DataConfig, name="RNN"):
         if config.has_regression_targets:
             print("FeatureConcatRNN is designed for classification tasks; regression targets will be ignored.")
-        self.perform_regression = False
-        super().__init__(config, name)
+        super().__init__(config, name, perform_regression=False)
 
     def build_model(self, hidden_dim, num_layers, dropout_rate, recurrent_type="lstm",input_as_four_vector=True):
 
@@ -47,20 +46,20 @@ class FeatureConcatRNN(MLReconstructorBase):
 
         # Recurrent layers
         if recurrent_type.lower() == "lstm":
-            RNNLayer = keras.layers.LSTM
+            RNNCell = LSTMCell
         elif recurrent_type.lower() == "gru":
-            RNNLayer = keras.layers.GRU
+            RNNCell = GRUCell
         else:
             raise ValueError("recurrent_type must be either 'lstm' or 'gru'")
 
         x = jet_embedding
         for i in range(num_layers):
-            x = keras.layers.Bidirectional(RNNLayer(
-                hidden_dim,
-                return_sequences=True,
-                dropout=dropout_rate,
-                name=f"bidirectional_rnn_{i}",
-            ))(x, mask=jet_mask)
+            x = keras.layers.Bidirectional(
+                RNN(RNNCell(units=hidden_dim, dropout=dropout_rate), return_sequences=True),
+                name=f"bidir_rnn_{i}",
+            )(x, mask=jet_mask)
+
+
             x = keras.layers.LayerNormalization(name=f"rnn_ln_{i}")(x)
 
         # Output layers

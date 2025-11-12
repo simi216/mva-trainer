@@ -4,10 +4,10 @@ executable = run_training.sh
 universe = vanilla
 
 # Resource requirements
-RequestCPUs    = 20
-RequestMemory  = 40000
-+RequestRuntime = 800000
-+MaxRuntime     = 800000
+RequestGPUs    = 1
+Requirements = (GPUs_DeviceName == "Tesla V100-PCIE-32GB")
+RequestMemory  = 60000
+RequestRuntime = 7200
 
 # Output files
 output = logs/job_$(Cluster)_$(architecture)_$(hidden_dim)_$(num_layers)_$(num_heads).out

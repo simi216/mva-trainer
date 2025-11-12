@@ -6,6 +6,7 @@ import keras
 import matplotlib.pyplot as plt
 from sklearn.metrics import ConfusionMatrixDisplay
 import yaml
+import tensorflow as tf
 
 
 def parse_args():

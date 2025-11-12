@@ -48,9 +48,14 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
             )
         if self.use_nu_flows and "nu_flows_regression_targets" in data_dict.keys():
             return data_dict["nu_flows_regression_targets"]
-        else:
+        elif "regression_targets" in data_dict.keys():
             print("WARNING: 'nu_flows_regression_targets' not found in data_dict. Returning 'regression_targets' instead.")
             return data_dict["regression_targets"]
+        else:
+            print(f"data_dict keys: {list(data_dict.keys())}")
+            raise ValueError(
+                "No regression targets found in data_dict for neutrino reconstruction."
+            )
 
     def evaluate_accuracy(self, data_dict, true_labels, per_event=False):
         """
@@ -128,7 +133,7 @@ class FixedPrecisionReconstructor(EventReconstructorBase):
 
 
 class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
-    def __init__(self, config: DataConfig, name="ml_assigner", perform_regression=True, use_nu_flows=True):
+    def __init__(self, config: DataConfig, name="ml_assigner", perform_regression=False, use_nu_flows=True):
         super().__init__(config=config, name=name, perform_regression=perform_regression, use_nu_flows=use_nu_flows)
 
     def _build_model_base(self, jet_assignment_probs, regression_output=None, **kwargs):
@@ -240,11 +245,11 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
             )
         if self.met_features is not None:
             predictions = self.model.predict_dict(
-                [data["jet"], data["lepton"], data["met"]], verbose=0
+                [data["jet"], data["lepton"], data["met"]], verbose=0, batch_size=128
             )["assignment"]
         else:
             predictions = self.model.predict_dict(
-                [data["jet"], data["lepton"]], verbose=0
+                [data["jet"], data["lepton"]], verbose=0, batch_size=128
             )["assignment"]
         one_hot = self.generate_one_hot_encoding(predictions, exclusive)
         return one_hot
@@ -273,15 +278,14 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
         if "regression" in self.model.output_names and self.perform_regression:
             if self.met_features is not None:
                 neutrino_prediction = self.model.predict_dict(
-                    [data["jet"], data["lepton"], data["met"]], verbose=0
+                    [data["jet"], data["lepton"], data["met"]], verbose=0, batch_size=128
                 )["regression"]
             else:
                 neutrino_prediction = self.model.predict_dict(
-                    [data["jet"], data["lepton"]], verbose=0
+                    [data["jet"], data["lepton"]], verbose=0, batch_size=128
                 )["regression"]
             return neutrino_prediction
         else:
-            print("Model does not perform regression. Using base class method for neutrino reconstruction.")
             return super().reconstruct_neutrinos(data)
 
     def complete_forward_pass(self, data: dict[str : np.ndarray]):
@@ -311,11 +315,11 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
         if self.perform_regression:
             if self.met_features is not None:
                 predictions = self.model.predict_dict(
-                    [data["jet"], data["lepton"], data["met"]], verbose=0
+                    [data["jet"], data["lepton"], data["met"]], verbose=0, batch_size=128
                 )
             else:
                 predictions = self.model.predict_dict(
-                    [data["jet"], data["lepton"]], verbose=0
+                    [data["jet"], data["lepton"]], verbose=0, batch_size=128
                 )
             assignment_predictions = self.generate_one_hot_encoding(
                 predictions["assignment"], exclusive=True

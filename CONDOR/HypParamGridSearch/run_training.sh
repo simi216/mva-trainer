@@ -16,7 +16,7 @@ echo "Working directory: $(pwd)"
 echo "Date: $(date)"
 
 # Activate your Python environment (adjust path as needed)
-source ~/mva-trainer/venv/bin/activate
+source /data/dust/group/atlas/ttreco/venv/bin/activate
 # OR if using conda:
 # source /path/to/conda/etc/profile.d/conda.sh
 # conda activate your_env_name

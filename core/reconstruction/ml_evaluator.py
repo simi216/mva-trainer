@@ -26,26 +26,11 @@ class FeatureImportanceCalculator:
     ):
         self.reconstructor = reconstructor
         # Filter X_test to only include features used by this reconstructor
-        self.X_test = self._filter_input_features(X_test)
+        self.X_test = X_test
         self.y_test = y_test
         self.config = reconstructor.config
         self.padding_value = reconstructor.padding_value
 
-    def _filter_input_features(self, X_full: dict) -> dict:
-        """Filter input features to only those used by this reconstructor."""
-        X_filtered = {}
-        config = self.reconstructor.config
-
-        # Check which feature types are used by this model
-        if hasattr(config, "feature_indices"):
-            for feature_type in ["jet", "lepton", "met"]:
-                if feature_type in config.feature_indices and feature_type in X_full:
-                    X_filtered[feature_type] = X_full[feature_type]
-        else:
-            # Fallback: include all available features
-            X_filtered = X_full.copy()
-
-        return X_filtered
 
     def compute_permutation_importance(
         self, num_repeats: int = 5, evaluate_regression=False
@@ -72,10 +57,12 @@ class FeatureImportanceCalculator:
         assignment_baseline_performance = AccuracyCalculator.compute_accuracy(
             assignment_baseline_prediction,
             self.y_test["assignment_labels"],
+            per_event=False,
         )
         regression_baseline_prediction = None
         print(f"Baseline Assignment Performance: {assignment_baseline_performance:.4f}")
 
+        regression_baseline_performance = None
         if evaluate_regression:
             regression_baseline_performance = (
                 NeutrinoDeviationCalculator.compute_relative_deviation(
@@ -156,7 +143,7 @@ class FeatureImportanceCalculator:
                 )
                 assignment_performance = (
                     AccuracyCalculator.compute_accuracy(
-                        permutated_assignment_pred, self.y_test["assignment_labels"]
+                        permutated_assignment_pred, self.y_test["assignment_labels"], per_event=False
                     )
                     - assignment_baseline_performance
                 )
@@ -220,22 +207,6 @@ class MLEvaluator:
             for idx, rec in enumerate(self.reconstructors)
         ]
 
-    def _get_filtered_test_data(self, reconstructor: MLReconstructorBase) -> dict:
-        """Get test data filtered for a specific reconstructor's configuration."""
-        X_filtered = {}
-        config = reconstructor.config
-
-        if hasattr(config, "feature_indices"):
-            for feature_type in ["jet", "lepton", "met"]:
-                if (
-                    feature_type in config.feature_indices
-                    and feature_type in self.X_test
-                ):
-                    X_filtered[feature_type] = self.X_test[feature_type]
-        else:
-            X_filtered = self.X_test.copy()
-
-        return X_filtered
 
     def plot_training_history(self, save_path: Optional[str] = None):
         """Plot training and validation loss/accuracy over epochs for all models."""

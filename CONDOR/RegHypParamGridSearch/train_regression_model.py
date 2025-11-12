@@ -6,6 +6,7 @@ import keras
 import matplotlib.pyplot as plt
 from sklearn.metrics import ConfusionMatrixDisplay
 import yaml
+import tensorflow as tf
 
 
 def parse_args():
@@ -138,6 +139,15 @@ def main():
     print(f"  Epochs: {args.epochs}")
     print(f"  Model name: {MODEL_NAME}")
 
+    # Clear all TF sessions
+    keras.backend.clear_session()
+
+    # Reset memory growth if you set it
+    gpus = tf.config.list_physical_devices('GPU')
+    for gpu in gpus:
+        tf.config.experimental.reset_memory_stats(gpu)
+
+
     # Configure data
     with open(args.data_config, "r") as f:
         data_config_yaml = yaml.safe_load(f)
@@ -267,30 +277,9 @@ def main():
     ax.set_xticklabels([i for i in range(2, config.max_jets + 1)])
     fig.savefig(os.path.join(PLOTS_DIR , "binned_accuracy_N_jets.pdf"))
 
-    # Plot neutrino component deviation histograms
-    fig, axes = evaluator.plot_neutrino_component_deviations(
-        bins=50,
-        xlims=(0, 5),  # Optional: limit x-axis range
-        figsize=(15, 10),
-        component_labels=["$p_x$", "$p_y$", "$p_z$"]
-    )
-    fig.savefig(os.path.join(PLOTS_DIR, "neutrino_component_deviation.pdf"))
-
-    # Plot overall relative deviation distribution
-    fig, ax = evaluator.plot_overall_neutrino_deviation_distribution(
-        bins=50,
-        xlims=(0, 2),  # Optional: limit x-axis range
-        figsize=(12, 6)
-    )
-    fig.savefig(os.path.join(PLOTS_DIR, "overall_neutrino_deviation.pdf"))
-
     # Compute best regression deviation metrics
     best_val_rel_dev = None
     best_val_rel_dev_epoch = None
-    if "val_assignment_relative_deviation" in history.history:
-        val_rel_devs = history.history["val_assignment_relative_deviation"]
-        best_val_rel_dev = min(val_rel_devs)
-        best_val_rel_dev_epoch = np.argmin(val_rel_devs)
 
     # Save training history and model info
     history_path = os.path.join(MODEL_DIR, f"{MODEL_NAME}_history.npz")
@@ -298,10 +287,7 @@ def main():
         "trainable_params": trainable_params,
         **history.history
     }
-    if best_val_rel_dev is not None:
-        save_dict["best_val_rel_dev"] = best_val_rel_dev
-        save_dict["best_val_rel_dev_epoch"] = best_val_rel_dev_epoch
-    
+
     np.savez(history_path, **save_dict)
     print(f"Training history saved to {history_path}")
 
