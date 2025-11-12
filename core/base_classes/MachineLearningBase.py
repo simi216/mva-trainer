@@ -5,11 +5,12 @@ import keras
 import numpy as np
 import tensorflow as tf
 import tf2onnx
+import os
 from core.components import onnx_support
 from core.components import GenerateMask, InputPtEtaPhiELayer, InputMetPhiLayer
 import core.components as components
 import core.utils as utils
-
+from copy import deepcopy
 
 @keras.utils.register_keras_serializable()
 class KerasModelWrapper(keras.Model):
@@ -52,16 +53,20 @@ class MLWrapperBase(BaseUtilityModel, ABC):
 
         super().__init__(config=config, name=name)
 
-    @abstractmethod
-    def build_model(self, input_as_four_vector=True, **kwargs):
+    def build_model(self, **kwargs):
+        raise NotImplementedError("Subclasses must implement build_model method.")
         pass
 
     def prepare_training_data(
-        self, X_train, y_train, sample_weights=None, class_weights=None
+        self, X_train, y_train, sample_weights=None, class_weights=None, copy_data=False
     ):
         self.sample_weights = sample_weights
         self.class_weights = class_weights
+        if copy_data:
+            y_train = deepcopy(y_train)
+            X_train = deepcopy(X_train)
 
+        # Rename targets to match model output names
         y_train["assignment"] = y_train.pop("assignment_labels")
         y_train["regression"] = y_train.pop("regression_targets")
         if not self.model.output_names.__contains__("regression"):
@@ -159,6 +164,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         sample_weights=None,
         validation_split=0.2,
         callbacks=None,
+        copy_data = False,
         **kwargs,
     ):
         if self.model is None:
@@ -167,7 +173,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             )
 
         X_train, y_train, sample_weights = self.prepare_training_data(
-            X_train, y_train, sample_weights=sample_weights
+            X_train, y_train, sample_weights=sample_weights, copy_data=copy_data
         )
 
         if self.history is not None:
@@ -214,40 +220,10 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             )
         self.model.save(file_path)
 
-    def save_structure(self, file_path="model_structure.txt"):
-        """
-        Saves the model's structure to a text file.
+        history_path = file_path.replace(".keras", "_history")
+        np.savez(history_path, **self.history.history)
+        print(f"Model saved to {file_path}")
 
-        This method writes the summary of the Keras model to a specified text file.
-        It is useful for documenting the architecture of the model without saving
-        the entire model weights and configuration.
-
-        Args:
-            file_path (str): The file path where the model structure will be saved.
-                             Defaults to "model_structure.txt".
-
-        Raises:
-            ValueError: If the model has not been built (i.e., `self.model` is None).
-
-        Side Effects:
-            - Writes the model's structure to the specified text file.
-            - Prints a confirmation message indicating the structure has been saved.
-
-        Example:
-            self.save_structure("my_model_structure.txt")
-        """
-
-        if self.model is None:
-            raise ValueError(
-                "Model not built. Please build the model using build_model() method."
-            )
-
-        def myprint(s):
-            with open(file_path, "a") as f:
-                print(s, file=f)
-
-        self.model.summary(print_fn=myprint)
-        print(f"Model structure saved to {file_path}")
 
     def load_model(self, file_path):
         """
@@ -282,6 +258,16 @@ class MLWrapperBase(BaseUtilityModel, ABC):
 
         self.model = keras.saving.load_model(file_path, custom_objects=custom_objects)
         print(f"Model loaded from {file_path}")
+        history_path = file_path.replace(".keras", "_history.npz")
+        if os.path.exists(history_path):
+            loaded_history = np.load(history_path, allow_pickle=True)
+            history_dict = {key: loaded_history[key].tolist() for key in loaded_history}
+            self.history = keras.callbacks.History()
+            self.history.history = history_dict
+            print(f"Training history loaded from {history_path}")
+        else:
+            print(f"WARNING: No training history found at {history_path}")
+
 
     def adapt_normalization_layers(self, data: dict):
         """

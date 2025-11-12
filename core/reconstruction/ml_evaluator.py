@@ -5,8 +5,14 @@ import matplotlib.pyplot as plt
 from typing import Optional
 from copy import deepcopy
 
-from .evaluator_base import BootstrapCalculator, AccuracyCalculator, NeutrinoDeviationCalculator
+from .evaluator_base import (
+    BootstrapCalculator,
+    AccuracyCalculator,
+    NeutrinoDeviationCalculator,
+)
 from . import MLReconstructorBase
+from typing import List, Union
+import time
 
 
 class FeatureImportanceCalculator:
@@ -19,10 +25,27 @@ class FeatureImportanceCalculator:
         y_test: dict,
     ):
         self.reconstructor = reconstructor
-        self.X_test = X_test
+        # Filter X_test to only include features used by this reconstructor
+        self.X_test = self._filter_input_features(X_test)
         self.y_test = y_test
         self.config = reconstructor.config
         self.padding_value = reconstructor.padding_value
+
+    def _filter_input_features(self, X_full: dict) -> dict:
+        """Filter input features to only those used by this reconstructor."""
+        X_filtered = {}
+        config = self.reconstructor.config
+
+        # Check which feature types are used by this model
+        if hasattr(config, "feature_indices"):
+            for feature_type in ["jet", "lepton", "met"]:
+                if feature_type in config.feature_indices and feature_type in X_full:
+                    X_filtered[feature_type] = X_full[feature_type]
+        else:
+            # Fallback: include all available features
+            X_filtered = X_full.copy()
+
+        return X_filtered
 
     def compute_permutation_importance(
         self, num_repeats: int = 5, evaluate_regression=False
@@ -67,49 +90,29 @@ class FeatureImportanceCalculator:
         assingment_importances = {}
         regression_importances = {}
 
-        # Compute importance for jet features
+        # Compute importance for each available feature type
+        available_feature_types = ["jet", "lepton", "met"]
 
-        assingment_jet_importances, regression_jet_importances = (
-            self._compute_feature_type_importance(
-                "jet",
-                num_repeats,
-                assignment_baseline_performance,
-                regression_baseline_performance,
-            )
-        )
+        for feature_type in available_feature_types:
+            # Check if this feature type is available in both config and test data
+            if (
+                feature_type not in self.config.feature_indices
+                or feature_type not in self.X_test
+            ):
+                continue
 
-        assingment_importances.update(assingment_jet_importances)
-        if evaluate_regression:
-            regression_importances.update(regression_jet_importances)
-
-        # Compute importance for lepton features
-        assignment_lepton_importances, regression_lepton_importances = (
-            self._compute_feature_type_importance(
-                "lepton",
-                num_repeats,
-                assignment_baseline_performance,
-                regression_baseline_performance,
-            )
-        )
-
-        assingment_importances.update(assignment_lepton_importances)
-        if evaluate_regression:
-            regression_importances.update(regression_lepton_importances)
-
-        # Compute importance for MET features if available
-        if "met" in self.X_test:
-            assignment_met_importances, regression_met_importances = (
+            assignment_type_importances, regression_type_importances = (
                 self._compute_feature_type_importance(
-                    "met",
+                    feature_type,
                     num_repeats,
                     assignment_baseline_performance,
                     regression_baseline_performance,
                 )
             )
 
-            assingment_importances.update(assignment_met_importances)
+            assingment_importances.update(assignment_type_importances)
             if evaluate_regression:
-                regression_importances.update(regression_met_importances)
+                regression_importances.update(regression_type_importances)
 
         return (
             assingment_importances
@@ -168,6 +171,11 @@ class FeatureImportanceCalculator:
                     )
                     regression_scores.append(regression_performance)
 
+            # Store mean importance across repeats
+            assignment_importances[feature_name] = np.mean(assignment_scores)
+            if regression_baseline_performance is not None:
+                regression_importances[feature_name] = np.mean(regression_scores)
+
         return assignment_importances, regression_importances
 
 
@@ -176,60 +184,179 @@ class MLEvaluator:
 
     def __init__(
         self,
-        reconstructor: MLReconstructorBase,
-        X_test: dict,
-        y_test: dict,
+        reconstructor: Union[MLReconstructorBase, List[MLReconstructorBase]],
+        X_test: Union[dict, List[dict]],
+        y_test: Union[dict, List[dict]],
     ):
-        self.reconstructor = reconstructor
-        self.X_test = X_test
-        self.y_test = y_test
-
-        # Store configuration from reconstructor
-        self.NUM_LEPTONS = reconstructor.NUM_LEPTONS
-        self.max_jets = reconstructor.max_jets
-        self.met_features = reconstructor.met_features
-        self.n_jets = reconstructor.n_jets
-        self.n_leptons = reconstructor.n_leptons
-        self.n_met = reconstructor.n_met
-        self.padding_value = reconstructor.padding_value
-        self.feature_indices = reconstructor.config.feature_indices
-
-        # Initialize helper classes
-        self.feature_importance_calc = FeatureImportanceCalculator(
-            reconstructor, X_test, y_test
+        # Handle both single reconstructor and list of reconstructors
+        self.reconstructors = (
+            reconstructor if isinstance(reconstructor, list) else [reconstructor]
+        )
+        self.X_test = (
+            X_test if isinstance(X_test, list) else [X_test]
+        )
+        self.y_test = (
+            y_test if isinstance(y_test, list) else [y_test]
         )
 
-    def plot_training_history(self):
-        """Plot training and validation loss/accuracy over epochs."""
-        if self.reconstructor.history is None:
-            raise ValueError(
-                "No training history found. Please train the model before "
-                "plotting history."
+        # Store configuration from first reconstructor (for backward compatibility)
+        first_reconstructor = self.reconstructors[0]
+        self.NUM_LEPTONS = first_reconstructor.NUM_LEPTONS
+        self.max_jets = first_reconstructor.max_jets
+        self.met_features = first_reconstructor.met_features
+        self.n_jets = first_reconstructor.n_jets
+        self.n_leptons = first_reconstructor.n_leptons
+        self.n_met = first_reconstructor.n_met
+        self.padding_value = first_reconstructor.padding_value
+        self.feature_indices = first_reconstructor.config.feature_indices
+
+        # Initialize helper classes for each reconstructor (with filtered features)
+        self.feature_importance_calcs = [
+            FeatureImportanceCalculator(
+                reconstructor=rec,
+                X_test=self.X_test[idx],
+                y_test=self.y_test[idx],
+            )
+            for idx, rec in enumerate(self.reconstructors)
+        ]
+
+    def _get_filtered_test_data(self, reconstructor: MLReconstructorBase) -> dict:
+        """Get test data filtered for a specific reconstructor's configuration."""
+        X_filtered = {}
+        config = reconstructor.config
+
+        if hasattr(config, "feature_indices"):
+            for feature_type in ["jet", "lepton", "met"]:
+                if (
+                    feature_type in config.feature_indices
+                    and feature_type in self.X_test
+                ):
+                    X_filtered[feature_type] = self.X_test[feature_type]
+        else:
+            X_filtered = self.X_test.copy()
+
+        return X_filtered
+
+    def plot_training_history(self, save_path: Optional[str] = None):
+        """Plot training and validation loss/accuracy over epochs for all models."""
+        for reconstructor in self.reconstructors:
+            if reconstructor.history is None:
+                model_name = reconstructor.get_name()
+                raise ValueError(
+                    f"No training history found for model {model_name}. "
+                    "Please train the model before plotting history."
+                )
+
+        # Check if any model has regression metrics
+        has_regression = any(
+            "regression_loss" in rec.history.history for rec in self.reconstructors
+        )
+
+        # Adjust subplot layout based on whether regression metrics exist
+        n_cols = 4 if has_regression else 2
+        fig, axes = plt.subplots(1, n_cols, figsize=(7 * n_cols, 5))
+
+        color_map = plt.get_cmap("tab10")
+
+        # Plot loss for all models
+        for idx, reconstructor in enumerate(self.reconstructors):
+            history = reconstructor.history
+            model_name = reconstructor.get_name()
+
+            axes[0].plot(
+                history.history["loss"], label=f"{model_name} (Train)", linestyle="-", color=color_map(idx)
+            )
+            axes[0].plot(
+                history.history["val_loss"], label=f"{model_name} (Val)", linestyle="--", color=color_map(idx)
             )
 
-        history = self.reconstructor.history
+        axes[0].set_title("Model Loss Comparison")
+        axes[0].set_xlabel("Epoch")
+        axes[0].set_ylabel("Loss")
+        axes[0].legend()
+        axes[0].grid(True, alpha=0.3)
 
-        fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+        # Plot accuracy for all models
+        for idx, reconstructor in enumerate(self.reconstructors):
+            history = reconstructor.history
+            model_name = reconstructor.get_name()
 
-        # Plot loss
-        self._plot_metric(
-            axes[0],
-            history,
-            metric_name="loss",
-            title="Model Loss",
-            ylabel="Loss",
-        )
+            axes[1].plot(
+                history.history["assignment_accuracy"],
+                label=f"{model_name} (Train)",
+                linestyle="-",
+                color=color_map(idx)
+            )
+            axes[1].plot(
+                history.history["val_assignment_accuracy"],
+                label=f"{model_name} (Val)",
+                linestyle="--",
+                color=color_map(idx)
+            )
 
-        # Plot accuracy
-        self._plot_metric(
-            axes[1],
-            history,
-            metric_name="assignment_accuracy",
-            title="Model Accuracy",
-            ylabel="Accuracy",
-        )
+        axes[1].set_title("Model Accuracy Comparison")
+        axes[1].set_xlabel("Epoch")
+        axes[1].set_ylabel("Accuracy")
+        axes[1].legend()
+        axes[1].grid(True, alpha=0.3)
+
+        # Plot regression loss if available
+        if has_regression:
+            for idx, reconstructor in enumerate(self.reconstructors):
+                history = reconstructor.history
+                if "regression_loss" in history.history:
+                    model_name = reconstructor.get_name()
+
+                    axes[2].plot(
+                        history.history["regression_loss"],
+                        label=f"{model_name} (Train)",
+                        linestyle="-",
+                        color=color_map(idx)
+                    )
+                    axes[2].plot(
+                        history.history["val_regression_loss"],
+                        label=f"{model_name} (Val)",
+                        linestyle="--",
+                        color=color_map(idx)
+                    )
+
+            axes[2].set_title("Regression Loss Comparison")
+            axes[2].set_xlabel("Epoch")
+            axes[2].set_ylabel("Regression Loss")
+            axes[2].legend()
+            axes[2].grid(True, alpha=0.3)
+
+            # Plot regression deviation if available
+            for idx, reconstructor in enumerate(self.reconstructors):
+                history = reconstructor.history
+                if "relative_regression_deviation" in history.history:
+                    model_name = reconstructor.get_name()
+
+                    axes[3].plot(
+                        history.history["relative_regression_deviation"],
+                        label=f"{model_name} (Train)",
+                        linestyle="-",
+                        color=color_map(idx)
+                    )
+                    axes[3].plot(
+                        history.history["val_relative_regression_deviation"],
+                        label=f"{model_name} (Val)",
+                        linestyle="--",
+                        color=color_map(idx)
+                    )
+
+            axes[3].set_title("Relative Regression Deviation Comparison")
+            axes[3].set_xlabel("Epoch")
+            axes[3].set_ylabel("Relative Deviation")
+            axes[3].legend()
+            axes[3].grid(True, alpha=0.3)
 
         fig.tight_layout()
+
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            print(f"Training history plot saved to {save_path}")
+
         return fig, axes
 
     @staticmethod
@@ -242,32 +369,361 @@ class MLEvaluator:
         ax.set_ylabel(ylabel)
         ax.legend()
 
-    def compute_permutation_importance(self, num_repeats: int = 5) -> dict:
+    def compute_permutation_importance(
+        self, num_repeats: int = 5, reconstructor_idx: int = 0
+    ) -> dict:
         """
         Compute feature importance using permutation importance.
 
         Args:
             num_repeats: Number of times to permute each feature
+            reconstructor_idx: Index of reconstructor to evaluate (default: 0)
 
         Returns:
             Dictionary mapping feature names to importance scores
         """
-        return self.feature_importance_calc.compute_permutation_importance(num_repeats)
+        return self.feature_importance_calcs[
+            reconstructor_idx
+        ].compute_permutation_importance(num_repeats)
 
-    def plot_feature_importance(self, num_repeats: int = 10):
-        """Plot feature importance scores."""
-        importances = self.compute_permutation_importance(num_repeats=num_repeats)
+    def plot_feature_importance(
+        self,
+        num_repeats: int = 10,
+        save_dir: Optional[str] = None,
+    ):
+        """
+        Plot feature importance scores for all models.
 
-        # Sort features by importance
-        sorted_items = sorted(importances.items(), key=lambda x: x[1], reverse=True)
-        features = [item[0] for item in sorted_items]
-        scores = [item[1] for item in sorted_items]
+        Args:
+            num_repeats: Number of times to permute each feature
+            save_dir: Directory to save individual plots (optional)
+
+        Returns:
+            List of (fig, ax) tuples for each model
+        """
+        results = []
+
+        for idx, (reconstructor, calc) in enumerate(
+            zip(self.reconstructors, self.feature_importance_calcs)
+        ):
+            model_name = reconstructor.get_name()
+
+            # Get available features for this model
+            available_features = []
+            for feature_type in ["jet", "lepton", "met"]:
+                if (
+                    hasattr(reconstructor.config, "feature_indices")
+                    and feature_type in reconstructor.config.feature_indices
+                ):
+                    available_features.append(feature_type)
+
+            print(
+                f"Computing feature importance for {model_name} "
+                f"(features: {', '.join(available_features)})..."
+            )
+
+            importances = calc.compute_permutation_importance(
+                num_repeats=num_repeats,
+                evaluate_regression=reconstructor.perform_regression,
+            )
+
+            if not reconstructor.perform_regression:
+                assignment_importances = importances
+
+                # Sort features by importance
+                sorted_items = sorted(
+                    assignment_importances.items(), key=lambda x: x[1], reverse=True
+                )
+                features = [item[0] for item in sorted_items]
+                scores = [item[1] for item in sorted_items]
+
+                fig, ax = plt.subplots(figsize=(10, 6))
+                ax.barh(features, scores, color="skyblue")
+                ax.set_xlabel("Importance Score")
+                ax.set_title(f"Feature Importance - {model_name}")
+                ax.invert_yaxis()
+                ax.grid(True, alpha=0.3, axis="x")
+                fig.tight_layout()
+
+                if save_dir:
+                    save_path = f"{save_dir}/{model_name}_feature_importance.png"
+                    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+                    print(f"Saved feature importance plot to {save_path}")
+
+                results.append((fig, ax))
+
+            else:
+                assignment_importances, regression_importances = importances
+
+                # Plot assignment importances
+                sorted_items = sorted(
+                    assignment_importances.items(), key=lambda x: x[1], reverse=True
+                )
+                features = [item[0] for item in sorted_items]
+                scores = [item[1] for item in sorted_items]
+
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+
+                ax1.barh(features, scores, color="skyblue")
+                ax1.set_xlabel("Importance Score")
+                ax1.set_title(f"Assignment Feature Importance - {model_name}")
+                ax1.invert_yaxis()
+                ax1.grid(True, alpha=0.3, axis="x")
+
+                # Plot regression importances
+                sorted_items = sorted(
+                    regression_importances.items(), key=lambda x: x[1], reverse=True
+                )
+                features = [item[0] for item in sorted_items]
+                scores = [item[1] for item in sorted_items]
+
+                ax2.barh(features, scores, color="salmon")
+                ax2.set_xlabel("Importance Score")
+                ax2.set_title(f"Regression Feature Importance - {model_name}")
+                ax2.invert_yaxis()
+                ax2.grid(True, alpha=0.3, axis="x")
+
+                fig.tight_layout()
+
+                if save_dir:
+                    save_path = f"{save_dir}/{model_name}_feature_importance.png"
+                    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+                    print(f"Saved feature importance plot to {save_path}")
+
+                results.append((fig, (ax1, ax2)))
+
+        return results
+
+
+    def evaluate_inference_time(
+        self,
+        num_samples: Optional[int] = None,
+        num_warmup: int = 10,
+        num_iterations: int = 100,
+        ) -> dict:
+        """
+        Evaluate inference time for all models using the same number of samples.
+
+        Args:
+            num_samples: Number of samples to use for inference testing.
+                If None, uses the minimum dataset size across all models.
+            num_warmup: Number of warmup iterations before timing
+            num_iterations: Number of iterations to average over
+
+        Returns:
+            Dictionary mapping model names to inference time statistics
+        """
+
+        # Determine the number of samples to use
+        if num_samples is None:
+            # Use minimum dataset size to ensure all models can be tested equally
+            min_samples = min(
+            len(X["jet"]) if "jet" in X else len(next(iter(X.values())))
+            for X in self.X_test
+            )
+            num_samples = min_samples
+            print(f"Using {num_samples} samples for inference time evaluation")
+        else:
+            # Verify all datasets have enough samples
+            for idx, X in enumerate(self.X_test):
+                dataset_size = len(X["jet"]) if "jet" in X else len(next(iter(X.values())))
+                if dataset_size < num_samples:
+                    raise ValueError(
+                    f"Dataset {idx} has only {dataset_size} samples, "
+                    f"but {num_samples} were requested"
+                    )
+
+        results = {}
+
+        for idx, reconstructor in enumerate(self.reconstructors):
+            model_name = reconstructor.get_name()
+            print(f"\nEvaluating inference time for {model_name}...")
+
+            # Prepare test subset with exactly num_samples
+            X_subset = {}
+            for key, value in self.X_test[idx].items():
+                X_subset[key] = value[:num_samples]
+
+            # Warmup iterations
+            print(f"  Running {num_warmup} warmup iterations...")
+            for _ in range(num_warmup):
+                _ = reconstructor.complete_forward_pass(X_subset)
+
+            # Timed iterations
+            print(f"  Running {num_iterations} timed iterations...")
+            times = []
+            for _ in range(num_iterations):
+                start_time = time.perf_counter()
+                _ = reconstructor.complete_forward_pass(X_subset)
+                end_time = time.perf_counter()
+                times.append(end_time - start_time)
+
+            # Calculate statistics
+            times = np.array(times)
+            results[model_name] = {
+            "mean_time": np.mean(times),
+            "std_time": np.std(times),
+            "median_time": np.median(times),
+            "min_time": np.min(times),
+            "max_time": np.max(times),
+            "num_samples": num_samples,
+            "time_per_sample": np.mean(times) / num_samples,
+            }
+
+            print(f"  Mean time: {results[model_name]['mean_time']*1000:.2f} ms")
+            print(f"  Std time: {results[model_name]['std_time']*1000:.2f} ms")
+            print(
+            f"  Time per sample: {results[model_name]['time_per_sample']*1000:.4f} ms"
+            )
+
+        return results
+
+    def plot_inference_time_comparison(
+        self,
+        num_samples: Optional[int] = None,
+        num_warmup: int = 10,
+        num_iterations: int = 100,
+        save_path: Optional[str] = None,
+    ):
+        """
+        Plot comparison of inference times across all models.
+
+        Args:
+            num_samples: Number of samples to use for inference testing
+            num_warmup: Number of warmup iterations
+            num_iterations: Number of iterations to average over
+            save_path: Path to save the plot (optional)
+
+        Returns:
+            Tuple of (fig, axes)
+        """
+        results = self.evaluate_inference_time(
+            num_samples=num_samples,
+            num_warmup=num_warmup,
+            num_iterations=num_iterations,
+        )
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+        model_names = list(results.keys())
+        mean_times = [results[name]["mean_time"] * 1000 for name in model_names]
+        std_times = [results[name]["std_time"] * 1000 for name in model_names]
+        time_per_sample = [
+            results[name]["time_per_sample"] * 1000 for name in model_names
+        ]
+
+        # Plot 1: Total inference time
+        ax1.bar(model_names, mean_times, yerr=std_times, capsize=5, color="steelblue")
+        ax1.set_ylabel("Time (ms)")
+        ax1.set_title(f"Total Inference Time ({results[model_names[0]]['num_samples']} samples)")
+        ax1.grid(True, alpha=0.3, axis="y")
+        ax1.tick_params(axis="x", rotation=45)
+
+        # Plot 2: Time per sample
+        ax2.bar(model_names, time_per_sample, color="coral")
+        ax2.set_ylabel("Time per Sample (ms)")
+        ax2.set_title("Inference Time per Sample")
+        ax2.grid(True, alpha=0.3, axis="y")
+        ax2.tick_params(axis="x", rotation=45)
+
+        fig.tight_layout()
+
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            print(f"\nInference time comparison plot saved to {save_path}")
+
+        return fig, (ax1, ax2)
+    
+    def evaluate_model_parameters(self) -> dict:
+        """
+        Evaluate the number of parameters for all models.
+
+        Returns:
+            Dictionary mapping model names to parameter counts
+        """
+        results = {}
+
+        for idx, reconstructor in enumerate(self.reconstructors):
+            model_name = reconstructor.get_name()
+            
+            # Get total and trainable parameters
+            total_params = reconstructor.model.count_params()
+            
+            # Count trainable parameters
+            trainable_params = sum(
+                np.prod(w.shape) for w in reconstructor.model.trainable_weights
+            )
+            
+            non_trainable_params = total_params - trainable_params
+            
+            results[model_name] = {
+                "total_params": total_params,
+                "trainable_params": trainable_params,
+                "non_trainable_params": non_trainable_params,
+            }
+            
+            print(f"\n{model_name}:")
+            print(f"  Total parameters: {total_params:,}")
+            print(f"  Trainable parameters: {trainable_params:,}")
+            print(f"  Non-trainable parameters: {non_trainable_params:,}")
+
+        return results
+
+    def plot_model_parameters_comparison(
+        self,
+        save_path: Optional[str] = None,
+    ):
+        """
+        Plot comparison of model parameters across all models.
+
+        Args:
+            save_path: Path to save the plot (optional)
+
+        Returns:
+            Tuple of (fig, ax)
+        """
+        results = self.evaluate_model_parameters()
 
         fig, ax = plt.subplots(figsize=(10, 6))
-        ax.barh(features, scores, color="skyblue")
-        ax.set_xlabel("Importance Score")
-        ax.set_title("Feature Importance based on Permutation Importance")
-        ax.invert_yaxis()
+
+        model_names = list(results.keys())
+        trainable_params = [
+            results[name]["trainable_params"] / 1e6 for name in model_names
+        ]
+        non_trainable_params = [
+            results[name]["non_trainable_params"] / 1e6 for name in model_names
+        ]
+
+        x = np.arange(len(model_names))
+        width = 0.35
+
+        ax.bar(
+            x,
+            trainable_params,
+            width,
+            label="Trainable",
+            color="steelblue",
+        )
+        ax.bar(
+            x,
+            non_trainable_params,
+            width,
+            bottom=trainable_params,
+            label="Non-trainable",
+            color="lightcoral",
+        )
+
+        ax.set_ylabel("Parameters (millions)")
+        ax.set_title("Model Parameters Comparison")
+        ax.set_xticks(x)
+        ax.set_xticklabels(model_names, rotation=45, ha="right")
+        ax.legend()
+        ax.grid(True, alpha=0.3, axis="y")
+
         fig.tight_layout()
+
+        if save_path:
+            fig.savefig(save_path, dpi=300, bbox_inches="tight")
+            print(f"\nModel parameters comparison plot saved to {save_path}")
 
         return fig, ax
