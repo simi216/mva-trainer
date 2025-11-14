@@ -23,4 +23,4 @@ preprocessing/obj
 reco_tree.txt
 models/
 .DS_Store
-.npz
+**.npz
