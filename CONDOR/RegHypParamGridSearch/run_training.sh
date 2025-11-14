@@ -31,7 +31,6 @@ python train_regression_model.py \
     --num_central_layers "$num_central_layers" \
     --num_regression_layers  "$num_regression_layers"\
     --architecture "$architecture" \
-    --data_config "/afs/desy.de/user/a/aulich/mva-trainer/CONDOR/workspace_config.yaml" \
     --dropout_rate 0.1 \
     --learning_rate 1e-4 \
     --weight_decay 1e-4 \

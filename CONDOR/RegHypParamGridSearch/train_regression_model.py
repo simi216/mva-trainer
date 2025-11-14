@@ -35,10 +35,9 @@ def parse_args():
         help="Model architecture to use (default: FeatureConcatTransformer)",
     )
     parser.add_argument(
-        "--data_config",
-        type=str,
-        default="workspace_config.yaml",
-        help="Path to data configuration YAML file",
+        "--use_high_level_features",
+        action="store_true",
+        help="Whether to use high-level features in the model",
     )
 
     # Optional hyperparameters with defaults
@@ -118,17 +117,27 @@ def main():
     import core
 
     # Load data configuration
-    load_config = get_load_config_from_yaml(args.data_config)
+    config_dir = os.path.join(args.root_dir, "config")
+    CONFIG_PATH = os.path.join(config_dir, "workspace_config.yaml") if not args.use_high_level_features else os.path.join(config_dir, "workspace_config_high_level_features.yaml")
+
+    if not os.path.exists(CONFIG_PATH):
+        raise FileNotFoundError(f"Data configuration file not found: {CONFIG_PATH}")
+
+    load_config = get_load_config_from_yaml(CONFIG_PATH)
 
     # Create model name with hyperparameters
     MODEL_NAME = (
         f"Regression{args.architecture}_d{args.hidden_dim}_cl{args.num_central_layers}_rl{args.num_regression_layers}"
+    ) if not args.use_high_level_features else (
+        f"Regression{args.architecture}_HLF_d{args.hidden_dim}_cl{args.num_central_layers}_rl{args.num_regression_layers}"
     )
 
     # Setup directories
     PLOTS_DIR, MODEL_DIR = setup_directories(args.root_dir, MODEL_NAME)
 
     print(f"Starting training with hyperparameters:")
+    print(f"  Architecture: {args.architecture}")
+    print(f"  Use high-level features: {args.use_high_level_features}")
     print(f"  Hidden dim: {args.hidden_dim}")
     print(f"  Central Transformer layers: {args.num_central_layers}")
     print(f"  Regression Layers {args.num_regression_layers}")
@@ -142,14 +151,9 @@ def main():
     # Clear all TF sessions
     keras.backend.clear_session()
 
-    # Reset memory growth if you set it
-    gpus = tf.config.list_physical_devices('GPU')
-    for gpu in gpus:
-        tf.config.experimental.reset_memory_stats(gpu)
-
 
     # Configure data
-    with open(args.data_config, "r") as f:
+    with open(CONFIG_PATH, "r") as f:
         data_config_yaml = yaml.safe_load(f)
 
     # Load and preprocess data
@@ -196,7 +200,7 @@ def main():
         ),
         metrics={
             "assignment": core.utils.AssignmentAccuracy(),
-            "regression": core.utils.RelativeRegressionDeviation()
+            "regression": core.utils.RegressionDeviation()
         }
     )
 
@@ -214,13 +218,7 @@ def main():
         y_train=y_train,
         sample_weights=core.utils.compute_sample_weights(X_train, y_train),
         batch_size=args.batch_size,
-        callbacks=keras.callbacks.EarlyStopping(
-            monitor="val_loss",
-            patience=args.patience,
-            restore_best_weights=True,
-            mode="min",
-        ),
-        verbose=0,
+        verbose=1,
     )
 
     # Save model
@@ -233,53 +231,9 @@ def main():
     print(f"Exporting to ONNX: {onnx_path}...")
     Model.export_to_onnx(onnx_path)
 
-    # Evaluate model
-    print("Evaluating model...")
-    import core.assignment_models.BaselineAssignmentMethods as BaselineMethods
-    import core.reconstruction as Evaluation
-
-    chi_square_true_nu = BaselineMethods.MassCombinatoricsAssigner(
-        config,
-        top_mass=173.5e3,
-    )
-    ground_truth_assigner = Evaluation.GroundTruthReconstructor(config, name = "Perfect Reconstructor")
-    evaluator = Evaluation.ReconstructionEvaluator(
-        [
-            chi_square_true_nu,
-            Model,
-            ground_truth_assigner,
-        ],
-        X_val,
-        y_val,
-    )
-
-    fig, ax = evaluator.plot_binned_accuracy(
-        feature_data_type="non_training",
-        feature_name="truth_ttbar_mass",
-        fancy_feature_label=r"$m(t\overline{t})$ [GeV]",
-        xlims=(340e3, 800e3),
-        bins=10,
-    )
-    ticks = ax.get_xticks()
-    ax.set_xticks(ticks)
-    ax.set_xticklabels([f"{int(tick/1e3)}" for tick in ticks])
-    ax.set_xlim(340e3, 800e3)
-    fig.savefig(os.path.join(PLOTS_DIR , "binned_accuracy_ttbar_mass.pdf"))
-
-    fig, ax = evaluator.plot_binned_accuracy(
-        feature_data_type="non_training",
-        feature_name="N_jets",
-        fancy_feature_label=r"$\# \text{jets}$",
-        xlims=(2, config.max_jets + 1),
-        bins= config.max_jets -1,
-    )
-    ax.set_xticks([i + 0.5 for i in range(2, config.max_jets+ 1)])
-    ax.set_xticklabels([i for i in range(2, config.max_jets + 1)])
-    fig.savefig(os.path.join(PLOTS_DIR , "binned_accuracy_N_jets.pdf"))
 
     # Compute best regression deviation metrics
     best_val_rel_dev = None
-    best_val_rel_dev_epoch = None
 
     # Save training history and model info
     history_path = os.path.join(MODEL_DIR, f"{MODEL_NAME}_history.npz")
@@ -324,11 +278,11 @@ def main():
             else "val_acc"
         )
         best_val_acc = max(history.history[metric_key])
-        print(f"Best validation accuracy: {best_val_acc:.6f}")
+        print(f"Best validation assignment accuracy: {best_val_acc:.6f}")
 
-    if "val_assignment_relative_deviation" in history.history:
-        best_val_rel_dev = min(history.history["val_assignment_relative_deviation"])
-        print(f"Best validation relative deviation: {best_val_rel_dev:.6f}")
+    if "val_regression_deviation" in history.history:
+        best_val_rel_dev = min(history.history["val_regression_deviation"])
+        print(f"Best validation relative regression deviation: {best_val_rel_dev:.6f}")
 
     print("=" * 60)
 

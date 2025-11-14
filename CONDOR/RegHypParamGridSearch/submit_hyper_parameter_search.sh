@@ -1,24 +1,19 @@
 #!/bin/bash
 # HTCondor submission file for hyperparameter grid search
-
 executable = run_training.sh
 universe = vanilla
 
 # Resource requirements
-RequestMemory  = 60000
 RequestGPUs    = 1
-Requirements = (GPUs_DeviceName == "Tesla V100-PCIE-32GB")
+Requirements = (GPUs_DriverVersion == 13.0)
+RequestMemory  = 60000
++RequestRuntime = 43200
 
-+RequestRuntime = 1000000
-+MaxRuntime     = 1000000
+# Output files
+output = logs/job_$(Cluster)_$(ProcId).out
+error = logs/job_$(Cluster)_$(ProcId).err
+log = logs/job_$(Cluster)_$(ProcId).log
 
-# Output files (generic naming)
-output = logs/job_$(Cluster)_$(Process).out
-error  = logs/job_$(Cluster)_$(Process).err
-log    = logs/job_$(Cluster)_$(Process).log
-
-# Automatically pass all columns from params.txt to your script
-# Each line in params.txt becomes a set of arguments passed to run_training.sh
 arguments = $(ARGS)
 
 # Read all columns from params.txt, automatically assigning them to $(ARGS)
