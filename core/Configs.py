@@ -462,10 +462,12 @@ class DataConfig:
 
         if self.has_regression_targets:
             lines.extend(
+                [
                 "Neutrino Momentum Features:",
                 f"  Count: {len(self.neutrino_momentum_features)}",
                 f" Max neutrinos: {self.NUM_LEPTONS}",
                 f"  Names: {', '.join(self.neutrino_momentum_features)}",
+                ]
             )
 
         lines.extend(

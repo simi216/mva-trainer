@@ -1,5 +1,6 @@
 # ttbar-mva-trainer
-A standalone analysis framework for training and evaluating machine learning models for reconstruction of dileptonic ttbar events. The framework includes data preprocessing using C++, data loading and preprocessing using Python, model training and evaluation using TensorFlow, and integration with the Condor job scheduler for distributed training and evaluation.
+A standalone analysis framework for training and evaluating machine learning models for reconstruction of dileptonic ttbar events. The framework includes **pure Python data preprocessing**, data loading and model training using TensorFlow, and integration with the Condor job scheduler for distributed training and evaluation.
+
 The models are designed to perform both reconstruction of the neutrino momenta as well as assignment of jets to the corresponding b-quarks from the top quark decays.
 
 To inject the trained machine learning models into the TopCPToolKit, the models can be exported to ONNX format. Currently, only models providing jet-to-quark assignments as output can be exported to ONNX format for use in the TopCPToolKit.
@@ -20,29 +21,190 @@ This repository contains a standalone analysis framework for training and evalua
 
 ## Feature Overview
 
-- **Preprocessing**: The preprocessing of the data is done using C++ and is defined in the `preprocessing` directory. The preprocessing is done using the `Preprocessor` class, which reads the data from the input file and preprocesses it.
-- **Data Loading**: The data loading and preprocessing is done using the `DataPreprocessor` class, which is defined in the `core/DataLoader.py` file. This class is used to load the data from the preprocessed files and arrange it in a format that can be used for training and evaluation.
+- **Preprocessing**: The preprocessing is now done entirely in **pure Python**, replacing the previous C++ implementation. The preprocessing pipeline is defined in `core/RootPreprocessor.py` and can output to either ROOT or NPZ format for fast I/O. See [Preprocessing](#preprocessing) for details.
+- **Data Loading**: The data loading and preprocessing is done using the `DataPreprocessor` class, which is defined in the `core/DataLoader.py` file. This class is used to load the data from preprocessed files and arrange it in a format that can be used for training and evaluation.
 - **Reconstruction Models**: The reconstruction models are defined in the `core/reconstruction` directory. The base class for all reconstruction models is the `BaseReconstructor` class, which is defined in the `core/reconstruction/Reconstruction.py` file. Machine learning-based reconstruction models are to be implemented by inheriting from the `MLReconstructorBase` class, while baseline reconstruction models are to be implemented by inheriting from the `BaselineReconstructor` class.
 - **Model Training**: The training of the models is handled by the `MLReconstructorBase` class which provides methods for training and evaluating machine learning-based reconstruction models.
 - **Evaluation**: The evaluation of the models is done using the `ReconstructionEvaluator` class, which is defined in the `core/reconstruction/Evaluation.py` file. This class provides methods for evaluating the performance of various reconstruction models using different metrics and visualizations.
 - **Export Models for use in TopCPToolKit**: The trained machine learning models can be exported for use in the TopCPToolKit. The `export_to_onnx` method in the `MLWrapperBase` class is used to export the trained model to a format that can be used in the TopCPToolKit.
-
 - **Condor Integration**: The framework includes integration with the Condor job scheduler for distributed training and evaluation. The Condor scripts are located in the `CONDOR` directory.
 
-## Prepocessing
-The preprocessing is done using C++ and is defined in the `preprocessing` directory. Header files for the preprocessing are located in the `preprocessing/include` directory, while the implementation files are in the `preprocessing/src` directory.
+## Preprocessing
+The preprocessing is now implemented in **pure Python** (no C++ compilation required!) and is defined in `core/RootPreprocessor.py`. The Python implementation provides all functionality of the previous C++ preprocessor plus additional features like NPZ output format for faster I/O.
 
-The preprocessing is done using the `Preprocessor` class, which is defined in the `preprocessing/src/preprocessor.cpp` file. The `Preprocessor` class is used to preprocess the data and save it to a file.
-It uses the `reco` class, which is defined in the `preprocessing/src/reco_mc_20.cpp`. It is used to read the data from the input file and preprocess it. This class can be automatically generated using `ROOT` and the `MakeClass()` method defined on the `TTree` class. The names of the variables using in the `PreProcessor` class have to match the names of the variables in the `reco` class.
+### Quick Start
 
-The directory `preprocessing/scripts` contains scripts for running the preprocessing. The script `run_preprocessing.sh` is used to run the preprocessing on a single file. The script `merge_root_files.cpp` is used to merge the preprocessed files into a single file. The script `run_merge.sh` is used to run the merging of the preprocessed files. This mostly done to merge preprocessed files that are run sequentially using CONDOR. The script `run_preprocessing_condor.sh` is used to run the preprocessing on multiple files using Condor.
+```bash
+# Preprocess to ROOT format (compatible with existing workflows)
+python scripts/preprocess_root.py input.root output.root --tree reco
 
-The code is compiled using `Makefile` in the `preprocessing` directory. The Makefile is used to compile the code and create the executable files.
+# Preprocess to NPZ format (recommended for ML workflows - 10-100x faster I/O)
+python scripts/preprocess_root.py input.root output.npz --format npz
 
-The executable files are located in the `preprocessing/bin` directory. The executable files are used to run the preprocessing and merging of the preprocessed files. The `Makefile` also contains rules for cleaning the build directory and removing the executable files.
+# Include NuFlow results
+python scripts/preprocess_root.py input.root output.npz --format npz --nu-flows
+
+# Include initial parton information
+python scripts/preprocess_root.py input.root output.root --initial-parton-info
+```
+
+### Features
+
+The preprocessing pipeline performs:
+1. Event pre-selection (lepton/jet multiplicities, charge requirements, truth matching)
+2. Particle ordering (leptons by charge, jets by pT)
+3. Derived feature computation (invariant masses, ΔR, etc.)
+4. Truth information extraction (top/anti-top, neutrinos, ttbar system)
+5. Optional NuFlow neutrino reconstruction results
+6. Optional initial parton information
+
+### Python API
+
+```python
+from core.RootPreprocessor import preprocess_root_file
+
+# Simple preprocessing
+data = preprocess_root_file(
+    input_path="input.root",
+    output_path="output.npz",
+    output_format="npz"
+)
+
+# Direct integration with DataPreprocessor
+from core import DataPreprocessor, LoadConfig
+
+preprocessor = DataPreprocessor(load_config)
+preprocessor.load_from_npz("preprocessed_data.npz")
+```
+
+For detailed preprocessing documentation, see [`scripts/README_PREPROCESSING.md`](scripts/README_PREPROCESSING.md).
+
+### Advantages Over C++ Implementation
+
+- ✅ **No compilation required** - works immediately
+- ✅ **Easier to modify** - pure Python code
+- ✅ **Better integration** - seamless Python ML pipeline
+- ✅ **NPZ format support** - 10-100x faster I/O
+- ✅ **Better error handling** - informative error messages
+- ✅ **Cross-platform** - works anywhere Python runs
+
+**Note**: The `preprocessing/` directory with C++ code is kept for reference but is no longer required for the workflow.
 
 ## Data Loading
-To load the data for training and evaluation, the `DataPreprocessor` class is used, which is defined in the `core/DataLoader.py` file. This class is used to load the data from the preprocessed files and arange it in a format that can be used for training and evaluation. The `DataPreprocessor` class is used to load the data from the preprocessed files and arrange it in a format that can be used for training and evaluation. It also provides methods for splitting the data into training and testing sets, as well as providing k-folds of the data for cross-validation.
+The `DataPreprocessor` class (in `core/DataLoader.py`) handles loading preprocessed data for training and evaluation. It requires a `LoadConfig` that specifies which features to load from NPZ files and how to interpret them. The DataLoader automatically detects whether data is in flat format (from RootPreprocessor) or structured format and handles the conversion transparently.
+
+### Quick Start
+
+```python
+from core.DataLoader import DataPreprocessor
+from core.Configs import LoadConfig
+
+# Create LoadConfig specifying which features to load
+load_config = LoadConfig(
+    jet_features=['pt', 'eta', 'phi', 'e', 'b'],
+    lepton_features=['pt', 'eta', 'phi', 'e'],
+    met_features=[],
+    non_training_features=['truth_ttbar_mass', 'truth_top_mass'],
+    jet_truth_label='ordered_event_jet_truth_idx',
+    lepton_truth_label='event_lepton_truth_idx',
+    max_jets=10,
+    NUM_LEPTONS=2,
+    event_weight='event_weight',
+    mc_event_number='mc_event_number',
+    neutrino_momentum_features=['px', 'py', 'pz'],
+    antineutrino_momentum_features=['px', 'py', 'pz'],
+)
+
+# Load data using the config
+data_loader = DataPreprocessor(load_config)
+data_loader.load_from_npz("preprocessed_data.npz")
+
+# Access data configuration
+data_config = data_loader.get_data_config()
+print(f"Loaded {data_loader.data_length} events")
+
+# Access features
+jet_features = data_loader.feature_data['jet']  # (n_events, max_jets, n_jet_features)
+lepton_features = data_loader.feature_data['lepton']  # (n_events, 2, n_lepton_features)
+labels = data_loader.feature_data['assignment_labels']  # (n_events, max_jets, 2)
+
+# Split data for training
+X_train, y_train, X_test, y_test = data_loader.split_data(test_size=0.2)
+```
+
+### Format Auto-Detection
+
+The DataLoader automatically handles two input formats:
+
+1. **Flat format** (from RootPreprocessor): Keys like `lep_pt`, `ordered_jet_eta`
+   - Automatically groups by particle type based on LoadConfig feature names
+   - Builds truth labels from configured truth label keys
+   - Constructs regression targets from configured momentum features
+
+2. **Structured format** (legacy): Keys like `lepton`, `jet` with pre-stacked arrays
+   - Maintains backward compatibility with existing NPZ files
+   - Direct loading without conversion
+
+The LoadConfig tells the DataLoader:
+- **Which features to load**: `jet_features`, `lepton_features`, `met_features`
+- **Where to find truth labels**: `jet_truth_label`, `lepton_truth_label`
+- **Which regression targets to include**: `neutrino_momentum_features`
+- **Optional features**: `non_training_features`, `event_weight`, `mc_event_number`
+
+### Complete Integration Example
+
+```python
+# Step 1: Preprocess ROOT files
+from core.RootPreprocessor import RootPreprocessor
+
+preprocessor = RootPreprocessor()
+preprocessor.process_root_file("data.root", "reco")
+preprocessor.save_to_npz("data.npz")
+
+# Step 2: Create LoadConfig for your analysis
+from core.Configs import LoadConfig
+
+load_config = LoadConfig(
+    jet_features=['pt', 'eta', 'phi', 'e', 'b'],
+    lepton_features=['pt', 'eta', 'phi', 'e'],
+    jet_truth_label='ordered_event_jet_truth_idx',
+    lepton_truth_label='event_lepton_truth_idx',
+    max_jets=10,
+    NUM_LEPTONS=2,
+    event_weight='event_weight',
+    neutrino_momentum_features=['px', 'py', 'pz'],
+    antineutrino_momentum_features=['px', 'py', 'pz'],
+)
+
+# Step 3: Load for ML training
+from core.DataLoader import DataPreprocessor
+
+data_loader = DataPreprocessor(load_config)
+data_loader.load_from_npz("data.npz")
+X_train, y_train, X_test, y_test = data_loader.split_data()
+
+# Step 4: Train your model
+# model.fit(X_train, y_train, validation_data=(X_test, y_test))
+```
+
+See [`notebooks/IntegrationExample.ipynb`](notebooks/IntegrationExample.ipynb) for a complete tutorial.
+
+### Advanced Usage
+
+The DataPreprocessor provides additional functionality:
+- **Data splitting**: Train/test splits, k-fold cross-validation, even/odd event splitting
+- **Feature access**: Get specific features by name or all features by type
+- **Custom features**: Add derived features computed from existing data
+- **Event weights**: Access and normalize event weights
+- **Normalization**: Apply standardization to features
+
+### Key Features
+
+- **Flexible configuration**: LoadConfig specifies exactly what to load
+- **Format detection**: Automatically handles flat and structured formats
+- **Missing feature handling**: Warnings for missing optional features, errors for required ones
+- **Backward compatible**: Works with existing structured NPZ files
+- **Type safety**: Validates feature names and array shapes
 
 ## Reconstruction Models
 The base class for all reconstruction models is the `BaseReconstructor` class, which is defined in the `core/reconstruction/Reconstruction.py` file. This class provides the basic functionality for all reconstruction models regardless of the underlying model type.

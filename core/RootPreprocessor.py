@@ -1,0 +1,904 @@
+"""
+ROOT file preprocessing module.
+
+This module provides functionality previously implemented in C++ for preprocessing
+ROOT files containing particle physics event data. It handles:
+- Event pre-selection
+- Lepton and jet ordering
+- Derived feature computation (invariant masses, delta R)
+- Truth information extraction
+- Optional NuFlow results and initial parton information
+- Saving preprocessed data to ROOT or NPZ formats
+"""
+
+import numpy as np
+import uproot
+import awkward as ak
+from typing import Optional, Dict, List, Tuple
+from dataclasses import dataclass
+import os
+
+
+@dataclass
+class PreprocessorConfig:
+    """Configuration for ROOT file preprocessing."""
+
+    # Input/Output
+    input_path: str
+    output_path: str
+    tree_name: str = "reco"
+    output_format: str = "root"  # 'root' or 'npz'
+
+    # Processing options
+    save_nu_flows: bool = False
+    save_initial_parton_info: bool = False
+    verbose: bool = True
+
+    # Pre-selection criteria
+    n_leptons_required: int = 2
+    n_jets_min: int = 2
+    max_jets_for_truth: int = 10  # Maximum jet index for truth matching
+
+
+class RootPreprocessor:
+    """
+    Python implementation of ROOT file preprocessing (previously in C++).
+
+    Performs event selection, particle ordering, and feature computation
+    on particle physics event data.
+    """
+
+    def __init__(self, config: PreprocessorConfig):
+        """
+        Initialize preprocessor.
+
+        Args:
+            config: Preprocessing configuration
+        """
+        self.config = config
+        self.processed_data = {}
+        self.n_events_processed = 0
+        self.n_events_passed = 0
+
+    def process(self):
+        """Main processing method."""
+        if self.config.verbose:
+            print(f"Processing ROOT file: {self.config.input_path}")
+            print(f"Output: {self.config.output_path}")
+            print(f"Format: {self.config.output_format}")
+
+        # Load data
+        with uproot.open(self.config.input_path) as file:
+            tree = file[self.config.tree_name]
+            events = tree.arrays(library="ak")
+
+        self.n_events_processed = len(events)
+
+        if self.config.verbose:
+            print(f"Total events in file: {self.n_events_processed}")
+
+        # Apply pre-selection
+        selection_mask = self._preselection(events)
+        events = events[selection_mask]
+        self.n_events_passed = len(events)
+
+        if self.config.verbose:
+            print(f"Events passing pre-selection: {self.n_events_passed}")
+
+        # Process events
+        self.processed_data = self._process_events(events)
+
+        # Save output (skip if output_path is empty)
+        if self.config.output_path:
+            self._save_output()
+
+            if self.config.verbose:
+                print(f"Processing complete. Output saved to {self.config.output_path}")
+        elif self.config.verbose:
+            print(f"Processing complete.")
+
+    def _preselection(self, events: ak.Array) -> np.ndarray:
+        """
+        Apply event pre-selection cuts.
+
+        Args:
+            events: Awkward array of events
+
+        Returns:
+            Boolean mask of events passing selection
+        """
+        # Count leptons
+        n_electrons = ak.num(events.el_e_NOSYS)
+        n_muons = ak.num(events.mu_e_NOSYS)
+        n_leptons = n_electrons + n_muons
+
+        # Count jets
+        n_jets = ak.num(events.jet_e_NOSYS)
+
+        # Basic multiplicity cuts
+        mask = n_leptons == self.config.n_leptons_required
+        mask = mask & (n_jets >= self.config.n_jets_min)
+
+        # Truth information requirements
+        n_jet_truth = ak.num(events.event_jet_truth_idx)
+        mask = mask & (n_jet_truth >= 6)
+
+        # Check valid truth indices for b-jets
+        jet_truth_0 = ak.fill_none(ak.pad_none(events.event_jet_truth_idx, 6)[:, 0], -1)
+        jet_truth_3 = ak.fill_none(ak.pad_none(events.event_jet_truth_idx, 6)[:, 3], -1)
+
+        mask = mask & (jet_truth_0 != -1) & (jet_truth_3 != -1)
+        mask = mask & (jet_truth_0 <= self.config.max_jets_for_truth)
+        mask = mask & (jet_truth_3 <= self.config.max_jets_for_truth)
+
+        # Check lepton truth indices
+        electron_truth_0 = ak.fill_none(
+            ak.pad_none(events.event_electron_truth_idx, 2)[:, 0], -1
+        )
+        electron_truth_1 = ak.fill_none(
+            ak.pad_none(events.event_electron_truth_idx, 2)[:, 1], -1
+        )
+        muon_truth_0 = ak.fill_none(
+            ak.pad_none(events.event_muon_truth_idx, 2)[:, 0], -1
+        )
+        muon_truth_1 = ak.fill_none(
+            ak.pad_none(events.event_muon_truth_idx, 2)[:, 1], -1
+        )
+
+        has_truth_lep_0 = (electron_truth_0 != -1) | (muon_truth_0 != -1)
+        has_truth_lep_1 = (electron_truth_1 != -1) | (muon_truth_1 != -1)
+        mask = mask & has_truth_lep_0 & has_truth_lep_1
+
+        # Charge requirements
+        mask = mask & self._check_charge_requirements(events)
+
+        return ak.to_numpy(mask)
+
+    def _check_charge_requirements(self, events: ak.Array) -> ak.Array:
+        """
+        Check that leptons have opposite charges and total charge is zero.
+
+        Args:
+            events: Awkward array of events
+
+        Returns:
+            Boolean mask
+        """
+        n_electrons = ak.num(events.el_e_NOSYS)
+        n_muons = ak.num(events.mu_e_NOSYS)
+
+        # Initialize mask
+        mask = ak.ones_like(n_electrons, dtype=bool)
+
+        # ee channel: check that two electrons have opposite charge
+        ee_mask = n_electrons == 2
+        # Pad arrays to avoid index errors
+        el_charge_padded = ak.fill_none(ak.pad_none(events.el_charge, 2), 0)
+        ee_same_charge = (el_charge_padded[:, 0] == el_charge_padded[:, 1]) & ee_mask
+        mask = mask & ~ee_same_charge
+
+        # mumu channel: check that two muons have opposite charge
+        mumu_mask = n_muons == 2
+        mu_charge_padded = ak.fill_none(ak.pad_none(events.mu_charge, 2), 0)
+        mumu_same_charge = (mu_charge_padded[:, 0] == mu_charge_padded[:, 1]) & mumu_mask
+        mask = mask & ~mumu_same_charge
+
+        # emu channel: check that electron and muon have opposite charge
+        emu_mask = (n_electrons == 1) & (n_muons == 1)
+        el_charge_first = ak.fill_none(ak.pad_none(events.el_charge, 1)[:, 0], 0)
+        mu_charge_first = ak.fill_none(ak.pad_none(events.mu_charge, 1)[:, 0], 0)
+        emu_same_charge = (el_charge_first == mu_charge_first) & emu_mask
+        mask = mask & ~emu_same_charge
+
+        # Total charge must be zero
+        el_charge_sum = ak.sum(events.el_charge, axis=-1)
+        mu_charge_sum = ak.sum(events.mu_charge, axis=-1)
+        total_charge = el_charge_sum + mu_charge_sum
+        mask = mask & (total_charge == 0)
+
+        return mask
+
+    def _process_events(self, events: ak.Array) -> Dict[str, np.ndarray]:
+        """
+        Process events and extract features.
+
+        Args:
+            events: Awkward array of events passing pre-selection
+
+        Returns:
+            Dictionary of processed features
+        """
+        processed = {}
+
+        # Process leptons
+        leptons = self._process_leptons(events)
+        processed.update(leptons)
+
+        # Process jets
+        jets = self._process_jets(events)
+        processed.update(jets)
+
+        # Process MET
+        met = self._process_met(events)
+        processed.update(met)
+
+
+        # Compute derived features
+        derived = self._compute_derived_features(events, leptons, jets)
+        processed.update(derived)
+
+        # Extract truth information
+        truth = self._extract_truth_info(events)
+        processed.update(truth)
+
+        # Optional: NuFlow results
+        if self.config.save_nu_flows:
+            nuflows = self._extract_nuflow_results(events)
+            processed.update(nuflows)
+
+        # Optional: Initial parton info
+        if self.config.save_initial_parton_info:
+            parton_info = self._extract_initial_parton_info(events)
+            processed.update(parton_info)
+
+        return processed
+
+    def _process_leptons(self, events: ak.Array) -> Dict[str, np.ndarray]:
+        """
+        Process and order leptons.
+
+        Leptons are sorted by charge (positive first).
+
+        Args:
+            events: Event array
+
+        Returns:
+            Dictionary of lepton features
+        """
+        # Combine electrons and muons using vectorized operations
+        n_events = len(events)
+        
+        # Pad electron truth indices and broadcast properly
+        el_truth_padded = ak.fill_none(ak.pad_none(events.event_electron_truth_idx, 2), -1)
+        mu_truth_padded = ak.fill_none(ak.pad_none(events.event_muon_truth_idx, 2), -1)
+        
+        # Create lepton arrays with truth matching - use broadcasting that works with jagged arrays
+        # For electrons - expand truth indices to match electron array shape
+        el_idx = ak.local_index(events.el_pt_NOSYS)
+        el_truth_0 = ak.broadcast_arrays(el_truth_padded[:, 0], events.el_pt_NOSYS)[0]
+        el_truth_1 = ak.broadcast_arrays(el_truth_padded[:, 1], events.el_pt_NOSYS)[0]
+        el_truth_idx = ak.where(el_idx == el_truth_0, 1, ak.where(el_idx == el_truth_1, -1, -1))
+        
+        # For muons - expand truth indices to match muon array shape
+        mu_idx = ak.local_index(events.mu_pt_NOSYS)
+        mu_truth_0 = ak.broadcast_arrays(mu_truth_padded[:, 0], events.mu_pt_NOSYS)[0]
+        mu_truth_1 = ak.broadcast_arrays(mu_truth_padded[:, 1], events.mu_pt_NOSYS)[0]
+        mu_truth_idx = ak.where(mu_idx == mu_truth_0, 1, ak.where(mu_idx == mu_truth_1, -1, -1))
+        
+        # Combine electrons and muons
+        lep_pt = ak.concatenate([events.el_pt_NOSYS, events.mu_pt_NOSYS], axis=1)
+        lep_eta = ak.concatenate([events.el_eta, events.mu_eta], axis=1)
+        lep_phi = ak.concatenate([events.el_phi, events.mu_phi], axis=1)
+        lep_e = ak.concatenate([events.el_e_NOSYS, events.mu_e_NOSYS], axis=1)
+        lep_charge = ak.concatenate([events.el_charge, events.mu_charge], axis=1)
+        lep_pid = ak.concatenate([events.el_charge * 11, events.mu_charge * 13], axis=1)
+        lep_truth = ak.concatenate([el_truth_idx, mu_truth_idx], axis=1)
+        
+        # Sort by charge (positive first) - argsort in descending order
+        sort_idx = ak.argsort(lep_charge, ascending=False)
+        lep_pt = lep_pt[sort_idx]
+        lep_eta = lep_eta[sort_idx]
+        lep_phi = lep_phi[sort_idx]
+        lep_e = lep_e[sort_idx]
+        lep_charge = lep_charge[sort_idx]
+        lep_pid = lep_pid[sort_idx]
+        lep_truth = lep_truth[sort_idx]
+        
+        # Pad to 2 leptons and convert to numpy
+        max_leptons = 2
+        lep_pt_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_pt, max_leptons, clip=True), -999.0))
+        lep_eta_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_eta, max_leptons, clip=True), -999.0))
+        lep_phi_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_phi, max_leptons, clip=True), -999.0))
+        lep_e_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_e, max_leptons, clip=True), -999.0))
+        lep_charge_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_charge, max_leptons, clip=True), -999.0))
+        lep_pid_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_pid, max_leptons, clip=True), -999.0))
+        lep_truth_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_truth, max_leptons, clip=True), -1))
+        
+        # Build truth index array
+        event_lepton_truth_idx = np.full((n_events, 2), -1, dtype=np.int32)
+        for idx in range(max_leptons):
+            mask_top = lep_truth_np[:, idx] == 1
+            mask_tbar = lep_truth_np[:, idx] == -1
+            event_lepton_truth_idx[mask_top, 0] = idx
+            event_lepton_truth_idx[mask_tbar, 1] = idx
+
+        return {
+            "lep_pt": lep_pt_np,
+            "lep_eta": lep_eta_np,
+            "lep_phi": lep_phi_np,
+            "lep_e": lep_e_np,
+            "lep_charge": lep_charge_np,
+            "lep_pid": lep_pid_np,
+            "event_lepton_truth_idx": event_lepton_truth_idx,
+        }
+
+    def _process_jets(self, events: ak.Array) -> Dict[str, np.ndarray]:
+        """
+        Process and order jets.
+
+        Jets are sorted by pT (highest first).
+
+        Args:
+            events: Event array
+
+        Returns:
+            Dictionary of jet features
+        """
+        # Process jets using vectorized operations
+        n_events = len(events)
+        
+        # Pad jet truth indices and broadcast properly
+        jet_truth_padded = ak.fill_none(ak.pad_none(events.event_jet_truth_idx, 6), -1)
+        
+        # Create truth matching for b-jets - use broadcasting that works with jagged arrays
+        jet_idx = ak.local_index(events.jet_pt_NOSYS)
+        jet_truth_0 = ak.broadcast_arrays(jet_truth_padded[:, 0], events.jet_pt_NOSYS)[0]
+        jet_truth_3 = ak.broadcast_arrays(jet_truth_padded[:, 3], events.jet_pt_NOSYS)[0]
+        jet_truth_idx = ak.where(jet_idx == jet_truth_0, 1, ak.where(jet_idx == jet_truth_3, -1, 0))
+        
+        # Sort jets by pT (descending)
+        sort_idx = ak.argsort(events.jet_pt_NOSYS, ascending=False)
+        jet_pt = events.jet_pt_NOSYS[sort_idx]
+        jet_eta = events.jet_eta[sort_idx]
+        jet_phi = events.jet_phi[sort_idx]
+        jet_e = events.jet_e_NOSYS[sort_idx]
+        jet_btag = events.jet_GN2v01_Continuous_quantile[sort_idx]
+        jet_truth = jet_truth_idx[sort_idx]
+        
+        # Find maximum number of jets
+        n_jets = ak.num(jet_pt)
+        max_jets = int(ak.max(n_jets))
+        
+        # Pad and convert to numpy
+        jet_pt_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_pt, max_jets), -999.0))
+        jet_eta_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_eta, max_jets), -999.0))
+        jet_phi_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_phi, max_jets), -999.0))
+        jet_e_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_e, max_jets), -999.0))
+        jet_btag_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_btag, max_jets), -999.0))
+        jet_truth_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_truth, max_jets), 0))
+        
+        # Build jet truth index array
+        event_jet_truth_idx = np.full((n_events, 6), -1, dtype=np.int32)
+        for idx in range(max_jets):
+            mask_top = jet_truth_np[:, idx] == 1
+            mask_tbar = jet_truth_np[:, idx] == -1
+            event_jet_truth_idx[mask_top, 0] = idx
+            event_jet_truth_idx[mask_tbar, 3] = idx
+        
+        # Number of jets per event
+        n_jets = ak.to_numpy(n_jets).astype(np.int32)
+
+        return {
+            "ordered_jet_pt": jet_pt_np,
+            "ordered_jet_eta": jet_eta_np,
+            "ordered_jet_phi": jet_phi_np,
+            "ordered_jet_e": jet_e_np,
+            "ordered_jet_b_tag": jet_btag_np,
+            "ordered_event_jet_truth_idx": event_jet_truth_idx,
+            "N_jets": n_jets,
+        }
+    
+    def _process_met(self, events: ak.Array) -> Dict[str, np.ndarray]:
+        """
+        Process missing transverse energy (MET).
+
+        Args:
+            events: Event array
+
+        Returns:
+            Dictionary of MET features
+        """
+        met_met = ak.to_numpy(events.met_met_NOSYS)
+        met_phi = ak.to_numpy(events.met_phi_NOSYS)
+
+        return {
+            "met_met": met_met,
+            "met_phi": met_phi,
+        }
+
+    def _compute_derived_features(
+        self,
+        events: ak.Array,
+        leptons: Dict[str, np.ndarray],
+        jets: Dict[str, np.ndarray],
+    ) -> Dict[str, np.ndarray]:
+        """
+        Compute derived features (invariant masses, delta R, etc.).
+
+        Args:
+            events: Event array
+            leptons: Lepton features
+            jets: Jet features
+
+        Returns:
+            Dictionary of derived features
+        """
+        n_events = len(events)
+        max_jets = jets["ordered_jet_pt"].shape[1]
+
+        # Lepton 4-vectors (vectorized)
+        l1_pt = leptons["lep_pt"][:, 0:1]  # Shape (n_events, 1)
+        l1_eta = leptons["lep_eta"][:, 0:1]
+        l1_phi = leptons["lep_phi"][:, 0:1]
+        l1_e = leptons["lep_e"][:, 0:1]
+        
+        l2_pt = leptons["lep_pt"][:, 1:2]
+        l2_eta = leptons["lep_eta"][:, 1:2]
+        l2_phi = leptons["lep_phi"][:, 1:2]
+        l2_e = leptons["lep_e"][:, 1:2]
+        
+        # Convert to px, py, pz with overflow protection
+        with np.errstate(over='ignore', invalid='ignore'):
+            l1_px = l1_pt * np.cos(l1_phi)
+            l1_py = l1_pt * np.sin(l1_phi)
+            l1_pz = np.where(np.abs(l1_eta) < 10, l1_pt * np.sinh(l1_eta), np.sign(l1_eta) * 1e10)
+            
+            l2_px = l2_pt * np.cos(l2_phi)
+            l2_py = l2_pt * np.sin(l2_phi)
+            l2_pz = np.where(np.abs(l2_eta) < 10, l2_pt * np.sinh(l2_eta), np.sign(l2_eta) * 1e10)
+        
+        # Jet 4-vectors
+        j_pt = jets["ordered_jet_pt"]  # Shape (n_events, max_jets)
+        j_eta = jets["ordered_jet_eta"]
+        j_phi = jets["ordered_jet_phi"]
+        j_e = jets["ordered_jet_e"]
+        
+        # Convert to px, py, pz with overflow protection
+        with np.errstate(over='ignore', invalid='ignore'):
+            j_px = j_pt * np.cos(j_phi)
+            j_py = j_pt * np.sin(j_phi)
+            j_pz = np.where(np.abs(j_eta) < 10, j_pt * np.sinh(j_eta), np.sign(j_eta) * 1e10)
+        
+        # Compute invariant masses (vectorized)
+        # l1 + jet
+        with np.errstate(invalid='ignore'):
+            l1j_e = l1_e + j_e
+            l1j_px = l1_px + j_px
+            l1j_py = l1_py + j_py
+            l1j_pz = l1_pz + j_pz
+            m_l1j_squared = l1j_e**2 - l1j_px**2 - l1j_py**2 - l1j_pz**2
+            m_l1j = np.where(m_l1j_squared > 0, np.sqrt(np.abs(m_l1j_squared)), -999.0)
+            
+            # l2 + jet
+            l2j_e = l2_e + j_e
+            l2j_px = l2_px + j_px
+            l2j_py = l2_py + j_py
+            l2j_pz = l2_pz + j_pz
+            m_l2j_squared = l2j_e**2 - l2j_px**2 - l2j_py**2 - l2j_pz**2
+            m_l2j = np.where(m_l2j_squared > 0, np.sqrt(np.abs(m_l2j_squared)), -999.0)
+        
+        # Mark invalid jets
+        valid_mask = j_pt != -999.0
+        m_l1j = np.where(valid_mask, m_l1j, -999.0)
+        m_l2j = np.where(valid_mask, m_l2j, -999.0)
+        
+        # Delta R (vectorized)
+        dR_l1j = self._delta_r(l1_eta, l1_phi, j_eta, j_phi)
+        dR_l2j = self._delta_r(l2_eta, l2_phi, j_eta, j_phi)
+        dR_l1j = np.where(valid_mask, dR_l1j, -999.0)
+        dR_l2j = np.where(valid_mask, dR_l2j, -999.0)
+
+        # Delta R between leptons
+        dR_l1l2 = self._delta_r(
+            leptons["lep_eta"][:, 0],
+            leptons["lep_phi"][:, 0],
+            leptons["lep_eta"][:, 1],
+            leptons["lep_phi"][:, 1],
+        )
+
+        return {
+            "m_l1j": m_l1j,
+            "m_l2j": m_l2j,
+            "dR_l1j": dR_l1j,
+            "dR_l2j": dR_l2j,
+            "dR_l1l2": dR_l1l2,
+        }
+
+    @staticmethod
+    def _delta_r(eta1, phi1, eta2, phi2):
+        """Compute delta R between two particles."""
+        deta = eta1 - eta2
+        dphi = phi1 - phi2
+        # Wrap phi to [-pi, pi]
+        dphi = np.where(dphi > np.pi, dphi - 2 * np.pi, dphi)
+        dphi = np.where(dphi < -np.pi, dphi + 2 * np.pi, dphi)
+        return np.sqrt(deta**2 + dphi**2)
+
+    def _extract_truth_info(self, events: ak.Array) -> Dict[str, np.ndarray]:
+        """
+        Extract truth-level information.
+
+        Args:
+            events: Event array
+
+        Returns:
+            Dictionary of truth features
+        """
+        n_events = len(events)
+
+        # Extract truth top/anti-top 4-vectors
+        truth_top_pt = ak.to_numpy(events.Ttbar_MC_t_beforeFSR_pt)
+        truth_top_eta = ak.to_numpy(events.Ttbar_MC_t_beforeFSR_eta)
+        truth_top_phi = ak.to_numpy(events.Ttbar_MC_t_beforeFSR_phi)
+        truth_top_mass = ak.to_numpy(events.Ttbar_MC_t_beforeFSR_m)
+
+        truth_tbar_pt = ak.to_numpy(events.Ttbar_MC_tbar_beforeFSR_pt)
+        truth_tbar_eta = ak.to_numpy(events.Ttbar_MC_tbar_beforeFSR_eta)
+        truth_tbar_phi = ak.to_numpy(events.Ttbar_MC_tbar_beforeFSR_phi)
+        truth_tbar_mass = ak.to_numpy(events.Ttbar_MC_tbar_beforeFSR_m)
+
+        # Compute ttbar system
+        top_px = truth_top_pt * np.cos(truth_top_phi)
+        top_py = truth_top_pt * np.sin(truth_top_phi)
+        top_pz = truth_top_pt * np.sinh(truth_top_eta)
+        top_e = np.sqrt(truth_top_mass**2 + top_px**2 + top_py**2 + top_pz**2)
+
+        tbar_px = truth_tbar_pt * np.cos(truth_tbar_phi)
+        tbar_py = truth_tbar_pt * np.sin(truth_tbar_phi)
+        tbar_pz = truth_tbar_pt * np.sinh(truth_tbar_eta)
+        tbar_e = np.sqrt(truth_tbar_mass**2 + tbar_px**2 + tbar_py**2 + tbar_pz**2)
+
+        ttbar_e = top_e + tbar_e
+        ttbar_px = top_px + tbar_px
+        ttbar_py = top_py + tbar_py
+        ttbar_pz = top_pz + tbar_pz
+
+        truth_ttbar_mass = np.sqrt(ttbar_e**2 - ttbar_px**2 - ttbar_py**2 - ttbar_pz**2)
+        truth_ttbar_pt = np.sqrt(ttbar_px**2 + ttbar_py**2)
+        ttbar_p = np.sqrt(ttbar_px**2 + ttbar_py**2 + ttbar_pz**2)
+        truth_tt_boost_parameter = ttbar_p / ttbar_e
+
+        # Extract neutrino information
+        nu_top_pt = ak.to_numpy(events.Ttbar_MC_Wdecay2_afterFSR_from_t_pt)
+        nu_top_eta = ak.to_numpy(events.Ttbar_MC_Wdecay2_afterFSR_from_t_eta)
+        nu_top_phi = ak.to_numpy(events.Ttbar_MC_Wdecay2_afterFSR_from_t_phi)
+        nu_top_mass = ak.to_numpy(events.Ttbar_MC_Wdecay2_afterFSR_from_t_m)
+
+        nu_tbar_pt = ak.to_numpy(events.Ttbar_MC_Wdecay2_afterFSR_from_tbar_pt)
+        nu_tbar_eta = ak.to_numpy(events.Ttbar_MC_Wdecay2_afterFSR_from_tbar_eta)
+        nu_tbar_phi = ak.to_numpy(events.Ttbar_MC_Wdecay2_afterFSR_from_tbar_phi)
+        nu_tbar_mass = ak.to_numpy(events.Ttbar_MC_Wdecay2_afterFSR_from_tbar_m)
+
+        # Compute neutrino px, py, pz
+        nu_top_px = nu_top_pt * np.cos(nu_top_phi)
+        nu_top_py = nu_top_pt * np.sin(nu_top_phi)
+        nu_top_pz = nu_top_pt * np.sinh(nu_top_eta)
+        nu_top_e = np.sqrt(nu_top_mass**2 + nu_top_px**2 + nu_top_py**2 + nu_top_pz**2)
+
+        nu_tbar_px = nu_tbar_pt * np.cos(nu_tbar_phi)
+        nu_tbar_py = nu_tbar_pt * np.sin(nu_tbar_phi)
+        nu_tbar_pz = nu_tbar_pt * np.sinh(nu_tbar_eta)
+        nu_tbar_e = np.sqrt(
+            nu_tbar_mass**2 + nu_tbar_px**2 + nu_tbar_py**2 + nu_tbar_pz**2
+        )
+
+        return {
+            # ttbar system
+            "truth_ttbar_mass": truth_ttbar_mass,
+            "truth_ttbar_pt": truth_ttbar_pt,
+            "truth_tt_boost_parameter": truth_tt_boost_parameter,
+            # Top quark
+            "truth_top_mass": truth_top_mass,
+            "truth_top_pt": truth_top_pt,
+            "truth_top_eta": truth_top_eta,
+            "truth_top_phi": truth_top_phi,
+            "truth_top_e": top_e,
+            # Anti-top quark
+            "truth_tbar_mass": truth_tbar_mass,
+            "truth_tbar_pt": truth_tbar_pt,
+            "truth_tbar_eta": truth_tbar_eta,
+            "truth_tbar_phi": truth_tbar_phi,
+            "truth_tbar_e": tbar_e,
+            # Neutrinos
+            "truth_top_neutino_mass": nu_top_mass,
+            "truth_top_neutino_pt": nu_top_pt,
+            "truth_top_neutino_eta": nu_top_eta,
+            "truth_top_neutino_phi": nu_top_phi,
+            "truth_top_neutino_e": nu_top_e,
+            "truth_top_neutrino_px": nu_top_px,
+            "truth_top_neutrino_py": nu_top_py,
+            "truth_top_neutrino_pz": nu_top_pz,
+            "truth_tbar_neutino_mass": nu_tbar_mass,
+            "truth_tbar_neutino_pt": nu_tbar_pt,
+            "truth_tbar_neutino_eta": nu_tbar_eta,
+            "truth_tbar_neutino_phi": nu_tbar_phi,
+            "truth_tbar_neutino_e": nu_tbar_e,
+            "truth_tbar_neutrino_px": nu_tbar_px,
+            "truth_tbar_neutrino_py": nu_tbar_py,
+            "truth_tbar_neutrino_pz": nu_tbar_pz,
+        }
+
+    def _extract_nuflow_results(self, events: ak.Array) -> Dict[str, np.ndarray]:
+        """
+        Extract NuFlow neutrino reconstruction results.
+
+        Args:
+            events: Event array
+
+        Returns:
+            Dictionary of NuFlow features
+        """
+        # NuFlow stores momenta in GeV, convert to MeV
+        nu_px = ak.to_numpy(events.nuflows_nu_out_NOSYS[:, 0]) * 1e3
+        nu_py = ak.to_numpy(events.nuflows_nu_out_NOSYS[:, 1]) * 1e3
+        nu_pz = ak.to_numpy(events.nuflows_nu_out_NOSYS[:, 2]) * 1e3
+
+        antinu_px = ak.to_numpy(events.nuflows_nu_out_NOSYS[:, 3]) * 1e3
+        antinu_py = ak.to_numpy(events.nuflows_nu_out_NOSYS[:, 4]) * 1e3
+        antinu_pz = ak.to_numpy(events.nuflows_nu_out_NOSYS[:, 5]) * 1e3
+
+        return {
+            "nu_flows_neutrino_px": nu_px,
+            "nu_flows_neutrino_py": nu_py,
+            "nu_flows_neutrino_pz": nu_pz,
+            "nu_flows_antineutrino_px": antinu_px,
+            "nu_flows_antineutrino_py": antinu_py,
+            "nu_flows_antineutrino_pz": antinu_pz,
+        }
+
+    def _extract_initial_parton_info(self, events: ak.Array) -> Dict[str, np.ndarray]:
+        """
+        Extract initial state parton information.
+
+        Args:
+            events: Event array
+
+        Returns:
+            Dictionary of initial parton features
+        """
+        pdgid1 = ak.to_numpy(events.PDFinfo_PDGID1)
+        pdgid2 = ak.to_numpy(events.PDFinfo_PDGID2)
+
+        # Count gluons (PDG ID = 21)
+        n_gluons = (pdgid1 == 21).astype(int) + (pdgid2 == 21).astype(int)
+
+        return {
+            "truth_initial_parton_num_gluons": n_gluons,
+        }
+
+    def _save_output(self):
+        """Save processed data to file."""
+        if self.config.output_format == "npz":
+            self._save_to_npz()
+        elif self.config.output_format == "root":
+            self._save_to_root()
+        else:
+            raise ValueError(
+                f"Unknown output format: {self.config.output_format}. "
+                "Must be 'npz' or 'root'."
+            )
+
+    def _save_to_npz(self):
+        """Save data to NPZ format."""
+        np.savez_compressed(self.config.output_path, **self.processed_data)
+
+    def _save_to_root(self):
+        """Save data to ROOT format."""
+        # Create output directory if needed
+        output_dir = os.path.dirname(self.config.output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+
+        # Convert arrays to appropriate format for uproot
+        output_dict = {}
+        for key, value in self.processed_data.items():
+            if value.ndim == 1:
+                # Scalar branches
+                output_dict[key] = value
+            else:
+                # Vector branches - convert to jagged arrays
+                output_dict[key] = ak.Array([value[i] for i in range(len(value))])
+
+        # Write to ROOT file
+        with uproot.recreate(self.config.output_path) as file:
+            file[self.config.tree_name] = output_dict
+
+    def get_processed_data(self) -> Dict[str, np.ndarray]:
+        """
+        Get the processed data dictionary.
+
+        Returns:
+            Dictionary of processed features
+        """
+        return self.processed_data
+
+
+def preprocess_root_file(
+    input_path: str,
+    output_path: str,
+    tree_name: str = "reco",
+    output_format: str = "root",
+    save_nu_flows: bool = False,
+    save_initial_parton_info: bool = False,
+    verbose: bool = True,
+) -> Dict[str, np.ndarray]:
+    """
+    Convenience function to preprocess a ROOT file.
+
+    Args:
+        input_path: Path to input ROOT file
+        output_path: Path to output file
+        tree_name: Name of tree in ROOT file
+        output_format: Output format ('root' or 'npz')
+        save_nu_flows: Whether to save NuFlow results
+        save_initial_parton_info: Whether to save initial parton info
+        verbose: Whether to print progress
+
+    Returns:
+        Dictionary of processed data
+    """
+    config = PreprocessorConfig(
+        input_path=input_path,
+        output_path=output_path,
+        tree_name=tree_name,
+        output_format=output_format,
+        save_nu_flows=save_nu_flows,
+        save_initial_parton_info=save_initial_parton_info,
+        verbose=verbose,
+    )
+
+    preprocessor = RootPreprocessor(config)
+    preprocessor.process()
+
+    return preprocessor.get_processed_data()
+
+
+def preprocess_root_directory(
+    input_dir: str,
+    output_path: str,
+    tree_name: str = "reco",
+    output_format: str = "root",
+    save_nu_flows: bool = False,
+    save_initial_parton_info: bool = False,
+    pattern: str = "*.root",
+    verbose: bool = True,
+) -> Dict[str, np.ndarray]:
+    """
+    Preprocess all ROOT files in a directory.
+
+    Args:
+        input_dir: Path to directory containing ROOT files
+        output_path: Path to output file (if merge=True) or directory (if merge=False)
+        tree_name: Name of tree in ROOT files
+        output_format: Output format ('root' or 'npz')
+        save_nu_flows: Whether to save NuFlow results
+        save_initial_parton_info: Whether to save initial parton info
+        merge: If True, merge all files into one output; if False, create separate outputs
+        pattern: Glob pattern for ROOT files (default: "*.root")
+        verbose: Whether to print progress
+
+    Returns:
+        Dictionary of merged processed data (if merge=True) or empty dict (if merge=False)
+    """
+    import glob
+
+    if not os.path.isdir(input_dir):
+        raise ValueError(f"Input path is not a directory: {input_dir}")
+
+    # Find all ROOT files matching pattern
+    search_pattern = os.path.join(input_dir, pattern)
+    root_files = sorted(glob.glob(search_pattern))
+
+    if not root_files:
+        raise ValueError(
+            f"No ROOT files found in {input_dir} matching pattern '{pattern}'"
+        )
+
+    if verbose:
+        print(f"Found {len(root_files)} ROOT files to process")
+
+    # Process and merge all files
+    merged_data = None
+    total_events = 0
+
+    for i, input_file in enumerate(root_files, 1):
+        if verbose:
+            print(
+                f"\nProcessing file {i}/{len(root_files)}: {os.path.basename(input_file)}"
+            )
+
+        try:
+            data = preprocess_root_file(
+                input_path=input_file,
+                output_path="",  # Don't save individual files
+                tree_name=tree_name,
+                output_format=output_format,
+                save_nu_flows=save_nu_flows,
+                save_initial_parton_info=save_initial_parton_info,
+                verbose=verbose,
+            )
+
+            # Merge data
+            if merged_data is None:
+                merged_data = {key: [] for key in data.keys()}
+
+            for key, value in data.items():
+                merged_data[key].append(value)
+
+            total_events += len(data[list(data.keys())[0]])
+
+        except Exception as e:
+            print(f"Warning: Failed to process {input_file}: {e}")
+            if verbose:
+                import traceback
+
+                traceback.print_exc()
+            continue
+
+    if merged_data is None:
+        raise ValueError("No files were successfully processed")
+
+    # Concatenate arrays - pad to same size if needed
+    if verbose:
+        print(f"\nMerging {total_events} events from {len(root_files)} files...")
+
+    # Find maximum dimensions for arrays that need padding
+    max_dims = {}
+    for key in merged_data:
+        arrays = merged_data[key]
+        if len(arrays[0].shape) > 1:
+            # Multi-dimensional array - find max size in each dimension
+            max_dims[key] = [max(arr.shape[i] for arr in arrays) for i in range(len(arrays[0].shape))]
+    
+    # Pad and concatenate
+    for key in merged_data:
+        arrays = merged_data[key]
+        
+        if len(arrays[0].shape) > 1 and key in max_dims:
+            # Pad multi-dimensional arrays to same shape
+            padded_arrays = []
+            for arr in arrays:
+                if arr.shape != tuple(max_dims[key]):
+                    # Create padded array
+                    pad_width = [(0, max_dims[key][i] - arr.shape[i]) for i in range(len(arr.shape))]
+                    
+                    # Use appropriate fill value
+                    if 'truth_idx' in key or key == 'N_jets':
+                        fill_value = -1 if 'truth_idx' in key else 0
+                    else:
+                        fill_value = -999.0
+                    
+                    padded_arr = np.pad(arr, pad_width, mode='constant', constant_values=fill_value)
+                    padded_arrays.append(padded_arr)
+                else:
+                    padded_arrays.append(arr)
+            merged_data[key] = np.concatenate(padded_arrays, axis=0)
+        else:
+            # 1D arrays can be concatenated directly
+            merged_data[key] = np.concatenate(arrays, axis=0)
+
+    # Save merged output
+    if verbose:
+        print(f"Saving merged output to {output_path}")
+
+    config = PreprocessorConfig(
+        input_path="",  # Not used
+        output_path=output_path,
+        output_format=output_format,
+        save_nu_flows=save_nu_flows,
+        save_initial_parton_info=save_initial_parton_info,
+        verbose=verbose,
+    )
+    preprocessor = RootPreprocessor(config)
+    preprocessor.processed_data = merged_data
+
+    if output_format == "npz":
+        preprocessor._save_to_npz()
+    else:
+        preprocessor._save_to_root()
+
+    if verbose:
+        print(f"\nSuccessfully processed and merged {len(root_files)} files")
+        print(f"Total events: {total_events}")
+
+    return merged_data

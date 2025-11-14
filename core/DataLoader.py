@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Union
 
 from .Configs import LoadConfig, DataConfig, get_load_config_from_yaml
 
@@ -257,7 +257,7 @@ class FeatureBuilder:
 class LabelBuilder:
     """Builds training labels from truth information."""
 
-    def __init__(self, load_config: LoadConfig, data: pd.DataFrame):
+    def __init__(self, load_config: LoadConfig, data: Union[pd.DataFrame, tuple[np.ndarray, np.ndarray]]):
         self.config = load_config
         self.data = data
 
@@ -283,13 +283,20 @@ class LabelBuilder:
 
     def _extract_jet_truth(self) -> np.ndarray:
         """Extract jet truth indices."""
-        cols = [f"{self.config.jet_truth_label}_{i}" for i in [0, 3]]
-        return self.data[cols].to_numpy()
+        if isinstance(self.data, pd.DataFrame):
+            cols = [f"{self.config.jet_truth_label}_{i}" for i in [0, 3]]
+            return self.data[cols].to_numpy()
+        else:
+            return self.data[0]
+
 
     def _extract_lepton_truth(self) -> np.ndarray:
         """Extract lepton truth indices."""
-        cols = [f"{self.config.lepton_truth_label}_{i}" for i in [0, 1]]
-        return self.data[cols].to_numpy()
+        if isinstance(self.data, pd.DataFrame):
+            cols = [f"{self.config.lepton_truth_label}_{i}" for i in [0, 1]]
+            return self.data[cols].to_numpy()
+        else:
+            return self.data[1]
 
     def _get_reconstruction_mask(self, jet_truth: np.ndarray) -> np.ndarray:
         """Get mask for events with valid reconstruction."""
@@ -724,3 +731,50 @@ class DataPreprocessor:
         }
 
         return X_even, y_even, X_odd, y_odd
+    
+    def load_from_npz(self, npz_path: str) -> DataConfig:
+        """
+        Load preprocessed data from NPZ file.
+
+        Args:
+            npz_path: Path to NPZ file
+        """
+        loaded = np.load(npz_path)
+
+        if loaded is None:
+            raise ValueError(f"Could not read file {npz_path}")
+
+        self.feature_data = {}
+
+        if self.load_config.jet_features:
+            self.feature_data["jet"] = np.array([loaded[jet_key] for jet_key in self.load_config.jet_features])
+
+        if self.load_config.lepton_features:
+            self.feature_data["lepton"] = np.array([loaded[lep_key] for lep_key in self.load_config.lepton_features])
+        
+        if self.load_config.met_features:
+            self.feature_data["met"] = np.array([loaded[met_key] for met_key in self.load_config.met_features])
+
+        if self.load_config.non_training_features:
+            self.feature_data["non_training"] = np.array([loaded[nt_key] for nt_key in self.load_config.non_training_features])
+
+        if self.load_config.event_weight:
+            self.feature_data["event_weight"] = loaded[self.load_config.event_weight]
+        
+        if self.load_config.mc_event_number:
+            self.feature_data["event_number"] = loaded[self.load_config.mc_event_number]
+        
+        if self.load_config.neutrino_momentum_features and self.load_config.antineutrino_momentum_features:
+            self.feature_data["regression_targets"] = np.array(
+                [loaded[nu_key] for nu_key in self.load_config.neutrino_momentum_features + self.load_config.antineutrino_momentum_features]
+            )
+        
+        if self.load_config.nu_flows_neutrino_momentum_features and self.load_config.nu_flows_antineutrino_momentum_features:
+            self.feature_data["nu_flows_regression_targets"] = np.array(
+                [loaded[nu_key] for nu_key in self.load_config.nu_flows_neutrino_momentum_features + self.load_config.nu_flows_antineutrino_momentum_features]
+            )
+        label_builder = LabelBuilder(self.load_config, (loaded[self.load_config.jet_truth_label],loaded[self.load_config.lepton_truth_label]))
+
+        self.feature_data["assignment_labels"] = label_builder.build_labels()
+
+        self.data_length = len(self.feature_data["assignment_labels"])
