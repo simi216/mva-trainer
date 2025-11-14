@@ -34,7 +34,6 @@ python train_hyperparameter.py \
     --num_layers "$num_layers" \
     --num_heads  "$num_heads"\
     --architecture "$architecture" \
-    --use_high_level_features "$high_level_features" \
     --dropout_rate 0.1 \
     --learning_rate 1e-4 \
     --weight_decay 1e-4 \
