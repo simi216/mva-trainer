@@ -239,7 +239,7 @@ class LeptonJetMassAssigner(BaselineAssigner):
         return invariant_mass
 
 
-class MassCombinatoricsAssigner(EventReconstructorBase):
+class ChiSquareAssigner(EventReconstructorBase):
     """Assigns jets to leptons based on mass combinatorics involving neutrino momenta."""
     def __init__(
         self,
@@ -249,8 +249,8 @@ class MassCombinatoricsAssigner(EventReconstructorBase):
         top_mass=173.15e3,
         all_jets_considered=False,
     ):
-        super().__init__(config, name = r"$\chi^2$-Method" + (r"($\nu^2$-Flows)" if use_nu_flows else r"(True $\nu$)"), perform_regression=False, use_nu_flows=use_nu_flows)
-        """Initializes the MassCombinatoricsAssigner class.
+        super().__init__(config, name = r"$\chi^2$-Method" + (r"($\nu^2$-Flows)" if use_nu_flows_for_assignment else r"(True $\nu$)"), perform_regression=False, use_nu_flows=use_nu_flows)
+        """Initializes the ChiSquareAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
         """

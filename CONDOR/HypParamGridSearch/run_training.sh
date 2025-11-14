@@ -7,6 +7,7 @@ hidden_dim=$1
 num_layers=$2
 num_heads=$3
 architecture=$4
+high_level_features=$5
 
 # Print environment info for debugging
 echo "Starting training job..."
@@ -33,7 +34,7 @@ python train_hyperparameter.py \
     --num_layers "$num_layers" \
     --num_heads  "$num_heads"\
     --architecture "$architecture" \
-    --data_config "/afs/desy.de/user/a/aulich/mva-trainer/CONDOR/workspace_config.yaml" \
+    --use_high_level_features "$high_level_features" \
     --dropout_rate 0.1 \
     --learning_rate 1e-4 \
     --weight_decay 1e-4 \
@@ -42,7 +43,8 @@ python train_hyperparameter.py \
     --patience 10 \
     --max_events 10000000 \
     --root_dir "/afs/desy.de/user/a/aulich/mva-trainer/" \
-    --data_type "nominal"
+    --data_type "nominal"\
+    $high_level_features
 
 
 # Check if the script succeeded

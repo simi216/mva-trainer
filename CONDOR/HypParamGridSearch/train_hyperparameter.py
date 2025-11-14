@@ -32,10 +32,9 @@ def parse_args():
         help="Model architecture to use (default: FeatureConcatTransformer)",
     )
     parser.add_argument(
-        "--data_config",
-        type=str,
-        default="workspace_config.yaml",
-        help="Path to data configuration YAML file",
+        "--use_high_level_features",
+        action="store_true",
+        help="Whether to use high-level features in the model",
     )
 
     # Optional hyperparameters with defaults
@@ -117,11 +116,18 @@ def main():
     import core
 
     # Load data configuration
-    load_config = get_load_config_from_yaml(args.data_config)
+    config_dir = os.path.join(args.root_dir, "config")
+    CONFIG_PATH = os.path.join(config_dir, "workspace_config.yaml") if not args.use_high_level_features else os.path.join(config_dir, "workspace_config_high_level_features.yaml")
 
+    if not os.path.exists(CONFIG_PATH):
+        raise FileNotFoundError(f"Data configuration file not found: {CONFIG_PATH}")
+
+    load_config = get_load_config_from_yaml(CONFIG_PATH)
     # Create model name with hyperparameters
     MODEL_NAME = (
         f"{args.architecture}_d{args.hidden_dim}_l{args.num_layers}_h{args.num_heads}"
+    ) if not args.use_high_level_features else (
+        f"{args.architecture}_HLF_d{args.hidden_dim}_l{args.num_layers}_h{args.num_heads}"
     )
 
     # Setup directories
@@ -138,7 +144,7 @@ def main():
     print(f"  Model name: {MODEL_NAME}")
 
     # Configure data
-    with open(args.data_config, "r") as f:
+    with open(CONFIG_PATH, "r") as f:
         data_config_yaml = yaml.safe_load(f)
 
     # Load and preprocess data
@@ -256,8 +262,8 @@ def main():
     print(f"Training history saved to {history_path}")
 
     # Save model configuration summary
-    config_path = os.path.join(MODEL_DIR, f"{MODEL_NAME}_config.txt")
-    with open(config_path, "w") as f:
+    CONFIG_PATH = os.path.join(MODEL_DIR, f"{MODEL_NAME}_config.txt")
+    with open(CONFIG_PATH, "w") as f:
         f.write(f"Model Configuration:\n")
         f.write(f"==================\n")
         f.write(f"Hidden Dimension: {args.hidden_dim}\n")
@@ -267,7 +273,7 @@ def main():
         f.write(f"Weight Decay: {args.weight_decay}\n")
         f.write(f"Batch Size: {args.batch_size}\n")
         f.write(f"Trainable Parameters: {trainable_params:,}\n")
-    print(f"Model config saved to {config_path}")
+    print(f"Model config saved to {CONFIG_PATH}")
 
     # Print final metrics
     print("\n" + "=" * 60)

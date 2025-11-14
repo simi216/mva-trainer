@@ -17,6 +17,7 @@ CONDOR/RegHypParamGridSearch/logs/
 CONDOR/RegHypParamGridSearch/*.txt
 CONDOR/PreProcessing/logs/
 CONDOR/PreProcessing/*.txt
+config
 bin/**
 preprocessing/obj
 reco_tree.txt

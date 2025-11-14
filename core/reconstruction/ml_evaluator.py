@@ -141,7 +141,7 @@ class FeatureImportanceCalculator:
                 permutated_assignment_pred, permutated_regression_pred = (
                     self.reconstructor.complete_forward_pass(X_permuted)
                 )
-                assignment_performance = (
+                assignment_performance = -(
                     AccuracyCalculator.compute_accuracy(
                         permutated_assignment_pred, self.y_test["assignment_labels"], per_event=False
                     )
@@ -149,7 +149,7 @@ class FeatureImportanceCalculator:
                 )
                 assignment_scores.append(assignment_performance)
                 if regression_baseline_performance is not None:
-                    regression_performance = (
+                    regression_performance = -(
                         NeutrinoDeviationCalculator.compute_relative_deviation(
                             permutated_regression_pred,
                             self.y_test["nu_flows_regression_targets"],
@@ -300,17 +300,17 @@ class MLEvaluator:
             # Plot regression deviation if available
             for idx, reconstructor in enumerate(self.reconstructors):
                 history = reconstructor.history
-                if "relative_regression_deviation" in history.history:
+                if "regression_deviation" in history.history:
                     model_name = reconstructor.get_name()
 
                     axes[3].plot(
-                        history.history["relative_regression_deviation"],
+                        history.history["regression_deviation"],
                         label=f"{model_name} (Train)",
                         linestyle="-",
                         color=color_map(idx)
                     )
                     axes[3].plot(
-                        history.history["val_relative_regression_deviation"],
+                        history.history["val_regression_deviation"],
                         label=f"{model_name} (Val)",
                         linestyle="--",
                         color=color_map(idx)

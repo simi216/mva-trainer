@@ -7,14 +7,14 @@ universe = vanilla
 RequestGPUs    = 1
 Requirements = (GPUs_DeviceName == "Tesla V100-PCIE-32GB")
 RequestMemory  = 60000
-RequestRuntime = 7200
++RequestRuntime = 21600
 
 # Output files
-output = logs/job_$(Cluster)_$(architecture)_$(hidden_dim)_$(num_layers)_$(num_heads).out
-error = logs/job_$(Cluster)_$(architecture)_$(hidden_dim)_$(num_layers)_$(num_heads).err
-log = logs/job_$(Cluster)_$(architecture)_$(hidden_dim)_$(num_layers)_$(num_heads).log
+output = logs/job_$(Cluster)_$(ProcId).out
+error = logs/job_$(Cluster)_$(ProcId).err
+log = logs/job_$(Cluster)_$(ProcId).log
 
-arguments = $(hidden_dim) $(num_layers) $(num_heads) $(architecture)
+arguments = $(ARGS)
 
-# Queue from file - reads each line and assigns to variables
-queue hidden_dim, num_layers, num_heads, architecture from params.txt
+# Read all columns from params.txt, automatically assigning them to $(ARGS)
+queue ARGS from params.txt

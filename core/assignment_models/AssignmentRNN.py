@@ -55,7 +55,8 @@ class FeatureConcatRNN(MLReconstructorBase):
         x = jet_embedding
         for i in range(num_layers):
             x = keras.layers.Bidirectional(
-                RNN(RNNCell(units=hidden_dim, dropout=dropout_rate), return_sequences=True),
+                RNN(RNNCell(units=hidden_dim, dropout=dropout_rate, 
+                            ), return_sequences=True),
                 name=f"bidir_rnn_{i}",
             )(x, mask=jet_mask)
 
