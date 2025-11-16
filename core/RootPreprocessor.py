@@ -25,9 +25,7 @@ class PreprocessorConfig:
 
     # Input/Output
     input_path: str
-    output_path: str
     tree_name: str = "reco"
-    output_format: str = "root"  # 'root' or 'npz'
 
     # Processing options
     save_nu_flows: bool = False
@@ -38,6 +36,7 @@ class PreprocessorConfig:
     n_leptons_required: int = 2
     n_jets_min: int = 2
     max_jets_for_truth: int = 10  # Maximum jet index for truth matching
+    max_saved_jets: int = 10  # Maximum number of jets to save
 
 
 class RootPreprocessor:
@@ -64,8 +63,6 @@ class RootPreprocessor:
         """Main processing method."""
         if self.config.verbose:
             print(f"Processing ROOT file: {self.config.input_path}")
-            print(f"Output: {self.config.output_path}")
-            print(f"Format: {self.config.output_format}")
 
         # Load data
         with uproot.open(self.config.input_path) as file:
@@ -88,14 +85,7 @@ class RootPreprocessor:
         # Process events
         self.processed_data = self._process_events(events)
 
-        # Save output (skip if output_path is empty)
-        if self.config.output_path:
-            self._save_output()
-
-            if self.config.verbose:
-                print(f"Processing complete. Output saved to {self.config.output_path}")
-        elif self.config.verbose:
-            print(f"Processing complete.")
+        print(f"Processing complete.")
 
     def _preselection(self, events: ak.Array) -> np.ndarray:
         """
@@ -180,7 +170,9 @@ class RootPreprocessor:
         # mumu channel: check that two muons have opposite charge
         mumu_mask = n_muons == 2
         mu_charge_padded = ak.fill_none(ak.pad_none(events.mu_charge, 2), 0)
-        mumu_same_charge = (mu_charge_padded[:, 0] == mu_charge_padded[:, 1]) & mumu_mask
+        mumu_same_charge = (
+            mu_charge_padded[:, 0] == mu_charge_padded[:, 1]
+        ) & mumu_mask
         mask = mask & ~mumu_same_charge
 
         # emu channel: check that electron and muon have opposite charge
@@ -222,10 +214,13 @@ class RootPreprocessor:
         met = self._process_met(events)
         processed.update(met)
 
-
         # Compute derived features
         derived = self._compute_derived_features(events, leptons, jets)
         processed.update(derived)
+
+        # Process event weights
+        event_weight = self._proccess_event_weight(events)
+        processed.update({"weight_mc": event_weight})
 
         # Extract truth information
         truth = self._extract_truth_info(events)
@@ -257,24 +252,30 @@ class RootPreprocessor:
         """
         # Combine electrons and muons using vectorized operations
         n_events = len(events)
-        
+
         # Pad electron truth indices and broadcast properly
-        el_truth_padded = ak.fill_none(ak.pad_none(events.event_electron_truth_idx, 2), -1)
+        el_truth_padded = ak.fill_none(
+            ak.pad_none(events.event_electron_truth_idx, 2), -1
+        )
         mu_truth_padded = ak.fill_none(ak.pad_none(events.event_muon_truth_idx, 2), -1)
-        
+
         # Create lepton arrays with truth matching - use broadcasting that works with jagged arrays
         # For electrons - expand truth indices to match electron array shape
         el_idx = ak.local_index(events.el_pt_NOSYS)
         el_truth_0 = ak.broadcast_arrays(el_truth_padded[:, 0], events.el_pt_NOSYS)[0]
         el_truth_1 = ak.broadcast_arrays(el_truth_padded[:, 1], events.el_pt_NOSYS)[0]
-        el_truth_idx = ak.where(el_idx == el_truth_0, 1, ak.where(el_idx == el_truth_1, -1, -1))
-        
+        el_truth_idx = ak.where(
+            el_idx == el_truth_0, 1, ak.where(el_idx == el_truth_1, -1, -1)
+        )
+
         # For muons - expand truth indices to match muon array shape
         mu_idx = ak.local_index(events.mu_pt_NOSYS)
         mu_truth_0 = ak.broadcast_arrays(mu_truth_padded[:, 0], events.mu_pt_NOSYS)[0]
         mu_truth_1 = ak.broadcast_arrays(mu_truth_padded[:, 1], events.mu_pt_NOSYS)[0]
-        mu_truth_idx = ak.where(mu_idx == mu_truth_0, 1, ak.where(mu_idx == mu_truth_1, -1, -1))
-        
+        mu_truth_idx = ak.where(
+            mu_idx == mu_truth_0, 1, ak.where(mu_idx == mu_truth_1, -1, -1)
+        )
+
         # Combine electrons and muons
         lep_pt = ak.concatenate([events.el_pt_NOSYS, events.mu_pt_NOSYS], axis=1)
         lep_eta = ak.concatenate([events.el_eta, events.mu_eta], axis=1)
@@ -283,7 +284,7 @@ class RootPreprocessor:
         lep_charge = ak.concatenate([events.el_charge, events.mu_charge], axis=1)
         lep_pid = ak.concatenate([events.el_charge * 11, events.mu_charge * 13], axis=1)
         lep_truth = ak.concatenate([el_truth_idx, mu_truth_idx], axis=1)
-        
+
         # Sort by charge (positive first) - argsort in descending order
         sort_idx = ak.argsort(lep_charge, ascending=False)
         lep_pt = lep_pt[sort_idx]
@@ -293,17 +294,31 @@ class RootPreprocessor:
         lep_charge = lep_charge[sort_idx]
         lep_pid = lep_pid[sort_idx]
         lep_truth = lep_truth[sort_idx]
-        
+
         # Pad to 2 leptons and convert to numpy
         max_leptons = 2
-        lep_pt_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_pt, max_leptons, clip=True), -999.0))
-        lep_eta_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_eta, max_leptons, clip=True), -999.0))
-        lep_phi_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_phi, max_leptons, clip=True), -999.0))
-        lep_e_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_e, max_leptons, clip=True), -999.0))
-        lep_charge_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_charge, max_leptons, clip=True), -999.0))
-        lep_pid_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_pid, max_leptons, clip=True), -999.0))
-        lep_truth_np = ak.to_numpy(ak.fill_none(ak.pad_none(lep_truth, max_leptons, clip=True), -1))
-        
+        lep_pt_np = ak.to_numpy(
+            ak.fill_none(ak.pad_none(lep_pt, max_leptons, clip=True), -999.0)
+        )
+        lep_eta_np = ak.to_numpy(
+            ak.fill_none(ak.pad_none(lep_eta, max_leptons, clip=True), -999.0)
+        )
+        lep_phi_np = ak.to_numpy(
+            ak.fill_none(ak.pad_none(lep_phi, max_leptons, clip=True), -999.0)
+        )
+        lep_e_np = ak.to_numpy(
+            ak.fill_none(ak.pad_none(lep_e, max_leptons, clip=True), -999.0)
+        )
+        lep_charge_np = ak.to_numpy(
+            ak.fill_none(ak.pad_none(lep_charge, max_leptons, clip=True), -999.0)
+        )
+        lep_pid_np = ak.to_numpy(
+            ak.fill_none(ak.pad_none(lep_pid, max_leptons, clip=True), -999.0)
+        )
+        lep_truth_np = ak.to_numpy(
+            ak.fill_none(ak.pad_none(lep_truth, max_leptons, clip=True), -1)
+        )
+
         # Build truth index array
         event_lepton_truth_idx = np.full((n_events, 2), -1, dtype=np.int32)
         for idx in range(max_leptons):
@@ -336,16 +351,21 @@ class RootPreprocessor:
         """
         # Process jets using vectorized operations
         n_events = len(events)
-        
+
         # Pad jet truth indices and broadcast properly
         jet_truth_padded = ak.fill_none(ak.pad_none(events.event_jet_truth_idx, 6), -1)
-        
+
         # Create truth matching for b-jets - use broadcasting that works with jagged arrays
         jet_idx = ak.local_index(events.jet_pt_NOSYS)
-        jet_truth_0 = ak.broadcast_arrays(jet_truth_padded[:, 0], events.jet_pt_NOSYS)[0]
-        jet_truth_3 = ak.broadcast_arrays(jet_truth_padded[:, 3], events.jet_pt_NOSYS)[0]
-        jet_truth_idx = ak.where(jet_idx == jet_truth_0, 1, ak.where(jet_idx == jet_truth_3, -1, 0))
-        
+        jet_truth_0 = ak.broadcast_arrays(jet_truth_padded[:, 0], events.jet_pt_NOSYS)[
+            0
+        ]
+        jet_truth_3 = ak.broadcast_arrays(jet_truth_padded[:, 3], events.jet_pt_NOSYS)[
+            0
+        ]
+        jet_truth_idx = ak.where(
+            jet_idx == jet_truth_0, 1, ak.where(jet_idx == jet_truth_3, -1, 0)
+        )
         # Sort jets by pT (descending)
         sort_idx = ak.argsort(events.jet_pt_NOSYS, ascending=False)
         jet_pt = events.jet_pt_NOSYS[sort_idx]
@@ -354,19 +374,19 @@ class RootPreprocessor:
         jet_e = events.jet_e_NOSYS[sort_idx]
         jet_btag = events.jet_GN2v01_Continuous_quantile[sort_idx]
         jet_truth = jet_truth_idx[sort_idx]
-        
+
         # Find maximum number of jets
         n_jets = ak.num(jet_pt)
-        max_jets = int(ak.max(n_jets))
-        
+        max_jets = self.config.max_saved_jets
+
         # Pad and convert to numpy
-        jet_pt_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_pt, max_jets), -999.0))
-        jet_eta_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_eta, max_jets), -999.0))
-        jet_phi_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_phi, max_jets), -999.0))
-        jet_e_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_e, max_jets), -999.0))
-        jet_btag_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_btag, max_jets), -999.0))
-        jet_truth_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_truth, max_jets), 0))
-        
+        jet_pt_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_pt, max_jets, clip=True), -999.0))
+        jet_eta_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_eta, max_jets, clip=True), -999.0))
+        jet_phi_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_phi, max_jets, clip=True), -999.0))
+        jet_e_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_e, max_jets, clip=True), -999.0))
+        jet_btag_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_btag, max_jets, clip=True), -999.0))
+        jet_truth_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_truth, max_jets, clip=True), -999.0))
+
         # Build jet truth index array
         event_jet_truth_idx = np.full((n_events, 6), -1, dtype=np.int32)
         for idx in range(max_jets):
@@ -374,7 +394,7 @@ class RootPreprocessor:
             mask_tbar = jet_truth_np[:, idx] == -1
             event_jet_truth_idx[mask_top, 0] = idx
             event_jet_truth_idx[mask_tbar, 3] = idx
-        
+
         # Number of jets per event
         n_jets = ak.to_numpy(n_jets).astype(np.int32)
 
@@ -387,7 +407,7 @@ class RootPreprocessor:
             "ordered_event_jet_truth_idx": event_jet_truth_idx,
             "N_jets": n_jets,
         }
-    
+
     def _process_met(self, events: ak.Array) -> Dict[str, np.ndarray]:
         """
         Process missing transverse energy (MET).
@@ -405,6 +425,19 @@ class RootPreprocessor:
             "met_met": met_met,
             "met_phi": met_phi,
         }
+
+    def _proccess_event_weight(self, events: ak.Array) -> np.ndarray:
+        """
+        Process event weights.
+
+        Args:
+            events: Event array
+
+        Returns:
+            Numpy array of event weights
+        """
+        event_weight = ak.to_numpy(events.weight_mc_NOSYS)
+        return event_weight
 
     def _compute_derived_features(
         self,
@@ -431,44 +464,50 @@ class RootPreprocessor:
         l1_eta = leptons["lep_eta"][:, 0:1]
         l1_phi = leptons["lep_phi"][:, 0:1]
         l1_e = leptons["lep_e"][:, 0:1]
-        
+
         l2_pt = leptons["lep_pt"][:, 1:2]
         l2_eta = leptons["lep_eta"][:, 1:2]
         l2_phi = leptons["lep_phi"][:, 1:2]
         l2_e = leptons["lep_e"][:, 1:2]
-        
+
         # Convert to px, py, pz with overflow protection
-        with np.errstate(over='ignore', invalid='ignore'):
+        with np.errstate(over="ignore", invalid="ignore"):
             l1_px = l1_pt * np.cos(l1_phi)
             l1_py = l1_pt * np.sin(l1_phi)
-            l1_pz = np.where(np.abs(l1_eta) < 10, l1_pt * np.sinh(l1_eta), np.sign(l1_eta) * 1e10)
-            
+            l1_pz = np.where(
+                np.abs(l1_eta) < 10, l1_pt * np.sinh(l1_eta), np.sign(l1_eta) * 1e10
+            )
+
             l2_px = l2_pt * np.cos(l2_phi)
             l2_py = l2_pt * np.sin(l2_phi)
-            l2_pz = np.where(np.abs(l2_eta) < 10, l2_pt * np.sinh(l2_eta), np.sign(l2_eta) * 1e10)
-        
+            l2_pz = np.where(
+                np.abs(l2_eta) < 10, l2_pt * np.sinh(l2_eta), np.sign(l2_eta) * 1e10
+            )
+
         # Jet 4-vectors
         j_pt = jets["ordered_jet_pt"]  # Shape (n_events, max_jets)
         j_eta = jets["ordered_jet_eta"]
         j_phi = jets["ordered_jet_phi"]
         j_e = jets["ordered_jet_e"]
-        
+
         # Convert to px, py, pz with overflow protection
-        with np.errstate(over='ignore', invalid='ignore'):
+        with np.errstate(over="ignore", invalid="ignore"):
             j_px = j_pt * np.cos(j_phi)
             j_py = j_pt * np.sin(j_phi)
-            j_pz = np.where(np.abs(j_eta) < 10, j_pt * np.sinh(j_eta), np.sign(j_eta) * 1e10)
-        
+            j_pz = np.where(
+                np.abs(j_eta) < 10, j_pt * np.sinh(j_eta), np.sign(j_eta) * 1e10
+            )
+
         # Compute invariant masses (vectorized)
         # l1 + jet
-        with np.errstate(invalid='ignore'):
+        with np.errstate(invalid="ignore"):
             l1j_e = l1_e + j_e
             l1j_px = l1_px + j_px
             l1j_py = l1_py + j_py
             l1j_pz = l1_pz + j_pz
             m_l1j_squared = l1j_e**2 - l1j_px**2 - l1j_py**2 - l1j_pz**2
             m_l1j = np.where(m_l1j_squared > 0, np.sqrt(np.abs(m_l1j_squared)), -999.0)
-            
+
             # l2 + jet
             l2j_e = l2_e + j_e
             l2j_px = l2_px + j_px
@@ -476,12 +515,12 @@ class RootPreprocessor:
             l2j_pz = l2_pz + j_pz
             m_l2j_squared = l2j_e**2 - l2j_px**2 - l2j_py**2 - l2j_pz**2
             m_l2j = np.where(m_l2j_squared > 0, np.sqrt(np.abs(m_l2j_squared)), -999.0)
-        
+
         # Mark invalid jets
         valid_mask = j_pt != -999.0
         m_l1j = np.where(valid_mask, m_l1j, -999.0)
         m_l2j = np.where(valid_mask, m_l2j, -999.0)
-        
+
         # Delta R (vectorized)
         dR_l1j = self._delta_r(l1_eta, l1_phi, j_eta, j_phi)
         dR_l2j = self._delta_r(l2_eta, l2_phi, j_eta, j_phi)
@@ -666,26 +705,15 @@ class RootPreprocessor:
             "truth_initial_parton_num_gluons": n_gluons,
         }
 
-    def _save_output(self):
-        """Save processed data to file."""
-        if self.config.output_format == "npz":
-            self._save_to_npz()
-        elif self.config.output_format == "root":
-            self._save_to_root()
-        else:
-            raise ValueError(
-                f"Unknown output format: {self.config.output_format}. "
-                "Must be 'npz' or 'root'."
-            )
 
-    def _save_to_npz(self):
+    def save_to_npz(self, output_path: str):
         """Save data to NPZ format."""
-        np.savez_compressed(self.config.output_path, **self.processed_data)
+        np.savez_compressed(output_path, **self.processed_data)
 
-    def _save_to_root(self):
+    def save_to_root(self,output_path):
         """Save data to ROOT format."""
         # Create output directory if needed
-        output_dir = os.path.dirname(self.config.output_path)
+        output_dir = os.path.dirname(output_path)
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
 
@@ -700,7 +728,7 @@ class RootPreprocessor:
                 output_dict[key] = ak.Array([value[i] for i in range(len(value))])
 
         # Write to ROOT file
-        with uproot.recreate(self.config.output_path) as file:
+        with uproot.recreate(output_path) as file:
             file[self.config.tree_name] = output_dict
 
     def get_processed_data(self) -> Dict[str, np.ndarray]:
@@ -718,9 +746,10 @@ def preprocess_root_file(
     output_path: str,
     tree_name: str = "reco",
     output_format: str = "root",
-    save_nu_flows: bool = False,
-    save_initial_parton_info: bool = False,
+    save_nu_flows: bool = True,
+    save_initial_parton_info: bool = True,
     verbose: bool = True,
+    max_jets: int = 10,
 ) -> Dict[str, np.ndarray]:
     """
     Convenience function to preprocess a ROOT file.
@@ -739,166 +768,75 @@ def preprocess_root_file(
     """
     config = PreprocessorConfig(
         input_path=input_path,
-        output_path=output_path,
         tree_name=tree_name,
-        output_format=output_format,
         save_nu_flows=save_nu_flows,
         save_initial_parton_info=save_initial_parton_info,
         verbose=verbose,
+        max_saved_jets=max_jets,
     )
 
     preprocessor = RootPreprocessor(config)
     preprocessor.process()
+    if output_format == "npz":
+        preprocessor.save_to_npz(output_path)
+    elif output_format == "root":
+        preprocessor.save_to_root(output_path)
 
     return preprocessor.get_processed_data()
 
-
 def preprocess_root_directory(
     input_dir: str,
-    output_path: str,
+    output_file: str,
     tree_name: str = "reco",
-    output_format: str = "root",
-    save_nu_flows: bool = False,
-    save_initial_parton_info: bool = False,
-    pattern: str = "*.root",
+    save_nu_flows: bool = True,
+    save_initial_parton_info: bool = True,
     verbose: bool = True,
-) -> Dict[str, np.ndarray]:
+    max_jets: int = 10,
+):
     """
-    Preprocess all ROOT files in a directory.
+    Process all ROOT files in a directory.
 
     Args:
-        input_dir: Path to directory containing ROOT files
-        output_path: Path to output file (if merge=True) or directory (if merge=False)
+        input_dir: Directory containing input ROOT files
+        output_dir: Directory to save processed files
         tree_name: Name of tree in ROOT files
         output_format: Output format ('root' or 'npz')
         save_nu_flows: Whether to save NuFlow results
         save_initial_parton_info: Whether to save initial parton info
-        merge: If True, merge all files into one output; if False, create separate outputs
-        pattern: Glob pattern for ROOT files (default: "*.root")
         verbose: Whether to print progress
-
-    Returns:
-        Dictionary of merged processed data (if merge=True) or empty dict (if merge=False)
     """
-    import glob
+    data_collected = []
 
-    if not os.path.isdir(input_dir):
-        raise ValueError(f"Input path is not a directory: {input_dir}")
+    for filename in os.listdir(input_dir):
+        if filename.endswith(".root"):
+            input_path = os.path.join(input_dir, filename)
 
-    # Find all ROOT files matching pattern
-    search_pattern = os.path.join(input_dir, pattern)
-    root_files = sorted(glob.glob(search_pattern))
-
-    if not root_files:
-        raise ValueError(
-            f"No ROOT files found in {input_dir} matching pattern '{pattern}'"
-        )
-
-    if verbose:
-        print(f"Found {len(root_files)} ROOT files to process")
-
-    # Process and merge all files
-    merged_data = None
-    total_events = 0
-
-    for i, input_file in enumerate(root_files, 1):
-        if verbose:
-            print(
-                f"\nProcessing file {i}/{len(root_files)}: {os.path.basename(input_file)}"
-            )
-
-        try:
-            data = preprocess_root_file(
-                input_path=input_file,
-                output_path="",  # Don't save individual files
-                tree_name=tree_name,
-                output_format=output_format,
-                save_nu_flows=save_nu_flows,
-                save_initial_parton_info=save_initial_parton_info,
-                verbose=verbose,
-            )
-
-            # Merge data
-            if merged_data is None:
-                merged_data = {key: [] for key in data.keys()}
-
-            for key, value in data.items():
-                merged_data[key].append(value)
-
-            total_events += len(data[list(data.keys())[0]])
-
-        except Exception as e:
-            print(f"Warning: Failed to process {input_file}: {e}")
             if verbose:
-                import traceback
+                print(f"Processing file: {input_path}")
 
-                traceback.print_exc()
-            continue
+                config = PreprocessorConfig(
+                    input_path=input_path,
+                    tree_name=tree_name,
+                    save_nu_flows=save_nu_flows,
+                    save_initial_parton_info=save_initial_parton_info,
+                    verbose=verbose,
+                    max_saved_jets=max_jets,
+                )
 
-    if merged_data is None:
-        raise ValueError("No files were successfully processed")
+                preprocessor = RootPreprocessor(config)
+                preprocessor.process()
+                data_collected.append(preprocessor.get_processed_data())
+                
+    merged_data = {}
+    for data in data_collected:
+        for key, value in data.items():
+            if key not in merged_data:
+                merged_data[key] = []
+            merged_data[key].append(value)
 
-    # Concatenate arrays - pad to same size if needed
-    if verbose:
-        print(f"\nMerging {total_events} events from {len(root_files)} files...")
-
-    # Find maximum dimensions for arrays that need padding
-    max_dims = {}
     for key in merged_data:
-        arrays = merged_data[key]
-        if len(arrays[0].shape) > 1:
-            # Multi-dimensional array - find max size in each dimension
-            max_dims[key] = [max(arr.shape[i] for arr in arrays) for i in range(len(arrays[0].shape))]
-    
-    # Pad and concatenate
-    for key in merged_data:
-        arrays = merged_data[key]
-        
-        if len(arrays[0].shape) > 1 and key in max_dims:
-            # Pad multi-dimensional arrays to same shape
-            padded_arrays = []
-            for arr in arrays:
-                if arr.shape != tuple(max_dims[key]):
-                    # Create padded array
-                    pad_width = [(0, max_dims[key][i] - arr.shape[i]) for i in range(len(arr.shape))]
-                    
-                    # Use appropriate fill value
-                    if 'truth_idx' in key or key == 'N_jets':
-                        fill_value = -1 if 'truth_idx' in key else 0
-                    else:
-                        fill_value = -999.0
-                    
-                    padded_arr = np.pad(arr, pad_width, mode='constant', constant_values=fill_value)
-                    padded_arrays.append(padded_arr)
-                else:
-                    padded_arrays.append(arr)
-            merged_data[key] = np.concatenate(padded_arrays, axis=0)
-        else:
-            # 1D arrays can be concatenated directly
-            merged_data[key] = np.concatenate(arrays, axis=0)
-
-    # Save merged output
+        merged_data[key] = np.concatenate(merged_data[key], axis=0)
+    np.savez_compressed(output_file, **merged_data)
     if verbose:
-        print(f"Saving merged output to {output_path}")
+        print(f"Merged data saved to {output_file}")
 
-    config = PreprocessorConfig(
-        input_path="",  # Not used
-        output_path=output_path,
-        output_format=output_format,
-        save_nu_flows=save_nu_flows,
-        save_initial_parton_info=save_initial_parton_info,
-        verbose=verbose,
-    )
-    preprocessor = RootPreprocessor(config)
-    preprocessor.processed_data = merged_data
-
-    if output_format == "npz":
-        preprocessor._save_to_npz()
-    else:
-        preprocessor._save_to_root()
-
-    if verbose:
-        print(f"\nSuccessfully processed and merged {len(root_files)} files")
-        print(f"Total events: {total_events}")
-
-    return merged_data

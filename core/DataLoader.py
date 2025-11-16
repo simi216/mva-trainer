@@ -111,7 +111,6 @@ class DataLoader:
         """Pad variable-length features and convert to DataFrame."""
         data_dict = {}
 
-
         for feature in self.features:
             if feature not in self.data.fields:
                 raise ValueError(f"Feature '{feature}' not found in data")
@@ -218,7 +217,7 @@ class FeatureBuilder:
     def _build_event_weight(self) -> np.ndarray:
         """Build event weight array (n_events,)."""
         return self.data[self.config.event_weight].to_numpy()
-    
+
     def _build_event_number(self) -> np.ndarray:
         """Build event number array (n_events,)."""
         return self.data[self.config.mc_event_number].to_numpy()
@@ -257,7 +256,11 @@ class FeatureBuilder:
 class LabelBuilder:
     """Builds training labels from truth information."""
 
-    def __init__(self, load_config: LoadConfig, data: Union[pd.DataFrame, tuple[np.ndarray, np.ndarray]]):
+    def __init__(
+        self,
+        load_config: LoadConfig,
+        data: Union[pd.DataFrame, tuple[np.ndarray, np.ndarray]],
+    ):
         self.config = load_config
         self.data = data
 
@@ -287,8 +290,7 @@ class LabelBuilder:
             cols = [f"{self.config.jet_truth_label}_{i}" for i in [0, 3]]
             return self.data[cols].to_numpy()
         else:
-            return self.data[0]
-
+            return self.data[0][:, [0, 3]]
 
     def _extract_lepton_truth(self) -> np.ndarray:
         """Extract lepton truth indices."""
@@ -566,7 +568,7 @@ class DataPreprocessor:
         weights = weights / np.sum(weights)
 
         return weights
-    
+
     def get_event_number(self) -> np.ndarray:
         """
         Get event numbers.
@@ -731,8 +733,8 @@ class DataPreprocessor:
         }
 
         return X_even, y_even, X_odd, y_odd
-    
-    def load_from_npz(self, npz_path: str) -> DataConfig:
+
+    def load_from_npz(self, npz_path: str, max_events : Optional[int] = None) -> DataConfig:
         """
         Load preprocessed data from NPZ file.
 
@@ -747,34 +749,91 @@ class DataPreprocessor:
         self.feature_data = {}
 
         if self.load_config.jet_features:
-            self.feature_data["jet"] = np.array([loaded[jet_key] for jet_key in self.load_config.jet_features])
+            self.feature_data["jet"] = np.array(
+                [loaded[jet_key] for jet_key in self.load_config.jet_features]
+            ).transpose(1, 2, 0)[:, : self.load_config.max_jets, :]
 
         if self.load_config.lepton_features:
-            self.feature_data["lepton"] = np.array([loaded[lep_key] for lep_key in self.load_config.lepton_features])
-        
+            self.feature_data["lepton"] = np.array(
+                [loaded[lep_key] for lep_key in self.load_config.lepton_features]
+            ).transpose(1, 2, 0)
+
         if self.load_config.met_features:
-            self.feature_data["met"] = np.array([loaded[met_key] for met_key in self.load_config.met_features])
+            self.feature_data["met"] = np.array(
+                [loaded[met_key] for met_key in self.load_config.met_features]
+            ).transpose(1, 0)[:, np.newaxis, :]
 
         if self.load_config.non_training_features:
-            self.feature_data["non_training"] = np.array([loaded[nt_key] for nt_key in self.load_config.non_training_features])
+            self.feature_data["non_training"] = np.array(
+                [loaded[nt_key] for nt_key in self.load_config.non_training_features]
+            ).transpose(1, 0)
 
         if self.load_config.event_weight:
             self.feature_data["event_weight"] = loaded[self.load_config.event_weight]
-        
+
         if self.load_config.mc_event_number:
             self.feature_data["event_number"] = loaded[self.load_config.mc_event_number]
-        
-        if self.load_config.neutrino_momentum_features and self.load_config.antineutrino_momentum_features:
-            self.feature_data["regression_targets"] = np.array(
-                [loaded[nu_key] for nu_key in self.load_config.neutrino_momentum_features + self.load_config.antineutrino_momentum_features]
-            )
-        
-        if self.load_config.nu_flows_neutrino_momentum_features and self.load_config.nu_flows_antineutrino_momentum_features:
-            self.feature_data["nu_flows_regression_targets"] = np.array(
-                [loaded[nu_key] for nu_key in self.load_config.nu_flows_neutrino_momentum_features + self.load_config.nu_flows_antineutrino_momentum_features]
-            )
-        label_builder = LabelBuilder(self.load_config, (loaded[self.load_config.jet_truth_label],loaded[self.load_config.lepton_truth_label]))
 
-        self.feature_data["assignment_labels"] = label_builder.build_labels()
+        if (
+            self.load_config.neutrino_momentum_features
+            and self.load_config.antineutrino_momentum_features
+        ):
+            data_length = len(loaded[self.load_config.neutrino_momentum_features[0]])
+            self.feature_data["regression_targets"] = (
+                np.array(
+                    [
+                        loaded[nu_key]
+                        for nu_key in self.load_config.neutrino_momentum_features
+                        + self.load_config.antineutrino_momentum_features
+                    ]
+                )
+                .transpose(1, 0)
+                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
+            )
+
+        if (
+            self.load_config.nu_flows_neutrino_momentum_features
+            and self.load_config.nu_flows_antineutrino_momentum_features
+        ):
+            data_length = len(
+                loaded[self.load_config.nu_flows_neutrino_momentum_features[0]]
+            )
+            self.feature_data["nu_flows_regression_targets"] = (
+                np.array(
+                    [
+                        loaded[nu_key]
+                        for nu_key in self.load_config.nu_flows_neutrino_momentum_features
+                        + self.load_config.nu_flows_antineutrino_momentum_features
+                    ]
+                )
+                .transpose(1, 0)
+                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
+            )
+
+        # Build labels and apply reconstruction mask
+        label_builder = LabelBuilder(
+            self.load_config,
+            (
+                loaded[self.load_config.jet_truth_label],
+                loaded[self.load_config.lepton_truth_label],
+            ),
+        )
+        assignment_labels, reco_mask = label_builder.build_labels()
+
+
+        # Apply reconstruction mask to all features
+        for key in self.feature_data:
+            if self.feature_data[key] is not None:
+                self.feature_data[key] = self.feature_data[key][reco_mask]
+
+        self.feature_data["assignment_labels"] = assignment_labels
+
+        if max_events is not None:
+            for key in self.feature_data:
+                self.feature_data[key] = self.feature_data[key][:max_events]
 
         self.data_length = len(self.feature_data["assignment_labels"])
+
+        # Create DataConfig for downstream use
+        self.data_config = self.load_config.to_data_config()
+        return self.data_config
