@@ -4,7 +4,7 @@ import tensorflow as tf
 
 @keras.utils.register_keras_serializable()
 class AssignmentAccuracy(keras.metrics.Metric):
-    def __init__(self, name="assignment_accuracy", **kwargs):
+    def __init__(self, name="accuracy", **kwargs):
         super().__init__(name=name, **kwargs)
         self.total = self.add_weight(name="total", initializer="zeros")
         self.count = self.add_weight(name="count", initializer="zeros")
@@ -43,7 +43,7 @@ class RegressionDeviation(keras.metrics.Metric):
     def __init__(
         self,
         alpha=1.0,
-        name="regression_deviation",
+        name="deviation",
         **kwargs,
     ):
         super().__init__(name=name, **kwargs)
