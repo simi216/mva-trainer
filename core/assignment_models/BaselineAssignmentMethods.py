@@ -122,7 +122,7 @@ class DeltaRAssigner(BaselineAssigner):
     def __init__(
         self, config: DataConfig, mode="min", b_tag_threshold=2, use_nu_flows=True
     ):
-        super().__init__(config, name = r"$\Delta R(\ell,j)$-Assigner", mode=mode, use_nu_flows=use_nu_flows)
+        super().__init__(config, name = r"$\Delta R(\ell,j)$-Assigner + $\nu^2$-Flows", mode=mode, use_nu_flows=use_nu_flows)
         """Initializes the DeltaRAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
@@ -248,8 +248,9 @@ class ChiSquareAssigner(EventReconstructorBase):
         use_nu_flows_for_assignment = True,
         top_mass=173.15e3,
         all_jets_considered=False,
+        name = None,
     ):
-        super().__init__(config, name = r"$\chi^2$-Method" + (r"($\nu^2$-Flows)" if use_nu_flows_for_assignment else r"(True $\nu$)"), perform_regression=False, use_nu_flows=use_nu_flows)
+        super().__init__(config, name =( r"$\chi^2$-Method (" + (r"$\nu^2$-Flows)" if use_nu_flows_for_assignment else r"True $\nu$)")) if not name else name, perform_regression=False, use_nu_flows=use_nu_flows)
         """Initializes the ChiSquareAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.

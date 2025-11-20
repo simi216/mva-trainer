@@ -27,24 +27,20 @@ class DataPlotter:
             bins (int): Number of bins for the histogram.
         """
         feature_data = self.get_feature_data(feature_type, feature_name)
-        plt.figure(figsize=(10, 6))
-        plt.hist(
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.hist(
             feature_data.flatten()[feature_data.flatten() != self.padding_value],
             bins=bins,
             alpha=0.7,
             color="blue",
             edgecolor="black",
+            density=True,
         )
-        plt.title(f"Distribution of {feature_name} ({feature_type})")
-        plt.xlabel(feature_name)
-        plt.ylabel("Frequency")
-        plt.grid(True)
-        plt.savefig(
-            os.path.join(
-                self.plots_dir, f"{feature_type}_{feature_name}_distribution.png"
-            )
-        )
-        plt.close()
+        ax.set_title(f"Distribution of {feature_name} ({feature_type})")
+        ax.set_xlabel(feature_name)
+        ax.set_ylabel("Frequency")
+        ax.grid(True)
+        return fig, ax
 
     def add_feature(self, function, name: str):
         """
@@ -160,36 +156,33 @@ class DataPlotter:
         jet_features = self.get_all_feature_data("jet")
         lepton_features = self.get_all_feature_data("lepton")
         labels = self.get_all_feature_data("assignment_labels")
-        num_events = jet_features.shape[0]
 
-        matched_relational_features = []
-        unmatched_relational_features = []
 
-        for i in range(num_events):
-            for j in range(self.max_jets):
-                for k in range(self.NUM_LEPTONS):
-                    jet = jet_features[i, j]
-                    lepton = lepton_features[i, k]
-                    if (jet != self.padding_value).all() and (
-                        lepton != self.padding_value
-                    ).all():
-                        if labels[i, j, k] == 1:
-                            matched_relational_features.append(
-                                feature_function(jet, lepton)
-                            )
-                        else:
-                            unmatched_relational_features.append(
-                                feature_function(jet, lepton)
-                            )
+        lepton_extended = np.repeat(
+            lepton_features[:, np.newaxis, :, :], self.max_jets, axis=1
+        ) 
+        jet_extended = np.repeat(
+            jet_features[:, :, np.newaxis, :], self.NUM_LEPTONS, axis=2
+        ) 
+        relational_feature = feature_function(jet_extended.transpose(-1,1,2,0), lepton_extended.transpose(-1,1,2,0)).transpose(2,0,1)
+
+        jet_mask = (jet_features[:, :, :] != self.padding_value ).any(axis=-1, keepdims=True)
+        matched_relational_features = relational_feature[
+            labels == 1 & jet_mask
+        ].flatten()
+        unmatched_relational_features = relational_feature[
+            (labels == 0) & jet_mask
+        ].flatten()
+
         fig, ax = plt.subplots(figsize=(10, 6))
         _, bins = np.histogram(
-            matched_relational_features + unmatched_relational_features, **kwargs
+            np.concatenate((matched_relational_features, unmatched_relational_features)), **kwargs
         )
         ax.hist(
             matched_relational_features,
             bins=bins,
             alpha=0.7,
-            label="Matched",
+            label="Correct $b$-jet",
             color="tab:blue",
             density=True,
         )
@@ -197,7 +190,7 @@ class DataPlotter:
             unmatched_relational_features,
             bins=bins,
             alpha=0.7,
-            label="Unmatched",
+            label="Other jets",
             color="tab:red",
             density=True,
         )

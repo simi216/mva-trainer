@@ -30,6 +30,8 @@ def collect_results(models_dir, model_type="Raw_Transformer_Assignment"):
 
     print(f"Looking for {model_type} models in {models_dir}...")
     for model_dir in model_dirs:
+        if "HLF" in model_dir and "HLF" not in model_type:
+            continue  # Skip HLF models if not specified
         model_name = os.path.basename(model_dir)
         hyperparams = parse_model_name(model_name)
         print(f"Processing model: {model_name}")
@@ -37,7 +39,7 @@ def collect_results(models_dir, model_type="Raw_Transformer_Assignment"):
             continue
 
         # Load training history
-        history_file = os.path.join(model_dir, f"{model_name}_history.npz")
+        history_file = os.path.join(model_dir, f"history.npz")
 
         if not os.path.exists(history_file):
             print(f"Warning: History file not found for {model_name}")
@@ -62,8 +64,8 @@ def collect_results(models_dir, model_type="Raw_Transformer_Assignment"):
             if "val_assignment_accuracy" in history:
                 val_acc = history["val_assignment_accuracy"]
                 best_val_acc = val_acc[best_epoch]
-            elif "val_acc" in history:
-                val_acc = history["val_acc"]
+            elif "val_accuracy" in history:
+                val_acc = history["val_accuracy"]
                 best_val_acc = val_acc[best_epoch]
             else:
                 best_val_acc = None

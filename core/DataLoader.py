@@ -743,6 +743,12 @@ class DataPreprocessor:
         """
         loaded = np.load(npz_path)
 
+        if max_events is not None:
+            loaded_array = {}
+            for key in loaded.files:
+                loaded_array[key] = loaded[key][:max_events]
+            loaded = loaded_array
+
         if loaded is None:
             raise ValueError(f"Could not read file {npz_path}")
 
@@ -827,10 +833,6 @@ class DataPreprocessor:
                 self.feature_data[key] = self.feature_data[key][reco_mask]
 
         self.feature_data["assignment_labels"] = assignment_labels
-
-        if max_events is not None:
-            for key in self.feature_data:
-                self.feature_data[key] = self.feature_data[key][:max_events]
 
         self.data_length = len(self.feature_data["assignment_labels"])
 

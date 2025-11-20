@@ -150,9 +150,8 @@ def main():
     # Load and preprocess data
     print("Loading data...")
     DataProcessor = DataPreprocessor(load_config)
-    config = DataProcessor.load_data(
-        data_config_yaml["data_path"][args.data_type],
-        "reco",
+    config = DataProcessor.load_from_npz(
+        data_config_yaml["npz_datapath"][args.data_type],
         max_events=args.max_events,
     )
 
@@ -230,8 +229,8 @@ def main():
     )
 
     # Save model
-    model_path = os.path.join(MODEL_DIR, f"{MODEL_NAME}.keras")
-    onnx_path = os.path.join(MODEL_DIR, f"{MODEL_NAME}.onnx")
+    model_path = os.path.join(MODEL_DIR, f"model.keras")
+    onnx_path = os.path.join(MODEL_DIR, f"model.onnx")
 
     print(f"Saving model to {model_path}...")
     Model.save_model(model_path)
@@ -257,12 +256,12 @@ def main():
     print(f"Confusion matrix saved to {confusion_matrix_path}")
 
     # Save training history and model info
-    history_path = os.path.join(MODEL_DIR, f"{MODEL_NAME}_history.npz")
+    history_path = os.path.join(MODEL_DIR, f"history.npz")
     np.savez(history_path, trainable_params=trainable_params, **history.history)
     print(f"Training history saved to {history_path}")
 
     # Save model configuration summary
-    CONFIG_PATH = os.path.join(MODEL_DIR, f"{MODEL_NAME}_config.txt")
+    CONFIG_PATH = os.path.join(MODEL_DIR, f"config.txt")
     with open(CONFIG_PATH, "w") as f:
         f.write(f"Model Configuration:\n")
         f.write(f"==================\n")

@@ -10,6 +10,7 @@ from .evaluator_base import (
     BinningUtility,
     FeatureExtractor,
     AccuracyCalculator,
+    SelectionAccuracyCalculator,
     NeutrinoDeviationCalculator,
 )
 from .plotting_utils import (
@@ -18,6 +19,7 @@ from .plotting_utils import (
     ComplementarityPlotter,
     ResolutionPlotter,
     NeutrinoDeviationPlotter,
+    SelectionAccuracyPlotter
 )
 from .physics_calculations import TopReconstructor, ResolutionCalculator
 
@@ -195,6 +197,21 @@ class ReconstructionEvaluator:
             predictions,
             per_event=per_event,
         )
+    
+    def evaluate_selection_accuracy(
+        self,
+        reconstructor_index: int,
+        per_event: bool = False,
+    ) -> Union[float, np.ndarray]:
+        """Evaluate selection accuracy for a specific reconstructor."""
+        predictions = self.prediction_manager.get_assignment_predictions(
+            reconstructor_index
+        )
+        return SelectionAccuracyCalculator.compute_selection_accuracy(
+            self.y_test["assignment_labels"],
+            predictions,
+            per_event=per_event,
+        )
 
     def _bootstrap_accuracy(
         self,
@@ -208,10 +225,23 @@ class ReconstructionEvaluator:
             n_bootstrap=config.n_bootstrap,
             confidence=config.confidence,
         )
+    
+    def _bootstrap_selection_accuracy(
+        self,
+        reconstructor_index: int,
+        config: PlotConfig,
+    ) -> Tuple[float, float, float]:
+        """Compute selection accuracy with bootstrap confidence intervals."""
+        accuracy_data = self.evaluate_selection_accuracy(reconstructor_index, per_event=True)
+        return BootstrapCalculator.compute_bootstrap_ci(
+            accuracy_data,
+            n_bootstrap=config.n_bootstrap,
+            confidence=config.confidence,
+        )
 
     def plot_all_accuracies(
         self,
-        n_bootstrap: int = 1000,
+        n_bootstrap: int = 100,
         confidence: float = 0.95,
         figsize: Tuple[int, int] = (10, 6),
     ):
@@ -239,6 +269,40 @@ class ReconstructionEvaluator:
             names.append(reconstructor.get_name())
 
         return AccuracyPlotter.plot_overall_accuracies(names, accuracies, config)
+    
+
+    def plot_all_selection_accuracies(
+        self,
+        n_bootstrap: int = 100,
+        confidence: float = 0.95,
+        figsize: Tuple[int, int] = (10, 6),
+    ):
+        """Plot accuracies for all reconstructors with error bars."""
+        config = PlotConfig(
+            figsize=figsize,
+            confidence=confidence,
+            n_bootstrap=n_bootstrap,
+        )
+
+        print("\nComputing bootstrap confidence intervals...")
+        selection_accuracies = []
+
+        names = []
+        for i, reconstructor in enumerate(self.reconstructors):
+            if isinstance(reconstructor, GroundTruthReconstructor):
+                print(f"{reconstructor.get_name()}: Ground Truth (skipping)")
+                continue
+            mean_acc, lower, upper = self._bootstrap_selection_accuracy(i, config)
+            selection_accuracies.append((mean_acc, lower, upper))
+            print(
+                f"{reconstructor.get_name()}: {mean_acc:.4f} "
+                f"[{lower:.4f}, {upper:.4f}]"
+            )
+            names.append(reconstructor.get_name())
+
+        return SelectionAccuracyPlotter.plot_selection_accuracies(names, selection_accuracies, config)
+
+
 
     # ==================== Neutrino Deviation Methods ====================
 
@@ -306,7 +370,7 @@ class ReconstructionEvaluator:
 
     def plot_all_neutrino_deviations(
         self,
-        n_bootstrap: int = 1000,
+        n_bootstrap: int = 100,
         confidence: float = 0.95,
         figsize: Tuple[int, int] = (10, 6),
         deviation_type: str = "relative",
@@ -381,7 +445,7 @@ class ReconstructionEvaluator:
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 1000,
+        n_bootstrap: int = 100,
         confidence: float = 0.95,
         show_errorbar: bool = True,
         show_combinatoric: bool = True,
@@ -412,7 +476,7 @@ class ReconstructionEvaluator:
         # Compute combinatoric baseline if requested
         combinatoric_accuracy = None
         if show_combinatoric:
-            combinatoric_per_event = AccuracyCalculator.compute_combinatoric_baseline(
+            combinatoric_per_event = SelectionAccuracyCalculator.compute_combinatoric_baseline(
                 self.X_test, self.config.padding_value
             )
             combinatoric_accuracy = BinningUtility.compute_weighted_binned_statistic(
@@ -452,6 +516,95 @@ class ReconstructionEvaluator:
         feature_label = fancy_feature_label or feature_name
 
         return AccuracyPlotter.plot_binned_accuracy(
+            bin_centers,
+            binned_accuracies,
+            names,
+            bin_counts,
+            bin_edges,
+            feature_label,
+            config,
+            show_combinatoric,
+            combinatoric_accuracy,
+        )
+    
+    def plot_binned_selection_accuracy(
+        self,
+        feature_data_type: str,
+        feature_name: str,
+        fancy_feature_label: Optional[str] = None,
+        bins: int = 20,
+        xlims: Optional[Tuple[float, float]] = None,
+        n_bootstrap: int = 100,
+        confidence: float = 0.95,
+        show_errorbar: bool = True,
+        show_combinatoric: bool = True,
+    ):
+        """Plot binned accuracy vs. a feature with bootstrap error bars."""
+        config = PlotConfig(
+            confidence=confidence,
+            n_bootstrap=n_bootstrap,
+            show_errorbar=show_errorbar,
+        )
+
+        # Extract feature data
+        feature_data = FeatureExtractor.extract_feature(
+            self.X_test,
+            self.config.feature_indices,
+            feature_data_type,
+            feature_name,
+        )
+
+        # Create bins
+        bin_edges = BinningUtility.create_bins(feature_data, bins, xlims)
+        binning_mask = BinningUtility.create_binning_mask(feature_data, bin_edges)
+        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
+
+        # Get event weights
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+
+        # Compute combinatoric baseline if requested
+        combinatoric_accuracy = None
+        if show_combinatoric:
+            combinatoric_per_event = SelectionAccuracyPlotter.compute_combinatoric_baseline(
+                self.X_test, self.config.padding_value
+            )
+            combinatoric_accuracy = BinningUtility.compute_weighted_binned_statistic(
+                binning_mask, combinatoric_per_event, event_weights
+            )
+
+        # Compute binned accuracies for each reconstructor
+        print(f"\nComputing binned accuracy for {feature_name}...")
+        binned_accuracies = []
+        names = []
+        for i, reconstructor in enumerate(self.reconstructors):
+            if isinstance(reconstructor, GroundTruthReconstructor):
+                continue
+            accuracy_data = self.evaluate_accuracy(i, per_event=True)
+
+            if show_errorbar:
+                mean_acc, lower, upper = BootstrapCalculator.compute_binned_bootstrap(
+                    binning_mask,
+                    event_weights,
+                    accuracy_data,
+                    config.n_bootstrap,
+                    config.confidence,
+                )
+                binned_accuracies.append((mean_acc, lower, upper))
+            else:
+                binned_acc = BinningUtility.compute_weighted_binned_statistic(
+                    binning_mask, accuracy_data, event_weights
+                )
+                binned_accuracies.append((binned_acc, binned_acc, binned_acc))
+            names.append(reconstructor.get_name())
+        # Compute bin counts
+        bin_counts = np.sum(
+            event_weights.reshape(1, -1) * binning_mask, axis=1
+        ) / np.sum(event_weights)
+
+        # Plot
+        feature_label = fancy_feature_label or feature_name
+
+        return SelectionAccuracyPlotter.plot_binned_accuracy(
             bin_centers,
             binned_accuracies,
             names,
@@ -596,7 +749,7 @@ class ReconstructionEvaluator:
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 1000,
+        n_bootstrap: int = 100,
         confidence: float = 0.95,
         show_errorbar: bool = True,
         deviation_type: str = "relative",
@@ -886,7 +1039,7 @@ class ReconstructionEvaluator:
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 1000,
+        n_bootstrap: int = 100,
         confidence: float = 0.95,
         show_errorbar: bool = True,
     ):
@@ -970,7 +1123,7 @@ class ReconstructionEvaluator:
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 1000,
+        n_bootstrap: int = 100,
         confidence: float = 0.95,
         show_errorbar: bool = True,
     ):
@@ -1058,7 +1211,7 @@ class ReconstructionEvaluator:
             bin_counts,
             bin_edges,
             feature_label,
-            r"Relative $m(t)$ Deviation",
+            r"Relative $m(t)$ Resolution",
             config,
         )
 
@@ -1070,7 +1223,7 @@ class ReconstructionEvaluator:
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 1000,
+        n_bootstrap: int = 100,
         confidence: float = 0.95,
         show_errorbar: bool = True,
     ):
@@ -1142,7 +1295,193 @@ class ReconstructionEvaluator:
             bin_counts,
             bin_edges,
             feature_label,
-            r"Relative $m(t\overline{t})$ Deviation",
+            r"Relative $m(t\overline{t})$ Resolution",
+            config,
+        )
+
+    def plot_binned_top_mass_deviation(
+        self,
+        feature_data_type: str,
+        feature_name: str,
+        true_top_mass_labels: List[str] = ["truth_top_mass", "truth_tbar_mass"],
+        fancy_feature_label: Optional[str] = None,
+        bins: int = 20,
+        xlims: Optional[Tuple[float, float]] = None,
+        n_bootstrap: int = 100,
+        confidence: float = 0.95,
+        show_errorbar: bool = True,
+    ):
+        """Plot binned top mass deviation (mean) vs. a feature."""
+        config = PlotConfig(
+            confidence=confidence,
+            n_bootstrap=n_bootstrap,
+            show_errorbar=show_errorbar,
+        )
+
+        # Validate and extract true top masses
+        true_top1_mass, true_top2_mass = self._extract_true_top_masses(
+            true_top_mass_labels
+        )
+
+        # Extract feature data and create bins
+        feature_data = FeatureExtractor.extract_feature(
+            self.X_test,
+            self.config.feature_indices,
+            feature_data_type,
+            feature_name,
+        )
+
+        bin_edges = BinningUtility.create_bins(feature_data, bins, xlims)
+        binning_mask = BinningUtility.create_binning_mask(feature_data, bin_edges)
+        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+
+        # Compute deviations for each reconstructor
+        print(f"\nComputing binned top mass deviation for {feature_name}...")
+        binned_deviations = []
+
+        for i, reconstructor in enumerate(self.reconstructors):
+            # Compute top masses
+            top1_p4, top2_p4 = self._compute_top_lorentz_vectors(i)
+            top1_mass, top2_mass = TopReconstructor.compute_top_masses(top1_p4, top2_p4)
+
+            # Compute deviations (extended for both tops)
+            mass_deviation = np.concatenate(
+                [
+                    ResolutionCalculator.compute_signed_relative_deviation(
+                        top1_mass, true_top1_mass
+                    ),
+                    ResolutionCalculator.compute_signed_relative_deviation(
+                        top2_mass, true_top2_mass
+                    ),
+                ]
+            )
+
+            # Extend binning mask and weights
+            binning_mask_extended = np.concatenate([binning_mask, binning_mask], axis=1)
+            event_weights_extended = np.concatenate([event_weights, event_weights])
+
+            if show_errorbar:
+                mean_dev, lower, upper = BootstrapCalculator.compute_binned_bootstrap(
+                    binning_mask_extended,
+                    event_weights_extended,
+                    mass_deviation,
+                    config.n_bootstrap,
+                    config.confidence,
+                    statistic="mean",
+                )
+                binned_deviations.append((mean_dev, lower, upper))
+            else:
+                deviation = BinningUtility.compute_weighted_binned_statistic(
+                    binning_mask_extended,
+                    mass_deviation,
+                    event_weights_extended,
+                    statistic="mean",
+                )
+                binned_deviations.append((deviation, deviation, deviation))
+
+        # Compute bin counts
+        bin_counts = np.sum(
+            event_weights.reshape(1, -1) * binning_mask, axis=1
+        ) / np.sum(event_weights)
+
+        # Plot
+        feature_label = fancy_feature_label or feature_name
+        names = [r.get_name() for r in self.reconstructors]
+
+        return ResolutionPlotter.plot_binned_resolution(
+            bin_centers,
+            binned_deviations,
+            names,
+            bin_counts,
+            bin_edges,
+            feature_label,
+            r"Mean Relative $m(t)$ Deviation",
+            config,
+        )
+
+    def plot_binned_ttbar_mass_deviation(
+        self,
+        feature_data_type: str,
+        feature_name: str,
+        true_ttbar_mass_label: List[str] = ["truth_ttbar_mass"],
+        fancy_feature_label: Optional[str] = None,
+        bins: int = 20,
+        xlims: Optional[Tuple[float, float]] = None,
+        n_bootstrap: int = 100,
+        confidence: float = 0.95,
+        show_errorbar: bool = True,
+    ):
+        """Plot binned ttbar mass deviation (mean) vs. a feature."""
+        config = PlotConfig(
+            confidence=confidence,
+            n_bootstrap=n_bootstrap,
+            show_errorbar=show_errorbar,
+        )
+
+        # Validate and extract true ttbar mass
+        true_ttbar_mass = self._extract_true_ttbar_mass(true_ttbar_mass_label)
+
+        # Extract feature data and create bins
+        feature_data = FeatureExtractor.extract_feature(
+            self.X_test,
+            self.config.feature_indices,
+            feature_data_type,
+            feature_name,
+        )
+
+        bin_edges = BinningUtility.create_bins(feature_data, bins, xlims)
+        binning_mask = BinningUtility.create_binning_mask(feature_data, bin_edges)
+        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+
+        # Compute deviations for each reconstructor
+        print(f"\nComputing binned ttbar mass deviation for {feature_name}...")
+        binned_deviations = []
+
+        for i, reconstructor in enumerate(self.reconstructors):
+            # Compute ttbar mass
+            top1_p4, top2_p4 = self._compute_top_lorentz_vectors(i)
+            ttbar_mass = TopReconstructor.compute_ttbar_mass(top1_p4, top2_p4)
+
+            # Compute deviation
+            mass_deviation = ResolutionCalculator.compute_signed_relative_deviation(
+                ttbar_mass, true_ttbar_mass
+            )
+
+            if show_errorbar:
+                mean_dev, lower, upper = BootstrapCalculator.compute_binned_bootstrap(
+                    binning_mask,
+                    event_weights,
+                    mass_deviation,
+                    config.n_bootstrap,
+                    config.confidence,
+                    statistic="mean",
+                )
+                binned_deviations.append((mean_dev, lower, upper))
+            else:
+                deviation = BinningUtility.compute_weighted_binned_statistic(
+                    binning_mask, mass_deviation, event_weights, statistic="mean"
+                )
+                binned_deviations.append((deviation, deviation, deviation))
+
+        # Compute bin counts
+        bin_counts = np.sum(
+            event_weights.reshape(1, -1) * binning_mask, axis=1
+        ) / np.sum(event_weights)
+
+        # Plot
+        feature_label = fancy_feature_label or feature_name
+        names = [r.get_name() for r in self.reconstructors]
+
+        return ResolutionPlotter.plot_binned_resolution(
+            bin_centers,
+            binned_deviations,
+            names,
+            bin_counts,
+            bin_edges,
+            feature_label,
+            r"Mean Relative $m(t\overline{t})$ Deviation",
             config,
         )
 

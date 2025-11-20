@@ -9,14 +9,12 @@ from core.components import (
     MLP,
     TemporalSoftmax,
     PoolingAttentionBlock,
-    TransposeLayer,
 )
 
 
 class FeatureConcatTransformer(MLReconstructorBase):
     def __init__(self, config, name="FeatureConcatTransformer"):
-        super().__init__(config, name=name)
-        self.perform_regression = True
+        super().__init__(config, name=name, perform_regression=True, use_nu_flows=False)
 
     def build_model(
         self,
@@ -97,9 +95,6 @@ class FeatureConcatTransformer(MLReconstructorBase):
         )(
             jets_transformed,
             mask=jet_mask,
-            attention_mask=TransposeLayer(perm=(0, 2, 1), name="assignment_transpose")(
-                jet_assignment_probs
-            ),
         )
         # MET Residual Connection
         neutrino_residual = keras.layers.RepeatVector(
@@ -125,19 +120,16 @@ class FeatureConcatTransformer(MLReconstructorBase):
 
         neutrino_momentum_outputs = MLP(
             self.config.get_n_regression_targets(),
-            num_layers=3,
+            num_layers=4,
             activation=None,
-            name="regression_unscaled",
+            dropout_rate=dropout_rate,
+            name="regression",
         )(neutrino_self_attention)
-
-        scaled_neutrino_momentum_outputs = keras.layers.Rescaling(
-            1e3, name="regression"
-        )(neutrino_momentum_outputs)
 
         # Build the final model
         self._build_model_base(
             jet_assignment_probs,
-            scaled_neutrino_momentum_outputs,
+            neutrino_momentum_outputs,
             name="FeatureConcatTransformerModel",
         )
 
@@ -226,9 +218,6 @@ class SimpleNeutrinoRegessor(MLReconstructorBase):
         )(
             jets_transformed,
             mask=jet_mask,
-            attention_mask=TransposeLayer(perm=(0, 2, 1), name="assignment_transpose")(
-                jet_assignment_probs
-            ),
         )
         # MET Residual Connection
         neutrino_residual = keras.layers.RepeatVector(
@@ -245,20 +234,30 @@ class SimpleNeutrinoRegessor(MLReconstructorBase):
         neutrino_momentum_flat = keras.layers.Flatten()(neutrino_momentum_head)
 
         neutrino_momentum_outputs_flat = MLP(
+            2 * hidden_dim,
+            num_layers=neutrino_regression_layers,
+            activation=None,
+            dropout_rate=dropout_rate,
+            name="regression_intermediate",
+        )(neutrino_momentum_flat)
+
+        neutrino_momentum_outputs_flat = MLP(
             self.config.NUM_LEPTONS * self.config.get_n_regression_targets(),
             num_layers=neutrino_regression_layers,
             activation=None,
-            name="regression_unscaled",
-        )(neutrino_momentum_flat)
+            dropout_rate=dropout_rate,
+            name="regression_final",
+        )(neutrino_momentum_outputs_flat)
 
         neutrino_momentum_outputs = keras.layers.Reshape(
             (self.config.NUM_LEPTONS, self.config.get_n_regression_targets()),
-            name="regression_reshape",
+            name="regression_unscaled_reshaped",
         )(neutrino_momentum_outputs_flat)
 
         scaled_neutrino_momentum_outputs = keras.layers.Rescaling(
-            1e3, name="regression"
+            1e6, name="regression"
         )(neutrino_momentum_outputs)
+
 
         # Build the final model
         self._build_model_base(

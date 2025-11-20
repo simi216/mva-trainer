@@ -63,6 +63,7 @@ class BootstrapCalculator:
         data: np.ndarray,
         n_bootstrap: int = 1000,
         confidence: float = 0.95,
+        statistic: str = "mean",
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Compute binned statistics with bootstrap confidence intervals.
@@ -73,6 +74,7 @@ class BootstrapCalculator:
             data: Data to bin (n_events,)
             n_bootstrap: Number of bootstrap samples
             confidence: Confidence level for intervals
+            statistic: Type of statistic ('mean', 'std', 'sum')
 
         Returns:
             Tuple of (mean_values, lower_bounds, upper_bounds) arrays
@@ -88,7 +90,7 @@ class BootstrapCalculator:
             bootstrap_mask = binning_mask[:, indices]
 
             binned_values = BinningUtility.compute_weighted_binned_statistic(
-                bootstrap_mask, bootstrap_data, bootstrap_weights
+                bootstrap_mask, bootstrap_data, bootstrap_weights, statistic=statistic
             )
             bootstrap_binned_values[i] = binned_values
 
@@ -286,9 +288,55 @@ class AccuracyCalculator:
         num_jets = np.all(X_test["jet"] != padding_value, axis=-1).sum(axis=-1)
         return 1 / (num_jets * (num_jets - 1))
 
+class SelectionAccuracyCalculator:
+    """Utilities for computing selection accuracy metrics."""
+
+
+    @staticmethod
+    def compute_combinatoric_baseline(
+        X_test: dict,
+        padding_value: float,
+        n_leptons: int = 2,
+    ) -> np.ndarray:
+        """Compute random assignment baseline accuracy."""
+        num_jets = np.all(X_test["jet"] != padding_value, axis=-1).sum(axis=-1)
+        return 2 / (num_jets * (num_jets - 1))
+
+    @staticmethod
+    def compute_selection_accuracy(
+        true_labels: np.ndarray,
+        predictions: np.ndarray,
+        per_event: bool = True,
+    ) -> np.ndarray:
+        """
+        Compute the accuracy of the selected jets.
+
+        Args:
+            true_labels: True assignment labels
+            predictions: Model predictions
+            per_event: If True, return per-event accuracy; else overall
+
+        Returns:
+            Accuracy value(s)
+        """
+        true_indices = np.argmax(true_labels, axis=-2)
+        predicted_indices = np.argmax(predictions, axis=-2)
+        correct_selections = np.all(predicted_indices == true_indices, axis=-1) | np.all(predicted_indices[:, ::-1] == true_indices, axis=-1)
+        if per_event:
+            return correct_selections.astype(float)
+        return np.mean(correct_selections)
 
 class NeutrinoDeviationCalculator:
     """Utilities for computing neutrino reconstruction deviation metrics."""
+
+    def compute_combinatoric_baseline(
+        X_test: dict,
+        padding_value: float,
+        n_leptons: int = 2,
+    ) -> np.ndarray:
+        """Compute random assignment baseline accuracy."""
+        num_jets = np.all(X_test["jet"] != padding_value, axis=-1).sum(axis=-1)
+        return 2 / (num_jets * (num_jets - 1))
 
     @staticmethod
     def compute_relative_deviation(

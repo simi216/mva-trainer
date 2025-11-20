@@ -54,10 +54,6 @@ class AssignmentLoss(keras.losses.Loss):
         return config
 
 
-import tensorflow as tf
-from tensorflow import keras
-
-
 @keras.utils.register_keras_serializable()
 class RegressionLoss(keras.losses.Loss):
     def __init__(
@@ -82,9 +78,7 @@ class RegressionLoss(keras.losses.Loss):
         y_true = tf.cast(y_true, tf.float32)
         y_pred = tf.cast(y_pred, tf.float32)
 
-        # denom = max(alpha, |y_true|) per-component
-        denom = tf.maximum(tf.abs(y_true), self.alpha)
-        rel = (y_true - y_pred) / denom  # relative error per component
+        rel = y_true - y_pred
         sq = tf.square(rel)  # (batch, n_items, n_vars)
 
         # apply per-variable weights if given
@@ -115,3 +109,76 @@ class RegressionLoss(keras.losses.Loss):
             }
         )
         return config
+
+
+@keras.utils.register_keras_serializable()
+class MagnitudeDirectionLoss(keras.losses.Loss):
+    """
+    Loss for two neutrino 3-momenta:
+    y_true, y_pred have shape (batch, 2, 3)
+
+    L = w_r * relative magnitude loss + w_theta * angular loss
+    """
+
+    def __init__(
+        self,
+        alpha=1.0,  # stabilizer for relative magnitude
+        w_mag=1.0,  # weight for magnitude term
+        w_dir=1.0,  # weight for direction term
+        name="magdir_loss",
+        **kwargs,
+    ):
+        super().__init__(name=name, **kwargs)
+        self.alpha = float(alpha)
+        self.w_mag = float(w_mag)
+        self.w_dir = float(w_dir)
+
+    def call(self, y_true, y_pred, sample_weight=None):
+
+        y_true = tf.cast(y_true, tf.float32)  # (B,2,3)
+        y_pred = tf.cast(y_pred, tf.float32)  # (B,2,3)
+
+        eps = 1e-8
+
+        # --- magnitudes ---
+        r_true = tf.norm(y_true, axis=-1)  # (B,2)
+        r_pred = tf.norm(y_pred, axis=-1)  # (B,2)
+
+        mag_diff = r_true - r_pred
+        mag_loss = tf.square(mag_diff) / (tf.square(r_true) + self.alpha**2 + eps)
+
+        # --- directions ---
+        # normalize
+        t_norm = y_true / (tf.expand_dims(r_true, -1) + eps)
+        p_norm = y_pred / (tf.expand_dims(r_pred, -1) + eps)
+
+        # cosine similarity
+        cos_theta = tf.reduce_sum(t_norm * p_norm, axis=-1)  # (B,2)
+        cos_theta = tf.clip_by_value(cos_theta, -1.0, 1.0)
+
+        # angular loss (0 if same direction)
+        dir_loss = 1.0 - cos_theta
+
+        # --- combine ---
+        per_item = self.w_mag * mag_loss + self.w_dir * dir_loss  # (B,2)
+
+        # mean over the two neutrinos
+        per_sample = tf.reduce_mean(per_item, axis=1)  # (B,)
+
+        # optional sample weights
+        if sample_weight is not None:
+            sample_weight = tf.cast(sample_weight, per_sample.dtype)
+            per_sample *= tf.reshape(sample_weight, [-1])
+
+        return per_sample
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update(
+            {
+                "alpha": self.alpha,
+                "w_mag": self.w_mag,
+                "w_dir": self.w_dir,
+            }
+        )
+        return cfg

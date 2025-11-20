@@ -79,6 +79,7 @@ class AccuracyPlotter:
         """Plot binned accuracy vs. a feature."""
         fig, ax = plt.subplots(figsize=config.figsize)
         color_map = plt.get_cmap("tab10")
+        fmt_map = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '8']
 
         # Plot combinatoric baseline if requested
         if show_combinatoric and combinatoric_accuracy is not None:
@@ -101,7 +102,7 @@ class AccuracyPlotter:
                     bin_centers,
                     mean_acc,
                     yerr=[errors_lower, errors_upper],
-                    fmt="x",
+                    fmt = fmt_map[index % len(fmt_map)],
                     label=name,
                     color=color_map(index),
                     linestyle="None",
@@ -183,6 +184,115 @@ class AccuracyPlotter:
         ax.set_ylabel("a. u.")
         ax.legend(loc="best")
         ax.grid(alpha=0.3)
+
+        fig.tight_layout()
+        return fig, ax
+    
+class SelectionAccuracyPlotter:
+    """Handles plotting of selection accuracy metrics."""
+
+    @staticmethod
+    def plot_selection_accuracies(
+        reconstructor_names: List[str],
+        accuracies: List[Tuple[float, float, float]],
+        config: PlotConfig,
+    ):
+        """
+        Plot selection accuracies with error bars.
+
+        Args:
+            reconstructor_names: List of reconstructor names
+            accuracies: List of (mean, lower, upper) tuples
+            config: Plot configuration
+
+        Returns:
+            Tuple of (figure, axis)
+        """
+        names = reconstructor_names
+        means = [acc[0] for acc in accuracies]
+        lowers = [acc[1] for acc in accuracies]
+        uppers = [acc[2] for acc in accuracies]
+
+        errors_lower = [(mean - lower) for mean, lower in zip(means, lowers)]
+        errors_upper = [(upper - mean) for mean, upper in zip(means, uppers)]
+
+        fig, ax = plt.subplots(figsize=config.figsize)
+        x_pos = np.arange(len(names))
+
+        ax.bar(
+            x_pos,
+            means,
+            yerr=[errors_lower, errors_upper],
+            capsize=5,
+            alpha=0.7,
+            ecolor="black",
+        )
+        ax.set_xticks(x_pos)
+        ax.set_xticklabels(names, rotation=45, ha="right")
+        ax.set_ylabel("Selection Accuracy")
+        ax.set_title(
+            f"Selection Accuracy of Jet Reconstructors ({config.confidence*100:.0f}% CI)"
+        )
+        ax.set_ylim(0, 1)
+        ax.grid(axis="y", alpha=config.alpha)
+        fig.tight_layout()
+
+        return fig, ax
+    
+    def plot_binned_selection_accuracy(
+        bin_centers: np.ndarray,
+        binned_accuracies: List[Tuple[np.ndarray, np.ndarray, np.ndarray]],
+        reconstructor_names: List[str],
+        bin_counts: np.ndarray,
+        bins: np.ndarray,
+        feature_label: str,
+        config: PlotConfig,
+    ):
+        """Plot binned selection accuracy vs. a feature."""
+        fig, ax = plt.subplots(figsize=config.figsize)
+        color_map = plt.get_cmap("tab10")
+        fmt_map = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '8']
+
+        # Plot each reconstructor
+        for index, (name, (mean_acc, lower, upper)) in enumerate(
+            zip(reconstructor_names, binned_accuracies)
+        ):
+            if config.show_errorbar:
+                errors_lower = mean_acc - lower
+                errors_upper = upper - mean_acc
+                ax.errorbar(
+                    bin_centers,
+                    mean_acc,
+                    yerr=[errors_lower, errors_upper],
+                    fmt = fmt_map[index % len(fmt_map)],
+                    label=name,
+                    color=color_map(index),
+                    linestyle="None",
+                )
+            else:
+                ax.plot(
+                    bin_centers,
+                    mean_acc,
+                    label=name,
+                    color=color_map(index),
+                )
+
+        # Configure main axes
+        ax.set_xlabel(feature_label)
+        ax.set_ylabel("Selection Accuracy")
+        ax.set_ylim(0, 1)
+        ax.set_xlim(bins[0], bins[-1])
+        ax.grid(alpha=config.alpha)
+        ax.legend(loc="best")
+
+        # Add event count histogram
+        AccuracyPlotter._add_count_histogram(ax, bin_centers, bin_counts, bins)
+
+        # Set title
+        title = f"Selection Accuracy per Bin vs {feature_label}"
+        if config.show_errorbar:
+            title += f" ({config.confidence*100:.0f}% CI)"
+        ax.set_title(title)
 
         fig.tight_layout()
         return fig, ax
@@ -399,7 +509,6 @@ class ResolutionPlotter:
         # Configure axes
         ax.set_xlabel(feature_label)
         ax.set_ylabel(resolution_label)
-        ax.set_ylim(0, None)
         ax.set_xlim(bins[0], bins[-1])
         ax.grid(alpha=config.alpha)
         ax.legend(loc="best")

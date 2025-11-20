@@ -105,6 +105,14 @@ class ResolutionCalculator:
         return np.abs(predicted_mass - true_mass) / true_mass
 
     @staticmethod
+    def compute_signed_relative_deviation(
+        predicted_mass: np.ndarray,
+        true_mass: np.ndarray,
+    ) -> np.ndarray:
+        """Compute signed relative mass deviation."""
+        return (predicted_mass - true_mass) / true_mass
+
+    @staticmethod
     def compute_resolution(
         deviations: np.ndarray,
         weights: Optional[np.ndarray] = None,

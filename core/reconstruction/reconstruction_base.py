@@ -32,30 +32,30 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
                 "WARNING: perform_regression is set to True, but use_nu_flows, is also True. Setting use_nu_flows False to make us of neutrino regression implementation."
             )
 
-
         self.perform_regression = perform_regression
         self.use_nu_flows = use_nu_flows
-
 
     @abstractmethod
     def predict_indices(self, data_dict):
         pass
 
-    def reconstruct_neutrinos(self, data_dict : dict[str : np.ndarray]):
+    def reconstruct_neutrinos(self, data_dict: dict[str : np.ndarray]):
         if self.perform_regression:
             raise NotImplementedError(
                 "This method should be implemented in subclasses that perform regression."
             )
-        if self.use_nu_flows and "nu_flows_regression_targets" in data_dict.keys():
-            return data_dict["nu_flows_regression_targets"]
-        elif "regression_targets" in data_dict.keys():
-            print("WARNING: 'nu_flows_regression_targets' not found in data_dict. Returning 'regression_targets' instead.")
-            return data_dict["regression_targets"]
-        else:
-            print(f"data_dict keys: {list(data_dict.keys())}")
-            raise ValueError(
-                "No regression targets found in data_dict for neutrino reconstruction."
+        if self.use_nu_flows:
+            if "nu_flows_regression_targets" in data_dict:
+                return data_dict["nu_flows_regression_targets"]
+            print(
+                "WARNING: use_nu_flows is True but 'nu_flows_regression_targets' not found in data_dict. Falling back to 'regression_targets'."
             )
+        if "regression_targets" in data_dict:
+            return data_dict["regression_targets"]
+        print(f"data_dict keys: {list(data_dict.keys())}")
+        raise ValueError(
+            "No regression targets found in data_dict for neutrino reconstruction."
+        )
 
     def evaluate_accuracy(self, data_dict, true_labels, per_event=False):
         """
@@ -97,15 +97,19 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
 
 
 class GroundTruthReconstructor(EventReconstructorBase):
-    def __init__(self, config: DataConfig, name="ground_truth_reconstructor"):
-        super().__init__(config=config, name=name, perform_regression=True, use_nu_flows=False)
+    def __init__(
+        self, config: DataConfig, name="ground_truth_reconstructor", use_nu_flows=False
+    ):
+        super().__init__(
+            config=config, name=name, perform_regression=False, use_nu_flows=use_nu_flows
+        )
         self.config = config
 
     def predict_indices(self, data_dict):
         return data_dict["assignment_labels"]
 
     def reconstruct_neutrinos(self, data_dict):
-        return data_dict["regression_targets"]
+        return super().reconstruct_neutrinos(data_dict)
 
 
 class FixedPrecisionReconstructor(EventReconstructorBase):
@@ -133,8 +137,19 @@ class FixedPrecisionReconstructor(EventReconstructorBase):
 
 
 class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
-    def __init__(self, config: DataConfig, name="ml_assigner", perform_regression=False, use_nu_flows=True):
-        super().__init__(config=config, name=name, perform_regression=perform_regression, use_nu_flows=use_nu_flows)
+    def __init__(
+        self,
+        config: DataConfig,
+        name="ml_assigner",
+        perform_regression=False,
+        use_nu_flows=True,
+    ):
+        super().__init__(
+            config=config,
+            name=name,
+            perform_regression=perform_regression,
+            use_nu_flows=use_nu_flows,
+        )
 
     def _build_model_base(self, jet_assignment_probs, regression_output=None, **kwargs):
         jet_assignment_probs.name = "assignment"
@@ -168,17 +183,16 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
                     self.inputs["lep_inputs"],
                     self.inputs["met_inputs"],
                 ],
-                outputs=
-                    {"assignment": jet_assignment_probs},
+                outputs={"assignment": jet_assignment_probs},
                 **kwargs,
             )
 
-    def compile_model(self, loss, optimizer, metrics=None):
+    def compile_model(self, loss, optimizer, metrics=None, **kwargs):
         if self.model is None:
             raise ValueError(
                 "Model has not been built yet. Call build_model() before compile_model()."
             )
-        self.model.compile(loss=loss, optimizer=optimizer, metrics=metrics)
+        self.model.compile(loss=loss, optimizer=optimizer, metrics=metrics, **kwargs)
 
     def generate_one_hot_encoding(self, predictions, exclusive):
         """
@@ -278,7 +292,9 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
         if "regression" in self.model.output_names and self.perform_regression:
             if self.met_features is not None:
                 neutrino_prediction = self.model.predict_dict(
-                    [data["jet"], data["lepton"], data["met"]], verbose=0, batch_size=128
+                    [data["jet"], data["lepton"], data["met"]],
+                    verbose=0,
+                    batch_size=128,
                 )["regression"]
             else:
                 neutrino_prediction = self.model.predict_dict(
@@ -315,7 +331,9 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
         if self.perform_regression:
             if self.met_features is not None:
                 predictions = self.model.predict_dict(
-                    [data["jet"], data["lepton"], data["met"]], verbose=0, batch_size=128
+                    [data["jet"], data["lepton"], data["met"]],
+                    verbose=0,
+                    batch_size=128,
                 )
             else:
                 predictions = self.model.predict_dict(
