@@ -626,6 +626,17 @@ class DataPreprocessor:
 
         return X_train, y_train, X_test, y_test
 
+    def get_data(self):
+        X, Y = {}, {}
+        for key, data in self.feature_data.items():
+            if data is not None:
+                X[key] = data
+        Y = {
+            "assignment_labels": X["assignment_labels"],
+            "regression_targets": X.get("regression_targets", None),
+        }
+        return X, Y
+
     def create_k_folds(
         self, n_folds: int = 5, n_splits: int = 1, random_state: int = 42
     ) -> List[
@@ -834,8 +845,86 @@ class DataPreprocessor:
 
         self.feature_data["assignment_labels"] = assignment_labels
 
+        # Remove events with NaNs in NuFlows targets if present
+        if "nu_flows_regression_targets" in self.feature_data:
+            nu_flows_nan_mask = ~np.isnan(
+                self.feature_data["nu_flows_regression_targets"]
+            ).any(axis=(1, 2))
+            for key in self.feature_data:
+                if self.feature_data[key] is not None:
+                    self.feature_data[key] = self.feature_data[key][nu_flows_nan_mask]
+
         self.data_length = len(self.feature_data["assignment_labels"])
 
         # Create DataConfig for downstream use
         self.data_config = self.load_config.to_data_config()
         return self.data_config
+
+
+def combine_datasets(
+    data_list: List[DataPreprocessor],
+) -> DataPreprocessor:
+    """
+    Combine multiple DataPreprocessor instances into one.
+
+    Args:
+        data_list: List of DataPreprocessor instances to combine
+
+    Returns:
+        Combined DataPreprocessor instance
+    """
+    if not data_list:
+        raise ValueError("data_list must contain at least one DataPreprocessor")
+
+    combined = DataPreprocessor(data_list[0].load_config)
+
+    combined.feature_data = {}
+    for key in data_list[0].feature_data.keys():
+        combined.feature_data[key] = np.concatenate(
+            [dp.feature_data[key] for dp in data_list], axis=0
+        )
+
+    combined.data_length = sum(dp.data_length for dp in data_list)
+    combined.data_config = data_list[0].data_config
+
+    return combined
+
+def combine_train_datasets(
+    X: List[dict[str: np.ndarray]], y: List[dict[str: np.ndarray]], weights: Optional[List[float]] = None
+) -> dict[str: np.ndarray]:
+    """
+    Combine multiple training datasets into one.
+
+    Args:
+        X: List of feature dictionaries
+        y: List of label dictionaries
+    Returns:
+        Combined feature dictionary
+        combined_X = {}
+        combined_y = {}
+    """
+    combined_X = {}
+    combined_y = {}
+
+    for key in X[0].keys():
+        combined_X[key] = np.concatenate([x[key] for x in X], axis=0)
+
+    for key in y[0].keys():
+        combined_y[key] = np.concatenate([label[key] for label in y], axis=0)
+
+    if weights is not None:
+        # Apply weights to event weights if present
+        if "event_weight" in combined_X:
+            event_weights = []
+            for i, x in enumerate(X):
+                n_events = x["event_weight"].shape[0]
+                event_weights.append(x["event_weight"] / np.mean(x["event_weight"]) * weights[i])
+            combined_X["event_weight"] = np.concatenate(event_weights, axis=0)
+
+    permutation = np.random.permutation(combined_X[list(combined_X.keys())[0]].shape[0])
+    for key in combined_X.keys():
+        combined_X[key] = combined_X[key][permutation]
+    for key in combined_y.keys():
+        combined_y[key] = combined_y[key][permutation]
+
+    return combined_X, combined_y

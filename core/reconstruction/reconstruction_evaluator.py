@@ -476,7 +476,7 @@ class ReconstructionEvaluator:
         # Compute combinatoric baseline if requested
         combinatoric_accuracy = None
         if show_combinatoric:
-            combinatoric_per_event = SelectionAccuracyCalculator.compute_combinatoric_baseline(
+            combinatoric_per_event = AccuracyCalculator.compute_combinatoric_baseline(
                 self.X_test, self.config.padding_value
             )
             combinatoric_accuracy = BinningUtility.compute_weighted_binned_statistic(
@@ -565,7 +565,7 @@ class ReconstructionEvaluator:
         # Compute combinatoric baseline if requested
         combinatoric_accuracy = None
         if show_combinatoric:
-            combinatoric_per_event = SelectionAccuracyPlotter.compute_combinatoric_baseline(
+            combinatoric_per_event = SelectionAccuracyCalculator.compute_combinatoric_baseline(
                 self.X_test, self.config.padding_value
             )
             combinatoric_accuracy = BinningUtility.compute_weighted_binned_statistic(
@@ -579,7 +579,7 @@ class ReconstructionEvaluator:
         for i, reconstructor in enumerate(self.reconstructors):
             if isinstance(reconstructor, GroundTruthReconstructor):
                 continue
-            accuracy_data = self.evaluate_accuracy(i, per_event=True)
+            accuracy_data = self.evaluate_selection_accuracy(i, per_event=True)
 
             if show_errorbar:
                 mean_acc, lower, upper = BootstrapCalculator.compute_binned_bootstrap(
@@ -604,7 +604,7 @@ class ReconstructionEvaluator:
         # Plot
         feature_label = fancy_feature_label or feature_name
 
-        return SelectionAccuracyPlotter.plot_binned_accuracy(
+        return SelectionAccuracyPlotter.plot_binned_selection_accuracy(
             bin_centers,
             binned_accuracies,
             names,

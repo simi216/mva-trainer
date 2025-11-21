@@ -247,11 +247,23 @@ class SelectionAccuracyPlotter:
         bins: np.ndarray,
         feature_label: str,
         config: PlotConfig,
+        show_combinatoric: bool = True,
+        combinatoric_accuracy: Optional[np.ndarray] = None,
     ):
-        """Plot binned selection accuracy vs. a feature."""
+        """Plot binned accuracy vs. a feature."""
         fig, ax = plt.subplots(figsize=config.figsize)
         color_map = plt.get_cmap("tab10")
         fmt_map = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '8']
+
+        # Plot combinatoric baseline if requested
+        if show_combinatoric and combinatoric_accuracy is not None:
+            ax.plot(
+                bin_centers,
+                combinatoric_accuracy,
+                label="Random Selection",
+                color="black",
+                linestyle="--",
+            )
 
         # Plot each reconstructor
         for index, (name, (mean_acc, lower, upper)) in enumerate(
@@ -279,7 +291,7 @@ class SelectionAccuracyPlotter:
 
         # Configure main axes
         ax.set_xlabel(feature_label)
-        ax.set_ylabel("Selection Accuracy")
+        ax.set_ylabel("Jet Selection Accuracy")
         ax.set_ylim(0, 1)
         ax.set_xlim(bins[0], bins[-1])
         ax.grid(alpha=config.alpha)

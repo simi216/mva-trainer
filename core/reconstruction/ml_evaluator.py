@@ -253,13 +253,13 @@ class MLEvaluator:
             model_name = reconstructor.get_name()
 
             axes[1].plot(
-                history.history["assignment_accuracy"],
+                history.history["accuracy"],
                 label=f"{model_name} (Train)",
                 linestyle="-",
                 color=color_map(idx)
             )
             axes[1].plot(
-                history.history["val_assignment_accuracy"],
+                history.history["val_accuracy"],
                 label=f"{model_name} (Val)",
                 linestyle="--",
                 color=color_map(idx)
