@@ -1,6 +1,7 @@
 import keras
 import tensorflow as tf
 
+
 @keras.utils.register_keras_serializable()
 class InputPtEtaPhiELayer(keras.layers.Layer):
     """
@@ -8,14 +9,14 @@ class InputPtEtaPhiELayer(keras.layers.Layer):
     to (px, py, pz, E), while passing through residual features.
 
     A boolean mask can be passed to `call(inputs, mask=...)`
-    where True marks valid entries. Masked entries are zeroed 
+    where True marks valid entries. Masked entries are zeroed
     before computation to avoid numerical issues.
-    
+
     Expected input shape: (..., N_features) where the first 4 are
     (pt, eta, phi, E), followed by any residual features.
     """
 
-    def __init__(self,log_E,padding_value, **kwargs):
+    def __init__(self, log_E, padding_value, **kwargs):
         super().__init__(**kwargs)
         self.log_E = log_E
         self.padding_value = padding_value
@@ -42,7 +43,9 @@ class InputPtEtaPhiELayer(keras.layers.Layer):
             # No mask passed — process everything
             safe_pt, safe_eta, safe_phi, safe_energy = pt, eta, phi, energy
         if self.log_E:
-            safe_energy = tf.where(safe_energy > 0, safe_energy, tf.ones_like(safe_energy) * 1e-6)
+            safe_energy = tf.where(
+                safe_energy > 0, safe_energy, tf.ones_like(safe_energy) * 1e-6
+            )
             safe_energy = tf.math.log(safe_energy)
 
         # Compute Cartesian components
@@ -55,17 +58,22 @@ class InputPtEtaPhiELayer(keras.layers.Layer):
 
         # If mask exists, restore masked entries to 0 (or optionally NaN / -999)
         if mask is not None:
-            outputs = tf.where(mask, outputs, tf.ones_like(outputs) * self.padding_value)
+            outputs = tf.where(
+                mask, outputs, tf.ones_like(outputs) * self.padding_value
+            )
 
         return outputs
 
     def get_config(self):
         config = super().get_config()
-        config.update({
-            "log_E": self.log_E,
-            "padding_value": self.padding_value,
-        })
+        config.update(
+            {
+                "log_E": self.log_E,
+                "padding_value": self.padding_value,
+            }
+        )
         return config
+
 
 @keras.utils.register_keras_serializable()
 class InputMetPhiLayer(keras.layers.Layer):
@@ -79,8 +87,9 @@ class InputMetPhiLayer(keras.layers.Layer):
 
     def call(self, inputs):
         tf.debugging.assert_equal(
-            tf.shape(inputs)[-1], 2,
-            message="Input tensor must have exactly 2 features: (met, met_phi)"
+            tf.shape(inputs)[-1],
+            2,
+            message="Input tensor must have exactly 2 features: (met, met_phi)",
         )
 
         met = inputs[..., 0:1]
@@ -89,8 +98,92 @@ class InputMetPhiLayer(keras.layers.Layer):
         met_x = met * tf.cos(met_phi)
         met_y = met * tf.sin(met_phi)
 
-        return tf.concat([met_x/ 1e3, met_y/ 1e3], axis=-1)
+        return tf.concat([met_x / 1e3, met_y / 1e3], axis=-1)
 
     def get_config(self):
         config = super().get_config()
+        return config
+
+
+@keras.utils.register_keras_serializable()
+class ComputeHighLevelFeatures(keras.layers.Layer):
+    """
+    Computes high-level feature relational features between jets and leptons.
+    """
+
+    def __init__(self, padding_value, **kwargs):
+        super().__init__(**kwargs)
+        self.padding_value = padding_value
+
+    def call(self, jet_input, lepton_input, jet_mask=None, lepton_mask=None):
+        # Split jet features
+        jet_input = tf.expand_dims(
+            jet_input, axis=2
+        )  # Shape: (batch_size, n_jets, 1, n_features)
+        lepton_input = tf.expand_dims(
+            lepton_input, axis=1
+        )  # Shape: (batch_size, 1, n_leptons, n_features)
+
+        jet_lepton_mask = None
+        if jet_mask is not None:
+            jet_mask = tf.expand_dims(
+                jet_mask, axis=2
+            )  # Shape: (batch_size, n_jets, 1)
+            jet_lepton_mask = jet_mask
+        if lepton_mask is not None:
+            lepton_mask = tf.expand_dims(
+                lepton_mask, axis=1
+            )  # Shape: (batch_size, 1, n_leptons)
+            if jet_lepton_mask is not None:
+                jet_lepton_mask = jet_lepton_mask & lepton_mask
+            else:
+                jet_lepton_mask = lepton_mask
+
+        jet_px = (jet_input[..., 0:1],)
+        jet_py = jet_input[..., 1:2]
+        jet_pz = jet_input[..., 2:3]
+        jet_E = jet_input[..., 3:4]
+
+        # Split lepton features
+        lep_px = lepton_input[..., 0:1]
+        lep_py = lepton_input[..., 1:2]
+        lep_pz = lepton_input[..., 2:3]
+        lep_E = lepton_input[..., 3:4]
+
+        # Compute delta R
+        delta_eta = tf.atanh(
+            jet_pz / tf.sqrt(jet_px**2 + jet_py**2 + jet_pz**2)
+        ) - tf.atanh(lep_pz / tf.sqrt(lep_px**2 + lep_py**2 + lep_pz**2))
+        delta_phi = tf.atan2(jet_py, jet_px) - tf.atan2(lep_py, lep_px)
+        delta_phi = tf.math.floormod(
+            delta_phi + tf.constant(tf.pi), 2 * tf.constant(tf.pi)
+        ) - tf.constant(tf.pi)
+        delta_R = tf.sqrt(delta_eta**2 + delta_phi**2)
+
+        # Compute invariant mass
+        total_E = jet_E + lep_E
+        total_px = jet_px + lep_px
+        total_py = jet_py + lep_py
+        total_pz = jet_pz + lep_pz
+        invariant_mass = tf.sqrt(
+            tf.maximum(total_E**2 - total_px**2 - total_py**2 - total_pz**2, 0.0)
+        )
+
+        # Concatenate high-level features
+        high_level_features = tf.concat([delta_R, invariant_mass], axis=-1)
+        if jet_lepton_mask is not None:
+            high_level_features = tf.where(
+                jet_lepton_mask,
+                high_level_features,
+                tf.ones_like(high_level_features) * self.padding_value,
+            )
+        return high_level_features # Shape: (batch_size, n_jets, n_leptons, 2)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update(
+            {
+                "padding_value": self.padding_value,
+            }
+        )
         return config
