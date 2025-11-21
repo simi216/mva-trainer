@@ -33,9 +33,9 @@ if [ "$high_level_features" == "--use_high_level_features" ]; then
     python train_hyperparameter.py \
         --hidden_dim "$hidden_dim" \
         --num_layers "$num_layers" \
-        --num_heads  "$num_heads"\
+        --num_heads "$num_heads" \
         --architecture "$architecture" \
-        --use_high_level_features "$high_level_features" \
+        --use_high_level_features \
         --dropout_rate 0.1 \
         --learning_rate 1e-4 \
         --weight_decay 1e-4 \
@@ -44,15 +44,12 @@ if [ "$high_level_features" == "--use_high_level_features" ]; then
         --patience 10 \
         --max_events 10000000 \
         --root_dir "/afs/desy.de/user/a/aulich/mva-trainer/" \
-        --data_type "nominal"\
-        $high_level_features
-
+        --data_type "nominal"
 else
-    high_level_features=""
     python train_hyperparameter.py \
         --hidden_dim "$hidden_dim" \
         --num_layers "$num_layers" \
-        --num_heads  "$num_heads"\
+        --num_heads "$num_heads" \
         --architecture "$architecture" \
         --dropout_rate 0.1 \
         --learning_rate 1e-4 \
@@ -62,7 +59,7 @@ else
         --patience 10 \
         --max_events 10000000 \
         --root_dir "/afs/desy.de/user/a/aulich/mva-trainer/" \
-        --data_type "nominal"\
+        --data_type "nominal"
 fi
 
 
