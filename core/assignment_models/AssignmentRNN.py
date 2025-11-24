@@ -12,7 +12,7 @@ from core.components import (
 
 class FeatureConcatRNN(MLReconstructorBase):
     def __init__(self, config : DataConfig, name="RNN"):
-        if config.has_regression_targets:
+        if config.has_neutrino_truth:
             print("FeatureConcatRNN is designed for classification tasks; regression targets will be ignored.")
         super().__init__(config, name, perform_regression=False)
 

@@ -17,6 +17,7 @@ import awkward as ak
 from typing import Optional, Dict, List, Tuple
 from dataclasses import dataclass
 import os
+from tqdm import tqdm
 
 
 @dataclass
@@ -602,7 +603,7 @@ class RootPreprocessor:
         lep_top_pt = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_pt)
         lep_top_eta = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_eta)
         lep_top_phi = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_phi)
-        lep_top_mass = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_e)
+        lep_top_mass = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_m)
         lep_top_e = np.sqrt(
             lep_top_mass**2 + lep_top_pt**2 * np.cosh(lep_top_eta)**2
         )
@@ -611,7 +612,7 @@ class RootPreprocessor:
         lep_tbar_pt = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_tbar_pt)
         lep_tbar_eta = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_tbar_eta)
         lep_tbar_phi = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_tbar_phi)
-        lep_tbar_mass = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_tbar_e)
+        lep_tbar_mass = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_tbar_m)
         lep_tbar_e = np.sqrt(
             lep_tbar_mass**2 + lep_tbar_pt**2 * np.cosh(lep_tbar_eta)**2
         )
@@ -838,7 +839,10 @@ def preprocess_root_directory(
     """
     data_collected = []
 
-    for filename in os.listdir(input_dir):
+    num_files = len(os.listdir(input_dir))
+    print(f"Found {num_files} files in {input_dir}. Starting processing...\n\n")
+    for file_index,filename in enumerate(os.listdir(input_dir)):
+        print(f"Processing file {file_index + 1} of {num_files}...\n")
         if filename.endswith(".root"):
             input_path = os.path.join(input_dir, filename)
 
@@ -857,16 +861,14 @@ def preprocess_root_directory(
                 preprocessor = RootPreprocessor(config)
                 preprocessor.process()
                 data_collected.append(preprocessor.get_processed_data())
-                
+    print("\nMerging data from all files...")
     merged_data = {}
-    for data in data_collected:
-        for key, value in data.items():
-            if key not in merged_data:
-                merged_data[key] = []
-            merged_data[key].append(value)
+    for key in data_collected[0].keys():
+        for data in data_collected:
+            if key not in data:
+                raise KeyError(f"Key '{key}' not found in one of the data dictionaries.")
+        merged_data[key] = np.concatenate([data[key] for data in data_collected], axis=0)
 
-    for key in merged_data:
-        merged_data[key] = np.concatenate(merged_data[key], axis=0)
     np.savez_compressed(output_file, **merged_data)
     if verbose:
         print(f"Merged data saved to {output_file}")

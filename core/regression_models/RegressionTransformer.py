@@ -119,7 +119,7 @@ class FeatureConcatTransformer(MLReconstructorBase):
             )(neutrino_self_attention)
 
         neutrino_momentum_outputs = MLP(
-            self.config.get_n_regression_targets(),
+            self.config.get_n_neutrino_truth(),
             num_layers=4,
             activation=None,
             dropout_rate=dropout_rate,
@@ -242,7 +242,7 @@ class SimpleNeutrinoRegessor(MLReconstructorBase):
         )(neutrino_momentum_flat)
 
         neutrino_momentum_outputs_flat = MLP(
-            self.config.NUM_LEPTONS * self.config.get_n_regression_targets(),
+            self.config.NUM_LEPTONS * self.config.get_n_neutrino_truth(),
             num_layers=neutrino_regression_layers,
             activation=None,
             dropout_rate=dropout_rate,
@@ -250,7 +250,7 @@ class SimpleNeutrinoRegessor(MLReconstructorBase):
         )(neutrino_momentum_outputs_flat)
 
         neutrino_momentum_outputs = keras.layers.Reshape(
-            (self.config.NUM_LEPTONS, self.config.get_n_regression_targets()),
+            (self.config.NUM_LEPTONS, self.config.get_n_neutrino_truth()),
             name="regression_unscaled_reshaped",
         )(neutrino_momentum_outputs_flat)
 

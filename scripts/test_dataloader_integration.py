@@ -125,9 +125,9 @@ def test_dataloader_flat_format():
             print(f"✓ assignment_labels: shape {preprocessor.feature_data['assignment_labels'].shape}")
             assert preprocessor.feature_data['assignment_labels'].shape == (n_events, max_jets, 2)
         
-        if 'regression_targets' in preprocessor.feature_data:
-            print(f"✓ regression_targets: shape {preprocessor.feature_data['regression_targets'].shape}")
-            assert preprocessor.feature_data['regression_targets'].shape == (n_events, 2, 3)
+        if 'neutrino_truth' in preprocessor.feature_data:
+            print(f"✓ neutrino_truth: shape {preprocessor.feature_data['neutrino_truth'].shape}")
+            assert preprocessor.feature_data['neutrino_truth'].shape == (n_events, 2, 3)
         
         if 'event_weight' in preprocessor.feature_data:
             print(f"✓ event_weight: shape {preprocessor.feature_data['event_weight'].shape}")

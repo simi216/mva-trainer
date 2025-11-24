@@ -12,10 +12,11 @@ from core.components import (
     JetLeptonAssignment,
     ComputeHighLevelFeatures,
 )
+from core import DataConfig
 
 
 class CrossAttentionModel(MLReconstructorBase):
-    def __init__(self, config, name="CrossAttentionModel"):
+    def __init__(self, config :  DataConfig, name="CrossAttentionModel"):
         super().__init__(config, name=name)
         self.perform_regression = False
 
@@ -122,8 +123,8 @@ class CrossAttentionModel(MLReconstructorBase):
 
 
 class FeatureConcatTransformer(MLReconstructorBase):
-    def __init__(self, config, name="FeatureConcatTransformer", use_nu_flows=True):
-        if config.has_regression_targets:
+    def __init__(self, config :  DataConfig, name="FeatureConcatTransformer", use_nu_flows=True):
+        if config.has_neutrino_truth:
             print("FeatureConcatTransformer is designed for classification tasks; regression targets will be ignored.")
         super().__init__(config, name=name, perform_regression=False, use_nu_flows=use_nu_flows)
 

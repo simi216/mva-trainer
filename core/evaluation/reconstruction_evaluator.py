@@ -3,7 +3,7 @@
 import numpy as np
 from typing import Union, Optional, List, Tuple
 
-from . import EventReconstructorBase, GroundTruthReconstructor, MLReconstructorBase
+from core.reconstruction import EventReconstructorBase, GroundTruthReconstructor, MLReconstructorBase
 from .evaluator_base import (
     PlotConfig,
     BootstrapCalculator,
@@ -21,7 +21,10 @@ from .plotting_utils import (
     NeutrinoDeviationPlotter,
     SelectionAccuracyPlotter
 )
-from .physics_calculations import TopReconstructor, ResolutionCalculator
+from .physics_calculations import (
+    TopReconstructor,
+    ResolutionCalculator,
+)
 
 
 class PredictionManager:
@@ -323,7 +326,7 @@ class ReconstructionEvaluator:
         Returns:
             Deviation value(s)
         """
-        if self.y_test.get("regression_targets") is None:
+        if self.y_test.get("neutrino_truth") is None:
             raise ValueError(
                 "No regression targets found in y_test. "
                 "Cannot evaluate neutrino deviation."
@@ -332,7 +335,7 @@ class ReconstructionEvaluator:
         predictions = self.prediction_manager.get_neutrino_predictions(
             reconstructor_index
         )
-        true_neutrinos = self.y_test["regression_targets"]
+        true_neutrinos = self.y_test["neutrino_truth"]
 
         if deviation_type == "relative":
             return NeutrinoDeviationCalculator.compute_relative_deviation(
@@ -387,7 +390,7 @@ class ReconstructionEvaluator:
         Returns:
             Tuple of (figure, axis)
         """
-        if self.y_test.get("regression_targets") is None:
+        if self.y_test.get("neutrino_truth") is None:
             raise ValueError(
                 "No regression targets found in y_test. "
                 "Cannot evaluate neutrino deviation."
@@ -771,7 +774,7 @@ class ReconstructionEvaluator:
         Returns:
             Tuple of (figure, axis)
         """
-        if self.y_test.get("regression_targets") is None:
+        if self.y_test.get("neutrino_truth") is None:
             raise ValueError(
                 "No regression targets found in y_test. "
                 "Cannot evaluate neutrino deviation."
@@ -877,7 +880,7 @@ class ReconstructionEvaluator:
         Returns:
             Tuple of (figure, axes)
         """
-        if self.y_test.get("regression_targets") is None:
+        if self.y_test.get("neutrino_truth") is None:
             raise ValueError(
                 "No regression targets found in y_test. "
                 "Cannot evaluate neutrino component deviations."
@@ -885,7 +888,7 @@ class ReconstructionEvaluator:
 
         # Get event weights
         event_weights = FeatureExtractor.get_event_weights(self.X_test)
-        true_neutrinos = self.y_test["regression_targets"]
+        true_neutrinos = self.y_test["neutrino_truth"]
 
         # Collect predictions from all reconstructors
         predicted_neutrinos = []
@@ -940,7 +943,7 @@ class ReconstructionEvaluator:
         Returns:
             Tuple of (figure, axis)
         """
-        if self.y_test.get("regression_targets") is None:
+        if self.y_test.get("neutrino_truth") is None:
             raise ValueError(
                 "No regression targets found in y_test. "
                 "Cannot evaluate neutrino deviation distribution."
@@ -948,7 +951,7 @@ class ReconstructionEvaluator:
 
         # Get event weights
         event_weights = FeatureExtractor.get_event_weights(self.X_test)
-        true_neutrinos = self.y_test["regression_targets"]
+        true_neutrinos = self.y_test["neutrino_truth"]
 
         # Collect predictions from all reconstructors
         predicted_neutrinos = []

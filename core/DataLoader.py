@@ -168,16 +168,16 @@ class FeatureBuilder:
             self.config.neutrino_momentum_features
             and self.config.antineutrino_momentum_features
         ):
-            features["regression_targets"] = self._build_regression_targets()
+            features["neutrino_truth"] = self._build_neutrino_truth()
 
         if (
             self.config.nu_flows_neutrino_momentum_features
             and self.config.nu_flows_antineutrino_momentum_features
         ):
-            features["nu_flows_regression_targets"] = (
-                self._build_nu_flows_regression_targets()
+            features["nu_flows_neutrino_truth"] = (
+                self._build_nu_flows_neutrino_truth()
             )
-        if self.config.top_truth_features and self.config.antitop_truth_features:
+        if self.config.top_truth_features and self.config.tbar_truth_features:
             features["top_truth"] = self._build_top_truth_features()
         if self.config.lepton_truth_features and self.config.antilepton_truth_features:
             features["lepton_truth"] = self._build_lepton_truth_features()
@@ -226,7 +226,7 @@ class FeatureBuilder:
         """Build event number array (n_events,)."""
         return self.data[self.config.mc_event_number].to_numpy()
 
-    def _build_regression_targets(self) -> np.ndarray:
+    def _build_neutrino_truth(self) -> np.ndarray:
         """Build regression target array (n_events, NUM_LEPTONS, n_targets)."""
         neutrino_vars = self.config.neutrino_momentum_features
         antineutrino_vars = self.config.antineutrino_momentum_features
@@ -235,7 +235,7 @@ class FeatureBuilder:
         data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)  # n_targets
         return data
 
-    def _build_nu_flows_regression_targets(self) -> np.ndarray:
+    def _build_nu_flows_neutrino_truth(self) -> np.ndarray:
         """Build NuFlows regression target array (n_events, NUM_LEPTONS, n_targets)."""
         nu_flows_vars = (
             self.config.nu_flows_neutrino_momentum_features
@@ -249,7 +249,7 @@ class FeatureBuilder:
 
     def _build_top_truth_features(self) -> np.ndarray:
         """Build top quark truth feature array (n_events, n_features)."""
-        top_truth_vars = self.config.top_truth_features + self.config.antitop_truth_features
+        top_truth_vars = self.config.top_truth_features + self.config.tbar_truth_features
         data = self.data[top_truth_vars].to_numpy().reshape(self.data_length, self.config.NUM_LEPTONS, -1)
         return data
 
@@ -623,11 +623,11 @@ class DataPreprocessor:
                 )
         y_train = {
             "assignment_labels": X_train["assignment_labels"],
-            "regression_targets": X_train.get("regression_targets", None),
+            "neutrino_truth": X_train.get("neutrino_truth", None),
         }
         y_test = {
             "assignment_labels": X_test["assignment_labels"],
-            "regression_targets": X_test.get("regression_targets", None),
+            "neutrino_truth": X_test.get("neutrino_truth", None),
         }
 
         return X_train, y_train, X_test, y_test
@@ -639,7 +639,7 @@ class DataPreprocessor:
                 X[key] = data
         Y = {
             "assignment_labels": X["assignment_labels"],
-            "regression_targets": X.get("regression_targets", None),
+            "neutrino_truth": X.get("neutrino_truth", None),
         }
         return X, Y
 
@@ -699,14 +699,14 @@ class DataPreprocessor:
                 }
                 y_train = {
                     "assignment_labels": X_train["assignment_labels"],
-                    "regression_targets": X_train.get("regression_targets", None),
+                    "neutrino_truth": X_train.get("neutrino_truth", None),
                 }
                 y_test = {
                     "assignment_labels": self.feature_data["assignment_labels"][
                         test_indices
                     ],
-                    "regression_targets": self.feature_data.get(
-                        "regression_targets", None
+                    "neutrino_truth": self.feature_data.get(
+                        "neutrino_truth", None
                     )[test_indices],
                 }
 
@@ -740,13 +740,13 @@ class DataPreprocessor:
         X_even = {k: v[even_mask] for k, v in self.feature_data.items()}
         y_even = {
             "assignment_labels": X_even["assignment_labels"],
-            "regression_targets": X_even.get("regression_targets", None),
+            "neutrino_truth": X_even.get("neutrino_truth", None),
         }
 
         X_odd = {k: v[odd_mask] for k, v in self.feature_data.items()}
         y_odd = {
             "assignment_labels": X_odd["assignment_labels"],
-            "regression_targets": X_odd.get("regression_targets", None),
+            "neutrino_truth": X_odd.get("neutrino_truth", None),
         }
 
         return X_even, y_even, X_odd, y_odd
@@ -802,7 +802,7 @@ class DataPreprocessor:
             and self.load_config.antineutrino_momentum_features
         ):
             data_length = len(loaded[self.load_config.neutrino_momentum_features[0]])
-            self.feature_data["regression_targets"] = (
+            self.feature_data["neutrino_truth"] = (
                 np.array(
                     [
                         loaded[nu_key]
@@ -821,12 +821,39 @@ class DataPreprocessor:
             data_length = len(
                 loaded[self.load_config.nu_flows_neutrino_momentum_features[0]]
             )
-            self.feature_data["nu_flows_regression_targets"] = (
+            self.feature_data["nu_flows_neutrino_truth"] = (
                 np.array(
                     [
                         loaded[nu_key]
                         for nu_key in self.load_config.nu_flows_neutrino_momentum_features
                         + self.load_config.nu_flows_antineutrino_momentum_features
+                    ]
+                )
+                .transpose(1, 0)
+                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
+            )
+        if self.load_config.top_truth_features and self.load_config.tbar_truth_features:
+            data_length = len(loaded[self.load_config.top_truth_features[0]])
+            self.feature_data["top_truth"] = (
+                np.array(
+                    [
+                        loaded[top_key]
+                        for top_key in self.load_config.top_truth_features
+                        + self.load_config.tbar_truth_features
+                    ]
+                )
+                .transpose(1, 0)
+                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
+            )
+
+        if self.load_config.top_lepton_truth_features and self.load_config.tbar_lepton_truth_features:
+            data_length = len(loaded[self.load_config.top_lepton_truth_features[0]])
+            self.feature_data["lepton_truth"] = (
+                np.array(
+                    [
+                        loaded[lep_key]
+                        for lep_key in self.load_config.top_lepton_truth_features
+                        + self.load_config.tbar_lepton_truth_features
                     ]
                 )
                 .transpose(1, 0)
@@ -852,9 +879,9 @@ class DataPreprocessor:
         self.feature_data["assignment_labels"] = assignment_labels
 
         # Remove events with NaNs in NuFlows targets if present
-        if "nu_flows_regression_targets" in self.feature_data:
+        if "nu_flows_neutrino_truth" in self.feature_data:
             nu_flows_nan_mask = ~np.isnan(
-                self.feature_data["nu_flows_regression_targets"]
+                self.feature_data["nu_flows_neutrino_truth"]
             ).any(axis=(1, 2))
             for key in self.feature_data:
                 if self.feature_data[key] is not None:

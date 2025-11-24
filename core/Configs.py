@@ -32,9 +32,9 @@ class LoadConfig:
 
     # MC truth
     top_truth_features: Optional[List[str]] = None
-    antitop_truth_features: Optional[List[str]] = None
-    lepton_truth_features: Optional[List[str]] = None
-    antilepton_truth_features: Optional[List[str]] = None
+    tbar_truth_features: Optional[List[str]] = None
+    top_lepton_truth_features: Optional[List[str]] = None
+    tbar_lepton_truth_features: Optional[List[str]] = None
 
     # Maximum objects per event
     NUM_LEPTONS: int = 2
@@ -104,27 +104,27 @@ class LoadConfig:
             clipping.update({feat: 1 for feat in self.nu_flows_neutrino_momentum_features})
             clipping.update({feat: 1 for feat in self.nu_flows_antineutrino_momentum_features})
         
-        if self.top_truth_features and self.antitop_truth_features:
+        if self.top_truth_features and self.tbar_truth_features:
             clipping.update({feat: 1 for feat in self.top_truth_features})
-            clipping.update({feat: 1 for feat in self.antitop_truth_features})
-        if (self.top_truth_features is None) or (self.antitop_truth_features is None):
+            clipping.update({feat: 1 for feat in self.tbar_truth_features})
+        if (self.top_truth_features is None) or (self.tbar_truth_features is None):
             raise ValueError(
-                "Both lepton_truth_features and antilepton_truth_features "
+                "Both top_lepton_truth_features and tbar_lepton_truth_features "
                 "must be provided together."
             )
-        if self.lepton_truth_features and self.antilepton_truth_features:
-            if len(self.lepton_truth_features) != len(
-                self.antilepton_truth_features
+        if self.top_lepton_truth_features and self.tbar_lepton_truth_features:
+            if len(self.top_lepton_truth_features) != len(
+                self.tbar_lepton_truth_features
             ):
                 raise ValueError(
-                    "lepton_truth_features and antilepton_truth_features "
+                    "top_lepton_truth_features and tbar_lepton_truth_features "
                     "must have the same length."
                 )
-            clipping.update({feat: 1 for feat in self.lepton_truth_features})
-            clipping.update({feat: 1 for feat in self.antilepton_truth_features})
-        elif (self.lepton_truth_features is None) or (self.antilepton_truth_features is None):
+            clipping.update({feat: 1 for feat in self.top_lepton_truth_features})
+            clipping.update({feat: 1 for feat in self.tbar_lepton_truth_features})
+        elif (self.top_lepton_truth_features is None) or (self.tbar_lepton_truth_features is None):
             raise ValueError(
-                "Both lepton_truth_features and antilepton_truth_features "
+                "Both top_lepton_truth_features and tbar_lepton_truth_features "
                 "must be provided together."
             )
         return clipping
@@ -144,18 +144,18 @@ class LoadConfig:
             max_jets=self.max_jets,
             NUM_LEPTONS=self.NUM_LEPTONS,
             padding_value=self.padding_value,
-            has_regression_targets=self.neutrino_momentum_features is not None,
+            has_neutrino_truth=self.neutrino_momentum_features is not None,
             neutrino_momentum_features=self.neutrino_momentum_features,
             antineutrino_momentum_features=self.antineutrino_momentum_features,
-            has_nu_flows_regression_targets=self.nu_flows_neutrino_momentum_features is not None,
+            has_nu_flows_neutrino_truth=self.nu_flows_neutrino_momentum_features is not None,
             nu_flows_neutrino_momentum_features=self.nu_flows_neutrino_momentum_features,
             nu_flows_antineutrino_momentum_features=self.nu_flows_antineutrino_momentum_features,
             top_truth_features=self.top_truth_features,
-            antitop_truth_features=self.antitop_truth_features,
-            lepton_truth_features=self.lepton_truth_features,
-            antilepton_truth_features=self.antilepton_truth_features,
+            tbar_truth_features=self.tbar_truth_features,
+            top_lepton_truth_features=self.top_lepton_truth_features,
+            tbar_lepton_truth_features=self.tbar_lepton_truth_features,
             has_top_truth=self.top_truth_features is not None,
-            has_lepton_truth=self.lepton_truth_features is not None,
+            has_lepton_truth=self.top_lepton_truth_features is not None,
             has_event_weight=self.event_weight is not None,
             has_event_number=self.mc_event_number is not None,
         )
@@ -198,7 +198,7 @@ class DataConfig:
         max_jets: Maximum number of jets per event
         NUM_LEPTONS: Maximum number of leptons per event
         padding_value: Value used for padding
-        has_regression_targets: Whether regression targets are present
+        has_neutrino_truth: Whether regression targets are present
         regression_target_names: Names of regression targets (optional)
         has_event_weight: Whether event weights are present
         feature_indices: Dictionary mapping feature names to their indices
@@ -221,20 +221,20 @@ class DataConfig:
     padding_value: float = -999.0
 
     # Optional components
-    has_regression_targets: bool = False
+    has_neutrino_truth: bool = False
     neutrino_momentum_features: Optional[List[str]] = None
     antineutrino_momentum_features: Optional[List[str]] = None
 
     # Nu-flows regression targets
-    has_nu_flows_regression_targets: bool = False
+    has_nu_flows_neutrino_truth: bool = False
     nu_flows_neutrino_momentum_features: Optional[List[str]] = None
     nu_flows_antineutrino_momentum_features: Optional[List[str]] = None
 
     # MC truth
     top_truth_features: Optional[List[str]] = None
-    antitop_truth_features: Optional[List[str]] = None
-    lepton_truth_features: Optional[List[str]] = None
-    antilepton_truth_features: Optional[List[str]] = None
+    tbar_truth_features: Optional[List[str]] = None
+    top_lepton_truth_features: Optional[List[str]] = None
+    tbar_lepton_truth_features: Optional[List[str]] = None
 
     has_top_truth: bool = False
     has_lepton_truth: bool = False
@@ -275,14 +275,14 @@ class DataConfig:
         if self.has_event_number:
             self.feature_indices["event_number"] = {"event_number": 0}
 
-        if self.has_regression_targets and self.neutrino_momentum_features:
-            self.feature_indices["regression_targets"] = {
+        if self.has_neutrino_truth and self.neutrino_momentum_features:
+            self.feature_indices["neutrino_truth"] = {
                 target: idx
                 for idx, target in enumerate(self.neutrino_momentum_features)
             }
         
-        if self.has_regression_targets and self.nu_flows_neutrino_momentum_features:
-            self.feature_indices["nu_flows_regression_targets"] = {
+        if self.has_neutrino_truth and self.nu_flows_neutrino_momentum_features:
+            self.feature_indices["nu_flows_neutrino_truth"] = {
                 target: idx
                 for idx, target in enumerate(self.nu_flows_neutrino_momentum_features)
             }
@@ -292,10 +292,10 @@ class DataConfig:
                 target: idx
                 for idx, target in enumerate(self.top_truth_features)
             }
-        if self.has_lepton_truth and self.lepton_truth_features:
+        if self.has_lepton_truth and self.top_lepton_truth_features:
             self.feature_indices["lepton_truth"] = {
                 target: idx
-                for idx, target in enumerate(self.lepton_truth_features)
+                for idx, target in enumerate(self.top_lepton_truth_features)
             }
 
         
@@ -324,16 +324,16 @@ class DataConfig:
             # Shape: (n_events,)
             self.data_shapes["event_number"] = (None,)
 
-        if self.has_regression_targets:
+        if self.has_neutrino_truth:
             # Shape: (n_events, n_targets)
-            self.data_shapes["regression_targets"] = (
+            self.data_shapes["neutrino_truth"] = (
                 None,
                 self.NUM_LEPTONS,
                 len(self.neutrino_momentum_features),
             )
-        if self.has_nu_flows_regression_targets:
+        if self.has_nu_flows_neutrino_truth:
             # Shape: (n_events, n_targets)
-            self.data_shapes["nu_flows_regression_targets"] = (
+            self.data_shapes["nu_flows_neutrino_truth"] = (
                 None,
                 self.NUM_LEPTONS,
                 len(self.nu_flows_neutrino_momentum_features),
@@ -350,7 +350,7 @@ class DataConfig:
             self.data_shapes["lepton_truth"] = (
                 None,
                 self.NUM_LEPTONS,
-                len(self.lepton_truth_features),
+                len(self.top_lepton_truth_features),
             )
 
         # Shape: (n_events, max_jets, NUM_LEPTONS)
@@ -376,7 +376,7 @@ class DataConfig:
         """Get number of custom features."""
         return len(self.custom_features)
     
-    def get_n_regression_targets(self) -> int:
+    def get_n_neutrino_truth(self) -> int:
         """Get number of regression target features."""
         return len(self.neutrino_momentum_features) if self.neutrino_momentum_features else 0
 
@@ -416,14 +416,14 @@ class DataConfig:
             return self.non_training_features if self.non_training_features else []
         elif feature_type == "custom":
             return list(self.custom_features.keys())
-        elif feature_type == "regression_targets":
+        elif feature_type == "neutrino_truth":
             return self.neutrino_momentum_features if self.neutrino_momentum_features else []
-        elif feature_type == "nu_flows_regression_targets":
+        elif feature_type == "nu_flows_neutrino_truth":
             return self.nu_flows_neutrino_momentum_features if self.nu_flows_neutrino_momentum_features else []
         elif feature_type == "top_truth":
             return self.top_truth_features if self.top_truth_features else []
         elif feature_type == "lepton_truth":
-            return self.lepton_truth_features if self.lepton_truth_features else []
+            return self.top_lepton_truth_features if self.top_lepton_truth_features else []
         else:
             raise ValueError(f"Unknown feature type: {feature_type}")
 
@@ -545,11 +545,11 @@ class DataConfig:
                 "Data Properties:",
                 f"  Padding value: {self.padding_value}",
                 f"  Has event weights: {self.has_event_weight}",
-                f"  Has regression targets: {self.has_regression_targets}",
+                f"  Has regression targets: {self.has_neutrino_truth}",
             ]
         )
 
-        if self.has_regression_targets:
+        if self.has_neutrino_truth:
             lines.extend(
                 [
                 "Neutrino Momentum Features:",

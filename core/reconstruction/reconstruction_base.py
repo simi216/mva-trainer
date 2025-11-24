@@ -17,12 +17,12 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
         super().__init__(config=config, name=name)
         self.max_jets = config.max_jets
         self.NUM_LEPTONS = config.NUM_LEPTONS
-        if perform_regression and not config.has_regression_targets:
+        if perform_regression and not config.has_neutrino_truth:
             print(
-                "WARNING: perform_regression is set to True, but config.has_regression_targets is False. Setting perform_regression to False."
+                "WARNING: perform_regression is set to True, but config.has_neutrino_truth is False. Setting perform_regression to False."
             )
             perform_regression = False
-        if use_nu_flows and not config.has_nu_flows_regression_targets:
+        if use_nu_flows and not config.has_nu_flows_neutrino_truth:
             print(
                 "WARNING: use_nu_flows is set to True, but config.use_nu_flows is False. Setting use_nu_flows to False."
             )
@@ -45,13 +45,13 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
                 "This method should be implemented in subclasses that perform regression."
             )
         if self.use_nu_flows:
-            if "nu_flows_regression_targets" in data_dict:
-                return data_dict["nu_flows_regression_targets"]
+            if "nu_flows_neutrino_truth" in data_dict:
+                return data_dict["nu_flows_neutrino_truth"]
             print(
-                "WARNING: use_nu_flows is True but 'nu_flows_regression_targets' not found in data_dict. Falling back to 'regression_targets'."
+                "WARNING: use_nu_flows is True but 'nu_flows_neutrino_truth' not found in data_dict. Falling back to 'neutrino_truth'."
             )
-        if "regression_targets" in data_dict:
-            return data_dict["regression_targets"]
+        if "neutrino_truth" in data_dict:
+            return data_dict["neutrino_truth"]
         print(f"data_dict keys: {list(data_dict.keys())}")
         raise ValueError(
             "No regression targets found in data_dict for neutrino reconstruction."
@@ -153,7 +153,7 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
 
     def _build_model_base(self, jet_assignment_probs, regression_output=None, **kwargs):
         jet_assignment_probs.name = "assignment"
-        if self.config.has_regression_targets and regression_output is not None:
+        if self.config.has_neutrino_truth and regression_output is not None:
             regression_output.name = "regression"
             self.model = KerasModelWrapper(
                 inputs=[
@@ -168,11 +168,11 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
                 **kwargs,
             )
         else:
-            if self.config.has_regression_targets and regression_output is None:
+            if self.config.has_neutrino_truth and regression_output is None:
                 print(
                     "WARNING: Regression targets are specified in the config, but regression_output is None."
                 )
-            if not self.config.has_regression_targets and regression_output is not None:
+            if not self.config.has_neutrino_truth and regression_output is not None:
                 print(
                     "WARNING: Regression targets are not specified in the config, but regression_output is provided. Ignoring regression_output."
                 )

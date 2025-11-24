@@ -67,7 +67,7 @@ class FeatureImportanceCalculator:
             regression_baseline_performance = (
                 NeutrinoDeviationCalculator.compute_relative_deviation(
                     regression_baseline_prediction,
-                    self.y_test["nu_flows_regression_targets"],
+                    self.y_test["nu_flows_neutrino_truth"],
                 )
             )
             print(
@@ -152,7 +152,7 @@ class FeatureImportanceCalculator:
                     regression_performance = -(
                         NeutrinoDeviationCalculator.compute_relative_deviation(
                             permutated_regression_pred,
-                            self.y_test["nu_flows_regression_targets"],
+                            self.y_test["nu_flows_neutrino_truth"],
                         )
                         - regression_baseline_performance
                     )

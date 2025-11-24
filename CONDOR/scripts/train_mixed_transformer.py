@@ -89,7 +89,7 @@ TransformerMatcher.train_model(
 TransformerMatcher.save_model(f"{MODEL_DIR}/model.keras")
 
 
-import core.assignment_models.BaselineAssignmentMethods as BaselineMethods
+import core.reconstruction.BaselineMethods as BaselineMethods
 import core.reconstruction as Evaluation
 
 reload(Evaluation)

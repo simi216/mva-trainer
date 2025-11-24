@@ -322,9 +322,9 @@ class ChiSquareAssigner(EventReconstructorBase):
 
     def get_neutrino_momenta(self, data_dict):
         if self.use_nu_flows_for_assignment:
-            return data_dict["nu_flows_regression_targets"]
+            return data_dict["nu_flows_neutrino_truth"]
         else:
-            return data_dict["regression_targets"]
+            return data_dict["neutrino_truth"]
 
     def construct_neutrino_four_vectors(self, data_dict):
         neutrino_3_vector = self.get_neutrino_momenta(
