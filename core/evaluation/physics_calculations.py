@@ -15,10 +15,9 @@ class TopReconstructor:
 
     @staticmethod
     def compute_top_lorentz_vectors(
-        assignment_predictions: np.ndarray,
-        neutrino_predictions: np.ndarray,
-        lepton_features: np.ndarray,
-        jet_features: np.ndarray,
+        leptons: np.ndarray,
+        jets: np.ndarray,
+        neutrinos: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Compute top quark four-vectors from predictions.
@@ -32,20 +31,14 @@ class TopReconstructor:
         Returns:
             Tuple of (top1_p4, top2_p4) four-vectors
         """
-        # Select jets based on predictions
-        selected_jet_indices = assignment_predictions.argmax(axis=-2)
-        reco_jets = np.take_along_axis(
-            jet_features,
-            selected_jet_indices[:, :, np.newaxis],
-            axis=1,
-        )
 
         # Reshape leptons and neutrinos
-        reco_leptons = lepton_features.reshape(-1, 2, 4)
-        reco_neutrinos = neutrino_predictions.reshape(-1, 2, 3)
+        reco_leptons = leptons.reshape(-1, 2, 4)
+        reco_neutrinos = neutrinos.reshape(-1, 2, 3)
+
 
         # Convert to four-vectors
-        reco_jets_p4 = lorentz_vector_from_PtEtaPhiE_array(reco_jets)
+        reco_jets_p4 = lorentz_vector_from_PtEtaPhiE_array(jets)
         reco_leptons_p4 = lorentz_vector_from_PtEtaPhiE_array(reco_leptons)
         reco_neutrinos_p4 = lorentz_vector_from_neutrino_momenta_array(reco_neutrinos)
 
@@ -54,6 +47,7 @@ class TopReconstructor:
         top2_p4 = reco_jets_p4[:, 1] + reco_leptons_p4[:, 1] + reco_neutrinos_p4[:, 1]
 
         return top1_p4, top2_p4
+
 
     @staticmethod
     def compute_top_masses(

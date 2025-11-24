@@ -568,15 +568,15 @@ class RootPreprocessor:
         n_events = len(events)
 
         # Extract truth top/anti-top 4-vectors
-        truth_top_pt = ak.to_numpy(events.Ttbar_MC_t_beforeFSR_pt)
-        truth_top_eta = ak.to_numpy(events.Ttbar_MC_t_beforeFSR_eta)
-        truth_top_phi = ak.to_numpy(events.Ttbar_MC_t_beforeFSR_phi)
-        truth_top_mass = ak.to_numpy(events.Ttbar_MC_t_beforeFSR_m)
+        truth_top_pt = ak.to_numpy(events.Ttbar_MC_t_afterFSR_pt)
+        truth_top_eta = ak.to_numpy(events.Ttbar_MC_t_afterFSR_eta)
+        truth_top_phi = ak.to_numpy(events.Ttbar_MC_t_afterFSR_phi)
+        truth_top_mass = ak.to_numpy(events.Ttbar_MC_t_afterFSR_m)
 
-        truth_tbar_pt = ak.to_numpy(events.Ttbar_MC_tbar_beforeFSR_pt)
-        truth_tbar_eta = ak.to_numpy(events.Ttbar_MC_tbar_beforeFSR_eta)
-        truth_tbar_phi = ak.to_numpy(events.Ttbar_MC_tbar_beforeFSR_phi)
-        truth_tbar_mass = ak.to_numpy(events.Ttbar_MC_tbar_beforeFSR_m)
+        truth_tbar_pt = ak.to_numpy(events.Ttbar_MC_tbar_afterFSR_pt)
+        truth_tbar_eta = ak.to_numpy(events.Ttbar_MC_tbar_afterFSR_eta)
+        truth_tbar_phi = ak.to_numpy(events.Ttbar_MC_tbar_afterFSR_phi)
+        truth_tbar_mass = ak.to_numpy(events.Ttbar_MC_tbar_afterFSR_m)
 
         # Compute ttbar system
         top_px = truth_top_pt * np.cos(truth_top_phi)

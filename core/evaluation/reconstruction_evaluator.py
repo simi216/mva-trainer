@@ -24,6 +24,7 @@ from .plotting_utils import (
 from .physics_calculations import (
     TopReconstructor,
     ResolutionCalculator,
+    lorentz_vector_from_PtEtaPhiE_array
 )
 
 
@@ -163,8 +164,6 @@ class ReconstructionEvaluator:
         # Validate configurations
         self._validate_configs()
         self.config = reconstructors[0].config
-
-        # Setup neutrino momenta
 
         # Initialize managers
         self.prediction_manager = PredictionManager(reconstructors, X_test)
@@ -619,377 +618,6 @@ class ReconstructionEvaluator:
             combinatoric_accuracy,
         )
 
-    def plot_feature_assignment_success(
-        self,
-        feature_data_type: str,
-        feature_name: str,
-        assigner_index: int,
-        fancy_feature_label: Optional[str] = None,
-        bins: int = 20,
-        xlims: Optional[Tuple[float, float]] = None,
-        figsize: Tuple[int, int] = (8, 6),
-    ):
-        """Plot feature distribution for correctly and incorrectly assigned events."""
-        # Extract feature data
-        feature_data = FeatureExtractor.extract_feature(
-            self.X_test,
-            self.config.feature_indices,
-            feature_data_type,
-            feature_name,
-        )
-
-        # Get event weights
-        event_weights = FeatureExtractor.get_event_weights(self.X_test)
-
-        # Get assignment success for the first reconstructor (as an example)
-        assignment_success = self.evaluate_accuracy(assigner_index, per_event=True)
-
-        # Create bins
-        bin_edges = BinningUtility.create_bins(feature_data, bins, xlims)
-        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
-
-        # Compute histograms
-        correct_mask = assignment_success.astype(bool)
-        incorrect_mask = ~correct_mask
-        correct_weights = event_weights * correct_mask
-        incorrect_weights = event_weights * incorrect_mask
-        correct_hist = np.histogram(
-            feature_data, bins=bin_edges, weights=correct_weights, density=True
-        )[0]
-        incorrect_hist = np.histogram(
-            feature_data, bins=bin_edges, weights=incorrect_weights, density=True
-        )[0]
-
-        # Plot
-        feature_label = fancy_feature_label or feature_name
-        fig, ax = AccuracyPlotter.plot_feature_assignment_success(
-            bin_centers,
-            correct_hist,
-            incorrect_hist,
-            feature_label,
-            figsize,
-        )
-        ax.set_title(
-            f"{self.reconstructors[assigner_index].get_name()} Assignment Success vs {feature_label}"
-        )
-        return fig, ax
-
-    def plot_top_mass_deviation_assignment_success(
-        self,
-        assigner_index: int,
-        true_top_mass_labels: List[str] = ["truth_top_mass", "truth_tbar_mass"],
-        fancy_feature_label: Optional[str] = None,
-        bins: int = 20,
-        xlims: Optional[Tuple[float, float]] = None,
-        figsize: Tuple[int, int] = (8, 6),
-    ):
-        """Plot top mass deviation for correctly and incorrectly assigned events."""
-        # Validate and extract true top masses
-        true_top1_mass, true_top2_mass = self._extract_true_top_masses(
-            true_top_mass_labels
-        )
-
-        # Compute predicted top masses
-        top1_p4, top2_p4 = self._compute_top_lorentz_vectors(assigner_index)
-        pred_top1_mass, pred_top2_mass = TopReconstructor.compute_top_masses(
-            top1_p4, top2_p4
-        )
-
-        # Compute mass deviation (extended for both tops)
-        mass_deviation = np.concatenate(
-            [
-                ResolutionCalculator.compute_relative_deviation(
-                    pred_top1_mass, true_top1_mass
-                ),
-                ResolutionCalculator.compute_relative_deviation(
-                    pred_top2_mass, true_top2_mass
-                ),
-            ]
-        )
-
-        # Get event weights and assignment success
-        event_weights = FeatureExtractor.get_event_weights(self.X_test)
-        assignment_success = self.evaluate_accuracy(assigner_index, per_event=True)
-        assignment_success_extended = np.concatenate(
-            [assignment_success, assignment_success]
-        )
-        event_weights = np.concatenate([event_weights, event_weights])
-
-        # Create bins
-        bin_edges = BinningUtility.create_bins(mass_deviation, bins, xlims)
-        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
-
-        # Compute histograms
-        correct_mask = assignment_success_extended.astype(bool)
-        incorrect_mask = ~correct_mask
-        correct_weights = event_weights * correct_mask
-        incorrect_weights = event_weights * incorrect_mask
-        correct_hist = np.histogram(
-            mass_deviation, bins=bin_edges, weights=correct_weights, density=True
-        )[0]
-        incorrect_hist = np.histogram(
-            mass_deviation, bins=bin_edges, weights=incorrect_weights, density=True
-        )[0]
-
-        # Plot
-        feature_label = fancy_feature_label or "Relative Top Mass Deviation"
-        fig, ax = AccuracyPlotter.plot_feature_assignment_success(
-            bin_centers,
-            correct_hist,
-            incorrect_hist,
-            feature_label,
-            figsize,
-        )
-        ax.set_title(
-            f"{self.reconstructors[assigner_index].get_name()} Assignment Success vs {feature_label}"
-        )
-        return fig, ax
-
-    def plot_binned_neutrino_deviation(
-        self,
-        feature_data_type: str,
-        feature_name: str,
-        fancy_feature_label: Optional[str] = None,
-        bins: int = 20,
-        xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 100,
-        confidence: float = 0.95,
-        show_errorbar: bool = True,
-        deviation_type: str = "relative",
-    ):
-        """
-        Plot binned neutrino deviation vs. a feature with bootstrap error bars.
-
-        Args:
-            feature_data_type: Type of feature data ('jet', 'lepton', 'met', etc.)
-            feature_name: Name of the feature
-            fancy_feature_label: Optional fancy label for the feature
-            bins: Number of bins or bin edges
-            xlims: Optional x-axis limits
-            n_bootstrap: Number of bootstrap samples
-            confidence: Confidence level for intervals
-            show_errorbar: Whether to show error bars
-            deviation_type: Type of deviation ('relative' or 'absolute')
-
-        Returns:
-            Tuple of (figure, axis)
-        """
-        if self.y_test.get("neutrino_truth") is None:
-            raise ValueError(
-                "No regression targets found in y_test. "
-                "Cannot evaluate neutrino deviation."
-            )
-
-        config = PlotConfig(
-            confidence=confidence,
-            n_bootstrap=n_bootstrap,
-            show_errorbar=show_errorbar,
-        )
-
-        # Extract feature data
-        feature_data = FeatureExtractor.extract_feature(
-            self.X_test,
-            self.config.feature_indices,
-            feature_data_type,
-            feature_name,
-        )
-
-        # Create bins
-        bin_edges = BinningUtility.create_bins(feature_data, bins, xlims)
-        binning_mask = BinningUtility.create_binning_mask(feature_data, bin_edges)
-        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
-
-        # Get event weights
-        event_weights = FeatureExtractor.get_event_weights(self.X_test)
-
-        # Compute binned deviations for each reconstructor
-        print(f"\nComputing binned neutrino deviation for {feature_name}...")
-        binned_deviations = []
-        names = []
-        for i, reconstructor in enumerate(self.reconstructors):
-            if isinstance(reconstructor, GroundTruthReconstructor):
-                continue
-            names.append(reconstructor.get_name())
-            # Check if reconstructor supports neutrino reconstruction
-            neutrino_pred = self.prediction_manager.get_neutrino_predictions(i)
-            if neutrino_pred is None:
-                print(
-                    f"{reconstructor.get_name()}: No neutrino reconstruction (skipping)"
-                )
-                continue
-
-            deviation_data = self.evaluate_neutrino_deviation(
-                i, per_event=True, deviation_type=deviation_type
-            )
-
-            if show_errorbar:
-                mean_dev, lower, upper = BootstrapCalculator.compute_binned_bootstrap(
-                    binning_mask,
-                    event_weights,
-                    deviation_data,
-                    config.n_bootstrap,
-                    config.confidence,
-                )
-                binned_deviations.append((mean_dev, lower, upper))
-            else:
-                binned_dev = BinningUtility.compute_weighted_binned_statistic(
-                    binning_mask, deviation_data, event_weights
-                )
-                binned_deviations.append((binned_dev, binned_dev, binned_dev))
-
-        if not binned_deviations:
-            raise ValueError(
-                "No reconstructors with neutrino reconstruction found. "
-                "Cannot plot binned neutrino deviations."
-            )
-
-        # Compute bin counts
-        bin_counts = np.sum(
-            event_weights.reshape(1, -1) * binning_mask, axis=1
-        ) / np.sum(event_weights)
-
-        # Plot
-        feature_label = fancy_feature_label or feature_name
-
-        return NeutrinoDeviationPlotter.plot_binned_deviation(
-            bin_centers,
-            binned_deviations,
-            names,
-            bin_counts,
-            bin_edges,
-            feature_label,
-            config,
-        )
-
-    def plot_neutrino_component_deviations(
-        self,
-        bins: int = 50,
-        xlims: Optional[Tuple[float, float]] = None,
-        figsize: Tuple[int, int] = (15, 10),
-        component_labels: List[str] = ["$p_x$", "$p_y$", "$p_z$"],
-    ):
-        """
-        Plot histograms of relative deviation for each neutrino momentum component.
-
-        Args:
-            bins: Number of bins for histograms
-            xlims: Optional x-axis limits (min, max)
-            figsize: Figure size
-            component_labels: Labels for momentum components
-
-        Returns:
-            Tuple of (figure, axes)
-        """
-        if self.y_test.get("neutrino_truth") is None:
-            raise ValueError(
-                "No regression targets found in y_test. "
-                "Cannot evaluate neutrino component deviations."
-            )
-
-        # Get event weights
-        event_weights = FeatureExtractor.get_event_weights(self.X_test)
-        true_neutrinos = self.y_test["neutrino_truth"]
-
-        # Collect predictions from all reconstructors
-        predicted_neutrinos = []
-        names = []
-
-        for i, reconstructor in enumerate(self.reconstructors):
-            if isinstance(reconstructor, GroundTruthReconstructor):
-                continue
-
-            # Check if reconstructor supports neutrino reconstruction
-            neutrino_pred = self.prediction_manager.get_neutrino_predictions(i)
-            if neutrino_pred is None:
-                print(
-                    f"{reconstructor.get_name()}: No neutrino reconstruction (skipping)"
-                )
-                continue
-
-            predicted_neutrinos.append(neutrino_pred)
-            names.append(reconstructor.get_name())
-
-        if not predicted_neutrinos:
-            raise ValueError(
-                "No reconstructors with neutrino reconstruction found. "
-                "Cannot plot component deviations."
-            )
-
-        return NeutrinoDeviationPlotter.plot_component_deviation_histograms(
-            predicted_neutrinos,
-            true_neutrinos,
-            names,
-            event_weights,
-            bins,
-            xlims,
-            figsize,
-            component_labels,
-        )
-
-    def plot_overall_neutrino_deviation_distribution(
-        self,
-        bins: int = 50,
-        xlims: Optional[Tuple[float, float]] = None,
-        figsize: Tuple[int, int] = (12, 6),
-    ):
-        """
-        Plot histogram of overall relative deviation distribution for all reconstructors.
-
-        Args:
-            bins: Number of bins for histogram
-            xlims: Optional x-axis limits (min, max)
-            figsize: Figure size
-
-        Returns:
-            Tuple of (figure, axis)
-        """
-        if self.y_test.get("neutrino_truth") is None:
-            raise ValueError(
-                "No regression targets found in y_test. "
-                "Cannot evaluate neutrino deviation distribution."
-            )
-
-        # Get event weights
-        event_weights = FeatureExtractor.get_event_weights(self.X_test)
-        true_neutrinos = self.y_test["neutrino_truth"]
-
-        # Collect predictions from all reconstructors
-        predicted_neutrinos = []
-        names = []
-
-        for i, reconstructor in enumerate(self.reconstructors):
-            if isinstance(reconstructor, GroundTruthReconstructor):
-                continue
-
-            # Check if reconstructor supports neutrino reconstruction
-            neutrino_pred = self.prediction_manager.get_neutrino_predictions(i)
-            if neutrino_pred is None:
-                print(
-                    f"{reconstructor.get_name()}: No neutrino reconstruction (skipping)"
-                )
-                continue
-
-            predicted_neutrinos.append(neutrino_pred)
-            names.append(reconstructor.get_name())
-
-        if not predicted_neutrinos:
-            raise ValueError(
-                "No reconstructors with neutrino reconstruction found. "
-                "Cannot plot deviation distribution."
-            )
-
-        return NeutrinoDeviationPlotter.plot_overall_deviation_distribution(
-            predicted_neutrinos,
-            true_neutrinos,
-            names,
-            event_weights,
-            bins,
-            xlims,
-            figsize,
-        )
-
-    # ==================== Confusion Matrix Methods ====================
-
     def plot_confusion_matrices(
         self,
         normalize: bool = True,
@@ -1097,13 +725,26 @@ class ReconstructionEvaluator:
             bin_centers, binned_comp, bin_counts, bin_edges, feature_label, config
         )
 
-    # ==================== Top Mass Resolution Methods ====================
-
-    def _compute_top_lorentz_vectors(
+    def compute_reconstructed_variable(
         self,
         reconstructor_index: int,
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """Compute top reconstructions for a specific reconstructor."""
+        variable_func: callable,
+        combine_tops: bool = False,
+    ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        """
+        Compute any reconstructed variable from event kinematics.
+
+        Args:
+            reconstructor_index: Index of the reconstructor
+            variable_func: Function that takes (top1_p4, top2_p4, lepton_features, jet_features, neutrino_pred)
+                          and returns the reconstructed variable(s)
+            truth_extractor: Optional function to extract truth values from X_test
+            combine_tops: If True, concatenate results for both tops (for per-top quantities)
+
+        Returns:
+            Reconstructed variable array or tuple of (reconstructed, truth) if truth_extractor provided
+        """
+        # Get predictions
         assignment_pred = self.prediction_manager.get_assignment_predictions(
             reconstructor_index
         )
@@ -1111,18 +752,184 @@ class ReconstructionEvaluator:
             reconstructor_index
         )
 
-        lepton_features = self.X_test["lepton"][:, :, :4]
-        jet_features = self.X_test["jet"][:, :, :4]
+        # Get lepton features
+        lepton_features = self.X_test["lepton"] # Assuming shape (n_events, n_leptons, n_features)
 
-        return TopReconstructor.compute_top_lorentz_vectors(
-            assignment_pred, neutrino_pred, lepton_features, jet_features
+        # Get correctly assigned jet features
+        jet_features = self.X_test["jet"][:,:, :4]  # Assuming first 4 features are kinematic (px, py, pz, E)
+        selected_jet_indices = assignment_pred.argmax(axis=-2)
+        reco_jets = np.take_along_axis(
+            jet_features,
+            selected_jet_indices[:, :, np.newaxis],
+            axis=1,
+        )
+
+
+        # Compute reconstructed variable
+        reconstructed = variable_func(lepton_features, reco_jets, neutrino_pred)
+
+        # Handle per-top quantities
+        if combine_tops and isinstance(reconstructed, tuple):
+            reconstructed = np.concatenate(reconstructed)
+
+        return reconstructed
+    
+    def compute_true_variable(
+        self,
+        truth_extractor: callable,
+        combine_tops: bool = False,
+    ) -> np.ndarray:
+        """
+        Compute any truth variable from X_test.
+
+        Args:
+            truth_extractor: Function to extract truth values from X_test
+            combine_tops: If True, concatenate results for both tops (for per-top quantities)
+        Returns:
+            Truth variable array
+        """
+        truth = truth_extractor(self.X_test)
+
+        # Handle per-top quantities
+        if combine_tops and isinstance(truth, tuple):
+            truth = np.concatenate(truth)
+
+        return truth
+
+    def plot_binned_reconstructed_variable(
+        self,
+        feature_data_type: str,
+        feature_name: str,
+        variable_func: callable,
+        truth_extractor: callable,
+        ylabel: str,
+        fancy_feature_label: Optional[str] = None,
+        bins: int = 20,
+        xlims: Optional[Tuple[float, float]] = None,
+        n_bootstrap: int = 100,
+        confidence: float = 0.95,
+        show_errorbar: bool = True,
+        statistic: str = "std",
+        combine_tops: bool = False,
+        use_signed_deviation: bool = False,
+    ):
+        """
+        Plot binned resolution or deviation of any reconstructed variable vs. a feature.
+
+        Args:
+            feature_data_type: Type of feature data ('jet', 'lepton', 'met', etc.)
+            feature_name: Name of the feature to bin by
+            variable_func: Function that takes (top1_p4, top2_p4, lepton_features, jet_features, neutrino_pred)
+                          and returns reconstructed variable(s)
+            truth_extractor: Function to extract truth values from (X_test, feature_indices)
+            ylabel: Y-axis label for the plot
+            fancy_feature_label: Optional fancy label for the feature
+            bins: Number of bins
+            xlims: Optional x-axis limits
+            n_bootstrap: Number of bootstrap samples
+            confidence: Confidence level for intervals
+            show_errorbar: Whether to show error bars
+            statistic: Statistic to compute ('std' for resolution, 'mean' for deviation)
+            combine_tops: If True, combine results from both tops (for per-top quantities)
+            use_signed_deviation: If True, use signed deviation instead of absolute
+
+        Returns:
+            Tuple of (figure, axis)
+        """
+        config = PlotConfig(
+            confidence=confidence,
+            n_bootstrap=n_bootstrap,
+            show_errorbar=show_errorbar,
+        )
+
+        # Extract feature data and create bins
+        feature_data = FeatureExtractor.extract_feature(
+            self.X_test,
+            self.config.feature_indices,
+            feature_data_type,
+            feature_name,
+        )
+
+        bin_edges = BinningUtility.create_bins(feature_data, bins, xlims)
+        binning_mask = BinningUtility.create_binning_mask(feature_data, bin_edges)
+        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+
+        # Compute metric for each reconstructor
+        print(f"\nComputing binned {ylabel} for {feature_name}...")
+        binned_metrics = []
+
+        truth = self.compute_true_variable(
+            truth_extractor, combine_tops=combine_tops
+        )
+
+        for i, reconstructor in enumerate(self.reconstructors):
+            # Compute reconstructed and truth values
+            reconstructed = self.compute_reconstructed_variable(
+                i, variable_func, combine_tops=combine_tops
+            )
+
+            # Compute deviation
+            if use_signed_deviation:
+                deviation = ResolutionCalculator.compute_signed_relative_deviation(
+                    reconstructed, truth
+                )
+            else:
+                deviation = ResolutionCalculator.compute_relative_deviation(
+                    reconstructed, truth
+                )
+
+            # Extend binning mask and weights if combining tops
+            if combine_tops:
+                binning_mask_ext = np.concatenate([binning_mask, binning_mask], axis=1)
+                event_weights_ext = np.concatenate([event_weights, event_weights])
+            else:
+                binning_mask_ext = binning_mask
+                event_weights_ext = event_weights
+
+            if show_errorbar:
+                mean_metric, lower, upper = BootstrapCalculator.compute_binned_bootstrap(
+                    binning_mask_ext,
+                    event_weights_ext,
+                    deviation,
+                    config.n_bootstrap,
+                    config.confidence,
+                    statistic=statistic,
+                )
+                binned_metrics.append((mean_metric, lower, upper))
+            else:
+                metric = BinningUtility.compute_weighted_binned_statistic(
+                    binning_mask_ext,
+                    deviation,
+                    event_weights_ext,
+                    statistic=statistic,
+                )
+                binned_metrics.append((metric, metric, metric))
+
+        # Compute bin counts
+        bin_counts = np.sum(
+            event_weights.reshape(1, -1) * binning_mask, axis=1
+        ) / np.sum(event_weights)
+
+        # Plot
+        feature_label = fancy_feature_label or feature_name
+        names = [r.get_name() for r in self.reconstructors]
+
+        return ResolutionPlotter.plot_binned_resolution(
+            bin_centers,
+            binned_metrics,
+            names,
+            bin_counts,
+            bin_edges,
+            feature_label,
+            ylabel,
+            config,
         )
 
     def plot_binned_top_mass_resolution(
         self,
         feature_data_type: str,
         feature_name: str,
-        true_top_mass_labels: List[str] = ["truth_top_mass", "truth_tbar_mass"],
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
@@ -1131,98 +938,28 @@ class ReconstructionEvaluator:
         show_errorbar: bool = True,
     ):
         """Plot binned top mass resolution vs. a feature."""
-        config = PlotConfig(
-            confidence=confidence,
+
+        return self.plot_binned_reconstructed_variable(
+            feature_data_type=feature_data_type,
+            feature_name=feature_name,
+            variable_func=self._compute_top_masses,
+            truth_extractor=self._extract_true_top_masses,
+            ylabel=r"Relative $m(t)$ Resolution",
+            fancy_feature_label=fancy_feature_label,
+            bins=bins,
+            xlims=xlims,
             n_bootstrap=n_bootstrap,
+            confidence=confidence,
             show_errorbar=show_errorbar,
-        )
-
-        # Validate and extract true top masses
-        true_top1_mass, true_top2_mass = self._extract_true_top_masses(
-            true_top_mass_labels
-        )
-
-        # Extract feature data and create bins
-        feature_data = FeatureExtractor.extract_feature(
-            self.X_test,
-            self.config.feature_indices,
-            feature_data_type,
-            feature_name,
-        )
-
-        bin_edges = BinningUtility.create_bins(feature_data, bins, xlims)
-        binning_mask = BinningUtility.create_binning_mask(feature_data, bin_edges)
-        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
-        event_weights = FeatureExtractor.get_event_weights(self.X_test)
-
-        # Compute resolutions for each reconstructor
-        print(f"\nComputing binned top mass resolution for {feature_name}...")
-        binned_resolutions = []
-
-        for i, reconstructor in enumerate(self.reconstructors):
-            # Compute top masses
-            top1_p4, top2_p4 = self._compute_top_lorentz_vectors(i)
-            top1_mass, top2_mass = TopReconstructor.compute_top_masses(top1_p4, top2_p4)
-
-            # Compute deviations (extended for both tops)
-            mass_deviation = np.concatenate(
-                [
-                    ResolutionCalculator.compute_relative_deviation(
-                        top1_mass, true_top1_mass
-                    ),
-                    ResolutionCalculator.compute_relative_deviation(
-                        top2_mass, true_top2_mass
-                    ),
-                ]
-            )
-
-            # Extend binning mask and weights
-            binning_mask_extended = np.concatenate([binning_mask, binning_mask], axis=1)
-            event_weights_extended = np.concatenate([event_weights, event_weights])
-
-            if show_errorbar:
-                mean_res, lower, upper = BootstrapCalculator.compute_binned_bootstrap(
-                    binning_mask_extended,
-                    event_weights_extended,
-                    mass_deviation,
-                    config.n_bootstrap,
-                    config.confidence,
-                )
-                binned_resolutions.append((mean_res, lower, upper))
-            else:
-                resolution = BinningUtility.compute_weighted_binned_statistic(
-                    binning_mask_extended,
-                    mass_deviation,
-                    event_weights_extended,
-                    statistic="std",
-                )
-                binned_resolutions.append((resolution, resolution, resolution))
-
-        # Compute bin counts
-        bin_counts = np.sum(
-            event_weights.reshape(1, -1) * binning_mask, axis=1
-        ) / np.sum(event_weights)
-
-        # Plot
-        feature_label = fancy_feature_label or feature_name
-        names = [r.get_name() for r in self.reconstructors]
-
-        return ResolutionPlotter.plot_binned_resolution(
-            bin_centers,
-            binned_resolutions,
-            names,
-            bin_counts,
-            bin_edges,
-            feature_label,
-            r"Relative $m(t)$ Resolution",
-            config,
+            statistic="std",
+            combine_tops=True,
+            use_signed_deviation=False,
         )
 
     def plot_binned_ttbar_mass_resolution(
         self,
         feature_data_type: str,
         feature_name: str,
-        true_ttbar_mass_label: List[str] = ["truth_ttbar_mass"],
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
@@ -1231,82 +968,29 @@ class ReconstructionEvaluator:
         show_errorbar: bool = True,
     ):
         """Plot binned ttbar mass resolution vs. a feature."""
-        config = PlotConfig(
-            confidence=confidence,
+        # Define variable computation function
+
+        return self.plot_binned_reconstructed_variable(
+            feature_data_type=feature_data_type,
+            feature_name=feature_name,
+            variable_func=self._compute_ttbar_mass,
+            truth_extractor=self._extract_true_ttbar_mass,
+            ylabel=r"Relative $m(t\overline{t})$ Resolution",
+            fancy_feature_label=fancy_feature_label,
+            bins=bins,
+            xlims=xlims,
             n_bootstrap=n_bootstrap,
+            confidence=confidence,
             show_errorbar=show_errorbar,
-        )
-
-        # Validate and extract true ttbar mass
-        true_ttbar_mass = self._extract_true_ttbar_mass(true_ttbar_mass_label)
-
-        # Extract feature data and create bins
-        feature_data = FeatureExtractor.extract_feature(
-            self.X_test,
-            self.config.feature_indices,
-            feature_data_type,
-            feature_name,
-        )
-
-        bin_edges = BinningUtility.create_bins(feature_data, bins, xlims)
-        binning_mask = BinningUtility.create_binning_mask(feature_data, bin_edges)
-        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
-        event_weights = FeatureExtractor.get_event_weights(self.X_test)
-
-        # Compute resolutions for each reconstructor
-        print(f"\nComputing binned ttbar mass resolution for {feature_name}...")
-        binned_resolutions = []
-
-        for i, reconstructor in enumerate(self.reconstructors):
-            # Compute ttbar mass
-            top1_p4, top2_p4 = self._compute_top_lorentz_vectors(i)
-            ttbar_mass = TopReconstructor.compute_ttbar_mass(top1_p4, top2_p4)
-
-            # Compute deviation
-            mass_deviation = ResolutionCalculator.compute_relative_deviation(
-                ttbar_mass, true_ttbar_mass
-            )
-
-            if show_errorbar:
-                mean_res, lower, upper = BootstrapCalculator.compute_binned_bootstrap(
-                    binning_mask,
-                    event_weights,
-                    mass_deviation,
-                    config.n_bootstrap,
-                    config.confidence,
-                )
-                binned_resolutions.append((mean_res, lower, upper))
-            else:
-                resolution = BinningUtility.compute_weighted_binned_statistic(
-                    binning_mask, mass_deviation, event_weights, statistic="std"
-                )
-                binned_resolutions.append((resolution, resolution, resolution))
-
-        # Compute bin counts
-        bin_counts = np.sum(
-            event_weights.reshape(1, -1) * binning_mask, axis=1
-        ) / np.sum(event_weights)
-
-        # Plot
-        feature_label = fancy_feature_label or feature_name
-        names = [r.get_name() for r in self.reconstructors]
-
-        return ResolutionPlotter.plot_binned_resolution(
-            bin_centers,
-            binned_resolutions,
-            names,
-            bin_counts,
-            bin_edges,
-            feature_label,
-            r"Relative $m(t\overline{t})$ Resolution",
-            config,
+            statistic="std",
+            combine_tops=False,
+            use_signed_deviation=False,
         )
 
     def plot_binned_top_mass_deviation(
         self,
         feature_data_type: str,
         feature_name: str,
-        true_top_mass_labels: List[str] = ["truth_top_mass", "truth_tbar_mass"],
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
@@ -1315,99 +999,28 @@ class ReconstructionEvaluator:
         show_errorbar: bool = True,
     ):
         """Plot binned top mass deviation (mean) vs. a feature."""
-        config = PlotConfig(
-            confidence=confidence,
+
+        return self.plot_binned_reconstructed_variable(
+            feature_data_type=feature_data_type,
+            feature_name=feature_name,
+            variable_func=self._compute_top_masses,
+            truth_extractor=self._extract_true_top_masses,
+            ylabel=r"Mean Relative $m(t)$ Deviation",
+            fancy_feature_label=fancy_feature_label,
+            bins=bins,
+            xlims=xlims,
             n_bootstrap=n_bootstrap,
+            confidence=confidence,
             show_errorbar=show_errorbar,
-        )
-
-        # Validate and extract true top masses
-        true_top1_mass, true_top2_mass = self._extract_true_top_masses(
-            true_top_mass_labels
-        )
-
-        # Extract feature data and create bins
-        feature_data = FeatureExtractor.extract_feature(
-            self.X_test,
-            self.config.feature_indices,
-            feature_data_type,
-            feature_name,
-        )
-
-        bin_edges = BinningUtility.create_bins(feature_data, bins, xlims)
-        binning_mask = BinningUtility.create_binning_mask(feature_data, bin_edges)
-        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
-        event_weights = FeatureExtractor.get_event_weights(self.X_test)
-
-        # Compute deviations for each reconstructor
-        print(f"\nComputing binned top mass deviation for {feature_name}...")
-        binned_deviations = []
-
-        for i, reconstructor in enumerate(self.reconstructors):
-            # Compute top masses
-            top1_p4, top2_p4 = self._compute_top_lorentz_vectors(i)
-            top1_mass, top2_mass = TopReconstructor.compute_top_masses(top1_p4, top2_p4)
-
-            # Compute deviations (extended for both tops)
-            mass_deviation = np.concatenate(
-                [
-                    ResolutionCalculator.compute_signed_relative_deviation(
-                        top1_mass, true_top1_mass
-                    ),
-                    ResolutionCalculator.compute_signed_relative_deviation(
-                        top2_mass, true_top2_mass
-                    ),
-                ]
-            )
-
-            # Extend binning mask and weights
-            binning_mask_extended = np.concatenate([binning_mask, binning_mask], axis=1)
-            event_weights_extended = np.concatenate([event_weights, event_weights])
-
-            if show_errorbar:
-                mean_dev, lower, upper = BootstrapCalculator.compute_binned_bootstrap(
-                    binning_mask_extended,
-                    event_weights_extended,
-                    mass_deviation,
-                    config.n_bootstrap,
-                    config.confidence,
-                    statistic="mean",
-                )
-                binned_deviations.append((mean_dev, lower, upper))
-            else:
-                deviation = BinningUtility.compute_weighted_binned_statistic(
-                    binning_mask_extended,
-                    mass_deviation,
-                    event_weights_extended,
-                    statistic="mean",
-                )
-                binned_deviations.append((deviation, deviation, deviation))
-
-        # Compute bin counts
-        bin_counts = np.sum(
-            event_weights.reshape(1, -1) * binning_mask, axis=1
-        ) / np.sum(event_weights)
-
-        # Plot
-        feature_label = fancy_feature_label or feature_name
-        names = [r.get_name() for r in self.reconstructors]
-
-        return ResolutionPlotter.plot_binned_resolution(
-            bin_centers,
-            binned_deviations,
-            names,
-            bin_counts,
-            bin_edges,
-            feature_label,
-            r"Mean Relative $m(t)$ Deviation",
-            config,
+            statistic="mean",
+            combine_tops=True,
+            use_signed_deviation=True,
         )
 
     def plot_binned_ttbar_mass_deviation(
         self,
         feature_data_type: str,
         feature_name: str,
-        true_ttbar_mass_label: List[str] = ["truth_ttbar_mass"],
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
@@ -1416,104 +1029,70 @@ class ReconstructionEvaluator:
         show_errorbar: bool = True,
     ):
         """Plot binned ttbar mass deviation (mean) vs. a feature."""
-        config = PlotConfig(
-            confidence=confidence,
+
+        return self.plot_binned_reconstructed_variable(
+            feature_data_type=feature_data_type,
+            feature_name=feature_name,
+            variable_func=self._compute_ttbar_mass,
+            truth_extractor=self._extract_true_ttbar_mass,
+            ylabel=r"Mean Relative $m(t\overline{t})$ Deviation",
+            fancy_feature_label=fancy_feature_label,
+            bins=bins,
+            xlims=xlims,
             n_bootstrap=n_bootstrap,
+            confidence=confidence,
             show_errorbar=show_errorbar,
+            statistic="mean",
+            combine_tops=False,
+            use_signed_deviation=True,
         )
 
-        # Validate and extract true ttbar mass
-        true_ttbar_mass = self._extract_true_ttbar_mass(true_ttbar_mass_label)
-
-        # Extract feature data and create bins
-        feature_data = FeatureExtractor.extract_feature(
-            self.X_test,
-            self.config.feature_indices,
-            feature_data_type,
-            feature_name,
-        )
-
-        bin_edges = BinningUtility.create_bins(feature_data, bins, xlims)
-        binning_mask = BinningUtility.create_binning_mask(feature_data, bin_edges)
-        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
-        event_weights = FeatureExtractor.get_event_weights(self.X_test)
-
-        # Compute deviations for each reconstructor
-        print(f"\nComputing binned ttbar mass deviation for {feature_name}...")
-        binned_deviations = []
-
-        for i, reconstructor in enumerate(self.reconstructors):
-            # Compute ttbar mass
-            top1_p4, top2_p4 = self._compute_top_lorentz_vectors(i)
-            ttbar_mass = TopReconstructor.compute_ttbar_mass(top1_p4, top2_p4)
-
-            # Compute deviation
-            mass_deviation = ResolutionCalculator.compute_signed_relative_deviation(
-                ttbar_mass, true_ttbar_mass
-            )
-
-            if show_errorbar:
-                mean_dev, lower, upper = BootstrapCalculator.compute_binned_bootstrap(
-                    binning_mask,
-                    event_weights,
-                    mass_deviation,
-                    config.n_bootstrap,
-                    config.confidence,
-                    statistic="mean",
-                )
-                binned_deviations.append((mean_dev, lower, upper))
-            else:
-                deviation = BinningUtility.compute_weighted_binned_statistic(
-                    binning_mask, mass_deviation, event_weights, statistic="mean"
-                )
-                binned_deviations.append((deviation, deviation, deviation))
-
-        # Compute bin counts
-        bin_counts = np.sum(
-            event_weights.reshape(1, -1) * binning_mask, axis=1
-        ) / np.sum(event_weights)
-
-        # Plot
-        feature_label = fancy_feature_label or feature_name
-        names = [r.get_name() for r in self.reconstructors]
-
-        return ResolutionPlotter.plot_binned_resolution(
-            bin_centers,
-            binned_deviations,
-            names,
-            bin_counts,
-            bin_edges,
-            feature_label,
-            r"Mean Relative $m(t\overline{t})$ Deviation",
-            config,
-        )
-
+    @staticmethod
     def _extract_true_top_masses(
-        self,
-        labels: List[str],
+        X_test,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """Extract true top masses from test data."""
-        for label in labels:
-            if label not in self.config.feature_indices["non_training"]:
-                raise ValueError(
-                    f"True top mass label '{label}' not found in test data."
-                )
+        top_4_vector =lorentz_vector_from_PtEtaPhiE_array( X_test["top_truth"][:, 0, :4])
+        tbar_4_vector = lorentz_vector_from_PtEtaPhiE_array(X_test["top_truth"][:, 1, :4])
 
-        true_top1_mass = self.X_test["non_training"][
-            :, self.config.feature_indices["non_training"][labels[0]]
-        ]
-        true_top2_mass = self.X_test["non_training"][
-            :, self.config.feature_indices["non_training"][labels[1]]
-        ]
+        true_top_mass = TopReconstructor.compute_top_masses(
+            top_4_vector, tbar_4_vector
+        )
+        return true_top_mass
 
-        return true_top1_mass, true_top2_mass
-
-    def _extract_true_ttbar_mass(self, labels: List[str]) -> np.ndarray:
+    @staticmethod
+    def _extract_true_ttbar_mass(X_test) -> np.ndarray:
         """Extract true ttbar mass from test data."""
-        label = labels[0]
-        if label not in self.config.feature_indices["non_training"]:
-            raise ValueError(f"True ttbar mass label '{label}' not found in test data.")
+        top_4_vector =lorentz_vector_from_PtEtaPhiE_array(X_test["top_truth"][:, 0, :4])
+        tbar_4_vector = lorentz_vector_from_PtEtaPhiE_array(X_test["top_truth"][:, 1, :4])
+        true_ttbar_mass = TopReconstructor.compute_ttbar_mass(
+            top_4_vector, tbar_4_vector
+        )
+        return true_ttbar_mass
 
-        return self.X_test["non_training"][
-            :, self.config.feature_indices["non_training"][label]
-        ]
+    @staticmethod
+    def _compute_top_masses(
+        leptons: np.ndarray,
+        jets: np.ndarray,
+        neutrinos: np.ndarray
+    ):
+        """Compute top and antitop masses from kinematic features."""
+        top_p4, tbar_p4 = TopReconstructor.compute_top_lorentz_vectors(
+            leptons,
+            jets,
+            neutrinos
+        )
+        return TopReconstructor.compute_top_masses(top_p4, tbar_p4)
+    
+    @staticmethod
+    def _compute_ttbar_mass(
+        leptons: np.ndarray,
+        jets: np.ndarray,
+        neutrinos: np.ndarray
+    ):
+        """Compute ttbar mass from kinematic features."""
+        top_p4, tbar_p4 = TopReconstructor.compute_top_lorentz_vectors(
+            leptons,
+            jets,
+            neutrinos
+        )
+        return TopReconstructor.compute_ttbar_mass(top_p4, tbar_p4)

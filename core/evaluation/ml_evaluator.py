@@ -10,7 +10,7 @@ from .evaluator_base import (
     AccuracyCalculator,
     NeutrinoDeviationCalculator,
 )
-from . import MLReconstructorBase
+from ..reconstruction import MLReconstructorBase
 from typing import List, Union
 import time
 
