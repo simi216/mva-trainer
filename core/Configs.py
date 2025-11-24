@@ -174,6 +174,8 @@ class DataConfig:
     jet_features: List[str]
     lepton_features: List[str]
     met_features: Optional[List[str]] = None
+
+    # Non-training features
     non_training_features: Optional[List[str]] = None
     custom_features: Dict[str, int] = field(default_factory=dict)
 
@@ -191,6 +193,8 @@ class DataConfig:
     has_nu_flows_regression_targets: bool = False
     nu_flows_neutrino_momentum_features: Optional[List[str]] = None
     nu_flows_antineutrino_momentum_features: Optional[List[str]] = None
+
+    
 
     has_event_weight: bool = False
     has_event_number: bool = False
@@ -238,6 +242,7 @@ class DataConfig:
                 target: idx
                 for idx, target in enumerate(self.nu_flows_neutrino_momentum_features)
             }
+
         
 
     def _build_data_shapes(self) -> None:
