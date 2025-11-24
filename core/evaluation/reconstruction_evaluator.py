@@ -753,10 +753,10 @@ class ReconstructionEvaluator:
         )
 
         # Get lepton features
-        lepton_features = self.X_test["lepton"] # Assuming shape (n_events, n_leptons, n_features)
+        lepton_features = self.X_test["lepton"]  # Assuming shape (n_events, n_leptons, n_features)
 
         # Get correctly assigned jet features
-        jet_features = self.X_test["jet"][:,:, :4]  # Assuming first 4 features are kinematic (px, py, pz, E)
+        jet_features = self.X_test["jet"][:,:, :4]  # Assuming first 4 features are kinematic (Pt, Eta, Phi, E)
         selected_jet_indices = assignment_pred.argmax(axis=-2)
         reco_jets = np.take_along_axis(
             jet_features,
@@ -859,14 +859,15 @@ class ReconstructionEvaluator:
         print(f"\nComputing binned {ylabel} for {feature_name}...")
         binned_metrics = []
 
-        truth = self.compute_true_variable(
-            truth_extractor, combine_tops=combine_tops
-        )
+        
 
         for i, reconstructor in enumerate(self.reconstructors):
             # Compute reconstructed and truth values
             reconstructed = self.compute_reconstructed_variable(
                 i, variable_func, combine_tops=combine_tops
+            )
+            truth = self.compute_true_variable(
+                truth_extractor, combine_tops=combine_tops
             )
 
             # Compute deviation
