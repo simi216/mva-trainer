@@ -33,12 +33,13 @@ class TopReconstructor:
         """
 
         # Reshape leptons and neutrinos
+        reco_jets = jets.reshape(-1, 2, 4)
         reco_leptons = leptons.reshape(-1, 2, 4)
         reco_neutrinos = neutrinos.reshape(-1, 2, 3)
 
 
         # Convert to four-vectors
-        reco_jets_p4 = lorentz_vector_from_PtEtaPhiE_array(jets)
+        reco_jets_p4 = lorentz_vector_from_PtEtaPhiE_array(reco_jets)
         reco_leptons_p4 = lorentz_vector_from_PtEtaPhiE_array(reco_leptons)
         reco_neutrinos_p4 = lorentz_vector_from_neutrino_momenta_array(reco_neutrinos)
 

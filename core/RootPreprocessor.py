@@ -599,7 +599,7 @@ class RootPreprocessor:
         ttbar_p = np.sqrt(ttbar_px**2 + ttbar_py**2 + ttbar_pz**2)
         truth_tt_boost_parameter = ttbar_p / ttbar_e
 
-        # Lepton 4-vectors from W decays
+        # Lepton 4-vectors from W decay
         lep_top_pt = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_pt)
         lep_top_eta = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_eta)
         lep_top_phi = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_phi)
@@ -824,6 +824,7 @@ def preprocess_root_directory(
     save_initial_parton_info: bool = True,
     verbose: bool = True,
     max_jets: int = 10,
+    max_events: Optional[int] = None,
 ):
     """
     Process all ROOT files in a directory.
@@ -840,7 +841,8 @@ def preprocess_root_directory(
     data_collected = []
 
     num_files = len(os.listdir(input_dir))
-    print(f"Found {num_files} files in {input_dir}. Starting processing...\n\n")
+    print(f"Found {num_files} files in {input_dir}.\nStarting processing...\n\n")
+    num_total_events = 0
     for file_index,filename in enumerate(os.listdir(input_dir)):
         print(f"Processing file {file_index + 1} of {num_files}...\n")
         if filename.endswith(".root"):
@@ -861,6 +863,12 @@ def preprocess_root_directory(
                 preprocessor = RootPreprocessor(config)
                 preprocessor.process()
                 data_collected.append(preprocessor.get_processed_data())
+                num_events = len(preprocessor.get_processed_data()["lep_pt"])
+                num_total_events += num_events
+                print(f"Processed {num_events} events from {filename}. Total events so far: {num_total_events}\n")
+        if max_events is not None and num_total_events >= max_events:
+            print(f"Reached maximum number of events: {max_events}. Stopping processing.")
+            break
     print("\nMerging data from all files...")
     merged_data = {}
     for key in data_collected[0].keys():
