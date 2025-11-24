@@ -31,6 +31,7 @@ class PreprocessorConfig:
     save_nu_flows: bool = False
     save_initial_parton_info: bool = False
     verbose: bool = True
+    save_mc_truth: bool = True
 
     # Pre-selection criteria
     n_leptons_required: int = 2
@@ -597,6 +598,24 @@ class RootPreprocessor:
         ttbar_p = np.sqrt(ttbar_px**2 + ttbar_py**2 + ttbar_pz**2)
         truth_tt_boost_parameter = ttbar_p / ttbar_e
 
+        # Lepton 4-vectors from W decays
+        lep_top_pt = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_pt)
+        lep_top_eta = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_eta)
+        lep_top_phi = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_phi)
+        lep_top_mass = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_e)
+        lep_top_e = np.sqrt(
+            lep_top_mass**2 + lep_top_pt**2 * np.cosh(lep_top_eta)**2
+        )
+
+         # Lepton from anti-top
+        lep_tbar_pt = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_tbar_pt)
+        lep_tbar_eta = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_tbar_eta)
+        lep_tbar_phi = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_tbar_phi)
+        lep_tbar_mass = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_tbar_e)
+        lep_tbar_e = np.sqrt(
+            lep_tbar_mass**2 + lep_tbar_pt**2 * np.cosh(lep_tbar_eta)**2
+        )
+
         # Extract neutrino information
         nu_top_pt = ak.to_numpy(events.Ttbar_MC_Wdecay2_afterFSR_from_t_pt)
         nu_top_eta = ak.to_numpy(events.Ttbar_MC_Wdecay2_afterFSR_from_t_eta)
@@ -655,6 +674,18 @@ class RootPreprocessor:
             "truth_tbar_neutrino_px": nu_tbar_px,
             "truth_tbar_neutrino_py": nu_tbar_py,
             "truth_tbar_neutrino_pz": nu_tbar_pz,
+            # Leptons from W decays
+            "truth_top_lepton_mass": lep_top_mass,
+            "truth_top_lepton_pt": lep_top_pt,
+            "truth_top_lepton_eta": lep_top_eta,
+            "truth_top_lepton_phi": lep_top_phi,
+            "truth_top_lepton_e": lep_top_e,
+            "truth_tbar_lepton_mass": lep_tbar_mass,
+            "truth_tbar_lepton_pt": lep_tbar_pt,
+            "truth_tbar_lepton_eta": lep_tbar_eta,
+            "truth_tbar_lepton_phi": lep_tbar_phi,
+            "truth_tbar_lepton_e": lep_tbar_e,
+            
         }
 
     def _extract_nuflow_results(self, events: ak.Array) -> Dict[str, np.ndarray]:

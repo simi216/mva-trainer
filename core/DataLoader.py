@@ -177,6 +177,10 @@ class FeatureBuilder:
             features["nu_flows_regression_targets"] = (
                 self._build_nu_flows_regression_targets()
             )
+        if self.config.top_truth_features and self.config.antitop_truth_features:
+            features["top_truth"] = self._build_top_truth_features()
+        if self.config.lepton_truth_features and self.config.antilepton_truth_features:
+            features["lepton_truth"] = self._build_lepton_truth_features()
 
         return features
 
@@ -226,13 +230,7 @@ class FeatureBuilder:
         """Build regression target array (n_events, NUM_LEPTONS, n_targets)."""
         neutrino_vars = self.config.neutrino_momentum_features
         antineutrino_vars = self.config.antineutrino_momentum_features
-
-        columns = []
-        for var in neutrino_vars:
-            columns.append(f"{var}")  # Neutrino for lepton 1
-        for var in antineutrino_vars:
-            columns.append(f"{var}")  # Antineutrino for lepton 2
-
+        columns = neutrino_vars + antineutrino_vars
         data = self.data[columns].to_numpy()
         data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)  # n_targets
         return data
@@ -244,14 +242,22 @@ class FeatureBuilder:
             + self.config.nu_flows_antineutrino_momentum_features
         )
 
-        columns = []
-        for var in nu_flows_vars:
-            columns.append(f"{var}")  # Neutrino momenta
 
-        data = self.data[columns].to_numpy()
+        data = self.data[nu_flows_vars].to_numpy()
         data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)  # n_targets
         return data
 
+    def _build_top_truth_features(self) -> np.ndarray:
+        """Build top quark truth feature array (n_events, n_features)."""
+        top_truth_vars = self.config.top_truth_features + self.config.antitop_truth_features
+        data = self.data[top_truth_vars].to_numpy().reshape(self.data_length, self.config.NUM_LEPTONS, -1)
+        return data
+
+    def _build_lepton_truth_features(self) -> np.ndarray:
+        """Build lepton truth feature array (n_events, n_features)."""
+        lepton_truth_vars = self.config.lepton_truth_features + self.config.antilepton_truth_features
+        data = self.data[lepton_truth_vars].to_numpy().reshape(self.data_length, self.config.NUM_LEPTONS, -1)
+        return data
 
 class LabelBuilder:
     """Builds training labels from truth information."""
