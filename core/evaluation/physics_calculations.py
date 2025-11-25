@@ -92,20 +92,44 @@ class ResolutionCalculator:
     """Calculate mass resolution metrics."""
 
     @staticmethod
-    def compute_relative_deviation(
-        predicted_mass: np.ndarray,
-        true_mass: np.ndarray,
+    def compute_deviation(
+        reconstructed_masses: np.ndarray,
+        true_masses: np.ndarray,
+        use_relative_deviation: bool = True,
+        use_signed_deviation: bool = False,
     ) -> np.ndarray:
-        """Compute relative mass deviation."""
-        return np.abs(predicted_mass - true_mass) / true_mass
+        """
+        Compute deviations between reconstructed and true masses.
 
-    @staticmethod
-    def compute_signed_relative_deviation(
-        predicted_mass: np.ndarray,
-        true_mass: np.ndarray,
-    ) -> np.ndarray:
-        """Compute signed relative mass deviation."""
-        return (predicted_mass - true_mass) / true_mass
+        Args:
+            reconstructed_masses: Array of reconstructed masses
+            true_masses: Array of true masses
+            use_relative_deviation: If True, compute relative deviations
+            use_signed_deviation: If True, keep sign of deviations
+        Returns:
+            Array of deviations
+        """
+        # Filter out invalid values before computation
+        valid_mask = (
+            np.isfinite(reconstructed_masses) & 
+            np.isfinite(true_masses) & 
+            (true_masses != 0) &
+            (reconstructed_masses != -999)  # padding value
+        )
+        
+        if use_relative_deviation:
+            with np.errstate(divide='ignore', invalid='ignore'):
+                deviations = (reconstructed_masses - true_masses) / true_masses
+        else:
+            deviations = reconstructed_masses - true_masses
+
+        # Set invalid entries to NaN so they can be filtered later
+        deviations = np.where(valid_mask, deviations, np.nan)
+
+        if not use_signed_deviation:
+            deviations = np.abs(deviations)
+
+        return deviations
 
     @staticmethod
     def compute_resolution(
@@ -162,3 +186,106 @@ class ResolutionCalculator:
                 )
 
         return resolutions
+    
+
+import numpy as np
+
+# ----------------------------------------------------------------------
+# Lorentz boost of v into the rest frame of parent, both shaped (N,4)
+# Components are (px, py, pz, E)
+# ----------------------------------------------------------------------
+def boost(v, parent):
+    """
+    Boost 4-vectors v into the rest frame of parent.
+    v, parent: shape (N,4), order (px,py,pz,E)
+    Returns boosted (N,4) in the same order.
+    """
+
+    pv = parent[:, :3]                 # parent spatial momentum
+    Ep = parent[:, 3]                  # parent energy
+    p  = np.linalg.norm(pv, axis=1)
+    
+    # Safe division for beta, handling zero/invalid Ep
+    with np.errstate(divide='ignore', invalid='ignore'):
+        beta = pv / Ep[:, None]
+    beta = np.where(np.isfinite(beta) & (Ep[:, None] > 0), beta, 0)
+
+    # Avoid division by zero when already at rest
+    nz = (p > 0) & np.isfinite(p)
+    n = np.zeros_like(pv)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        n[nz] = pv[nz] / p[nz, None]
+    n = np.where(np.isfinite(n), n, 0)
+
+    gamma = 1.0 / np.sqrt(np.maximum(1 - np.sum(beta**2, axis=1), 1e-10))
+
+    vv = v[:, :3]                      # spatial part of v
+    E  = v[:, 3]                       # time component
+
+    # decompose v into parallel and perpendicular to parent direction
+    v_par_coeff = np.sum(vv * n, axis=1)[:, None]   # scalar (N,1)
+    v_par  = v_par_coeff * n
+    v_perp = vv - v_par
+
+    # boost formulas
+    v_par_prime = gamma[:, None] * (v_par + beta * E[:, None] * n)
+    E_prime = gamma * (E + np.sum(beta * v_par, axis=1))
+
+    v_prime = v_par_prime + v_perp
+    return np.column_stack([v_prime, E_prime])
+
+
+# ----------------------------------------------------------------------
+# Common boost sequence (same for cos_han and c_hel)
+# ----------------------------------------------------------------------
+def _prep_leptons(top, tbar, lep_pos, lep_neg):
+    """
+    Apply:
+      1) boost everything to ttbar rest frame
+      2) boost leptons into top / tbar rest frames
+    Returns (lep_pos_3vec, lep_neg_3vec)
+    """
+
+    # --- ttbar 4-vector
+    ttbar = np.zeros_like(top)
+    ttbar[:, :3] = top[:, :3] + tbar[:, :3]
+    ttbar[:,  3] = top[:,  3] + tbar[:,  3]
+
+    lep_pos_1 = boost(lep_pos, ttbar)
+    lep_neg_1 = boost(lep_neg, ttbar)
+    top_1     = boost(top,     ttbar)
+    tbar_1    = boost(tbar,    ttbar)
+
+    lep_pos_2 = boost(lep_pos_1, top_1)
+    lep_neg_2 = boost(lep_neg_1, tbar_1)
+
+    return lep_pos_2[:, :3], lep_neg_2[:, :3]
+
+
+# ----------------------------------------------------------------------
+# cos_han  (CMS version: flip neg lepton z-component)
+# ----------------------------------------------------------------------
+def c_han(top, tbar, lep_pos, lep_neg):
+    p1, p2 = _prep_leptons(top, tbar, lep_pos, lep_neg)
+
+    # CMS-specific flip: z -> -z
+    p2 = p2.copy()
+    p2[:, 2] *= -1
+
+    # normalize
+    u1 = p1 / np.linalg.norm(p1, axis=1)[:, None]
+    u2 = p2 / np.linalg.norm(p2, axis=1)[:, None]
+
+    return np.sum(u1 * u2, axis=1)
+
+
+# ----------------------------------------------------------------------
+# c_hel (standard helicity angle: NO flipping)
+# ----------------------------------------------------------------------
+def c_hel(top, tbar, lep_pos, lep_neg):
+    p1, p2 = _prep_leptons(top, tbar, lep_pos, lep_neg)
+
+    u1 = p1 / np.linalg.norm(p1, axis=1)[:, None]
+    u2 = p2 / np.linalg.norm(p2, axis=1)[:, None]
+
+    return np.sum(u1 * u2, axis=1)

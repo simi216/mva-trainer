@@ -837,6 +837,8 @@ def preprocess_root_directory(
         save_nu_flows: Whether to save NuFlow results
         save_initial_parton_info: Whether to save initial parton info
         verbose: Whether to print progress
+        max_jets: Maximum number of jets to save
+        max_events: Maximum number of events to process (None for all)
     """
     data_collected = []
 

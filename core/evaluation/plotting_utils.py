@@ -880,3 +880,81 @@ class NeutrinoDeviationPlotter:
         
         fig.tight_layout()
         return fig, ax
+
+
+class DistributionPlotter:
+    """Handles plotting of general distributions."""
+
+    @staticmethod
+    def plot_feature_distributions(
+        feature_values: List[np.ndarray],
+        feature_label: str,
+        event_weights: Optional[np.ndarray] = None,
+        labels: Optional[List[str]] = None,
+        ax: Optional[plt.Axes] = None,
+        bins: int = 50,
+        xlims: Optional[Tuple[float, float]] = None,
+
+    ):
+        """
+        Plot histogram of a feature's distribution.
+
+        Args:
+            feature_values: Array of feature values (n_events,)
+            feature_name: Name of the feature
+            feature_label: Label for the x-axis
+            event_weights: Optional event weights (n_events,)
+            bins: Number of bins for histogram
+            xlims: Optional x-axis limits (min, max)
+            figsize: Figure size
+
+        Returns:
+            Tuple of (figure, axis)
+        """
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(8, 6))
+        if event_weights is None:
+            event_weights = np.ones(len(feature_values[0]))
+
+        # Determine bins
+        if xlims is not None:
+            bin_edges = np.linspace(xlims[0], xlims[1], bins + 1)
+        else:
+            # Combine all data to get consistent binning
+            all_values = np.concatenate(feature_values)
+            bin_edges = np.linspace(
+                np.percentile(all_values, 1),
+                np.percentile(all_values, 99),
+                bins + 1
+            )
+
+        # Plot histograms
+        for idx, values in enumerate(feature_values):
+            label = labels[idx] if labels is not None else None
+            
+            # Filter out NaN and inf values
+            valid_mask = np.isfinite(values)
+            valid_values = values[valid_mask]
+            valid_weights = event_weights[valid_mask] if len(event_weights) == len(values) else event_weights
+            
+            if len(valid_values) == 0:
+                print(f"Warning: No valid values for {label}")
+                continue
+                
+            ax.hist(
+                valid_values,
+                bins=bin_edges,
+                weights=valid_weights,
+                alpha=0.5,
+                label=label,
+                histtype='step',
+                linewidth=2,
+                density=True,
+                color = plt.get_cmap("tab10")(idx),
+            )
+        ax.set_xlabel(feature_label)
+        ax.set_ylabel("Density")
+        ax.grid(alpha=0.3)
+        if labels is not None:
+            ax.legend(loc="best")
+        return ax

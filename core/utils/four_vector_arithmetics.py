@@ -34,10 +34,16 @@ def compute_mass_from_lorentz_vector(px, py, pz, e, padding_value = -999):
     Returns:
         np.ndarray: The invariant mass.
     """
+    # Create mask for padding and invalid values (NaN/inf)
     mask = (px == padding_value) | (py == padding_value) | (pz == padding_value) | (e == padding_value)
+    mask = mask | np.isnan(px) | np.isnan(py) | np.isnan(pz) | np.isnan(e)
+    mask = mask | np.isinf(px) | np.isinf(py) | np.isinf(pz) | np.isinf(e)
+    
     px = np.where(mask, 0, px)
     py = np.where(mask, 0, py)
     pz = np.where(mask, 0, pz)
+    e = np.where(mask, 0, e)
+    
     mass_squared = np.where(mask, padding_value, e**2 - (px**2 + py**2 + pz**2))
     mass_squared = np.maximum(mass_squared, 0)  # Prevent negative values due to numerical errors
     return np.sqrt(mass_squared)

@@ -163,8 +163,15 @@ class BinningUtility:
         Returns:
             Array of statistics per bin
         """
-        weighted_data = data.reshape(1, -1) * weights.reshape(1, -1) * binning_mask
-        bin_weights = np.sum(weights.reshape(1, -1) * binning_mask, axis=1)
+        # Filter out NaN and inf values
+        valid_mask = np.isfinite(data)
+        data_clean = np.where(valid_mask, data, 0)
+        
+        # Apply valid mask to binning
+        binning_mask_valid = binning_mask & valid_mask.reshape(1, -1)
+        
+        weighted_data = data_clean.reshape(1, -1) * weights.reshape(1, -1) * binning_mask_valid
+        bin_weights = np.sum(weights.reshape(1, -1) * binning_mask_valid, axis=1)
 
         if statistic == "mean":
             bin_values = np.sum(weighted_data, axis=1)
@@ -180,8 +187,8 @@ class BinningUtility:
             mean_values = BinningUtility.compute_weighted_binned_statistic(
                 binning_mask, data, weights, statistic="mean"
             )
-            squared_diff = (data.reshape(1, -1) - mean_values.reshape(-1, 1)) ** 2
-            weighted_squared_diff = squared_diff * weights.reshape(1, -1) * binning_mask
+            squared_diff = (data_clean.reshape(1, -1) - mean_values.reshape(-1, 1)) ** 2
+            weighted_squared_diff = squared_diff * weights.reshape(1, -1) * binning_mask_valid
             variance = np.divide(
                 np.sum(weighted_squared_diff, axis=1),
                 bin_weights,

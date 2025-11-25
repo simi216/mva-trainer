@@ -2,8 +2,13 @@
 
 import numpy as np
 from typing import Union, Optional, List, Tuple
+import matplotlib.pyplot as plt
 
-from core.reconstruction import EventReconstructorBase, GroundTruthReconstructor, MLReconstructorBase
+from core.reconstruction import (
+    EventReconstructorBase,
+    GroundTruthReconstructor,
+    MLReconstructorBase,
+)
 from .evaluator_base import (
     PlotConfig,
     BootstrapCalculator,
@@ -19,12 +24,15 @@ from .plotting_utils import (
     ComplementarityPlotter,
     ResolutionPlotter,
     NeutrinoDeviationPlotter,
-    SelectionAccuracyPlotter
+    SelectionAccuracyPlotter,
+    DistributionPlotter,
 )
 from .physics_calculations import (
     TopReconstructor,
     ResolutionCalculator,
-    lorentz_vector_from_PtEtaPhiE_array
+    lorentz_vector_from_PtEtaPhiE_array,
+    c_hel,
+    c_han,
 )
 
 
@@ -45,8 +53,8 @@ class PredictionManager:
         """Compute predictions for all reconstructors."""
         for reconstructor in self.reconstructors:
             if isinstance(reconstructor, MLReconstructorBase):
-                assignment_pred, neutrino_regression = reconstructor.complete_forward_pass(
-                    self.X_test
+                assignment_pred, neutrino_regression = (
+                    reconstructor.complete_forward_pass(self.X_test)
                 )
                 self.predictions.append(
                     {
@@ -59,7 +67,9 @@ class PredictionManager:
                 if hasattr(reconstructor, "reconstruct_neutrinos"):
                     neutrino_pred = reconstructor.reconstruct_neutrinos(self.X_test)
                 else:
-                    print("WARNING: Reconstructor does not support neutrino regression.")
+                    print(
+                        "WARNING: Reconstructor does not support neutrino regression."
+                    )
                     neutrino_pred = None
                 self.predictions.append(
                     {
@@ -199,7 +209,7 @@ class ReconstructionEvaluator:
             predictions,
             per_event=per_event,
         )
-    
+
     def evaluate_selection_accuracy(
         self,
         reconstructor_index: int,
@@ -227,14 +237,16 @@ class ReconstructionEvaluator:
             n_bootstrap=config.n_bootstrap,
             confidence=config.confidence,
         )
-    
+
     def _bootstrap_selection_accuracy(
         self,
         reconstructor_index: int,
         config: PlotConfig,
     ) -> Tuple[float, float, float]:
         """Compute selection accuracy with bootstrap confidence intervals."""
-        accuracy_data = self.evaluate_selection_accuracy(reconstructor_index, per_event=True)
+        accuracy_data = self.evaluate_selection_accuracy(
+            reconstructor_index, per_event=True
+        )
         return BootstrapCalculator.compute_bootstrap_ci(
             accuracy_data,
             n_bootstrap=config.n_bootstrap,
@@ -271,7 +283,6 @@ class ReconstructionEvaluator:
             names.append(reconstructor.get_name())
 
         return AccuracyPlotter.plot_overall_accuracies(names, accuracies, config)
-    
 
     def plot_all_selection_accuracies(
         self,
@@ -302,9 +313,9 @@ class ReconstructionEvaluator:
             )
             names.append(reconstructor.get_name())
 
-        return SelectionAccuracyPlotter.plot_selection_accuracies(names, selection_accuracies, config)
-
-
+        return SelectionAccuracyPlotter.plot_selection_accuracies(
+            names, selection_accuracies, config
+        )
 
     # ==================== Neutrino Deviation Methods ====================
 
@@ -408,7 +419,7 @@ class ReconstructionEvaluator:
         for i, reconstructor in enumerate(self.reconstructors):
             if isinstance(reconstructor, GroundTruthReconstructor):
                 print(f"{reconstructor.get_name()}: Ground Truth (skipping)")
-                #continue
+                # continue
 
             # Check if reconstructor supports neutrino reconstruction
             neutrino_pred = self.prediction_manager.get_neutrino_predictions(i)
@@ -528,7 +539,7 @@ class ReconstructionEvaluator:
             show_combinatoric,
             combinatoric_accuracy,
         )
-    
+
     def plot_binned_selection_accuracy(
         self,
         feature_data_type: str,
@@ -567,8 +578,10 @@ class ReconstructionEvaluator:
         # Compute combinatoric baseline if requested
         combinatoric_accuracy = None
         if show_combinatoric:
-            combinatoric_per_event = SelectionAccuracyCalculator.compute_combinatoric_baseline(
-                self.X_test, self.config.padding_value
+            combinatoric_per_event = (
+                SelectionAccuracyCalculator.compute_combinatoric_baseline(
+                    self.X_test, self.config.padding_value
+                )
             )
             combinatoric_accuracy = BinningUtility.compute_weighted_binned_statistic(
                 binning_mask, combinatoric_per_event, event_weights
@@ -632,7 +645,11 @@ class ReconstructionEvaluator:
                 GroundTruthReconstructor,
             )
         ]
-        names = [r.get_name() for r in self.reconstructors if not isinstance(r, GroundTruthReconstructor)]
+        names = [
+            r.get_name()
+            for r in self.reconstructors
+            if not isinstance(r, GroundTruthReconstructor)
+        ]
 
         return ConfusionMatrixPlotter.plot_confusion_matrices(
             self.y_test["assignment_labels"],
@@ -753,17 +770,20 @@ class ReconstructionEvaluator:
         )
 
         # Get lepton features
-        lepton_features = self.X_test["lepton"]  # Assuming shape (n_events, n_leptons, n_features)
+        lepton_features = self.X_test[
+            "lepton"
+        ]  # Assuming shape (n_events, n_leptons, n_features)
 
         # Get correctly assigned jet features
-        jet_features = self.X_test["jet"][:,:, :4]  # Assuming first 4 features are kinematic (Pt, Eta, Phi, E)
+        jet_features = self.X_test["jet"][
+            :, :, :4
+        ]  # Assuming first 4 features are kinematic (Pt, Eta, Phi, E)
         selected_jet_indices = assignment_pred.argmax(axis=-2)
         reco_jets = np.take_along_axis(
             jet_features,
             selected_jet_indices[:, :, np.newaxis],
             axis=1,
         )
-
 
         # Compute reconstructed variable
         reconstructed = variable_func(lepton_features, reco_jets, neutrino_pred)
@@ -773,7 +793,7 @@ class ReconstructionEvaluator:
             reconstructed = np.concatenate(reconstructed)
 
         return reconstructed
-    
+
     def compute_true_variable(
         self,
         truth_extractor: callable,
@@ -796,7 +816,7 @@ class ReconstructionEvaluator:
 
         return truth
 
-    def plot_binned_reconstructed_variable(
+    def plot_binned_reco_resolution(
         self,
         feature_data_type: str,
         feature_name: str,
@@ -810,8 +830,9 @@ class ReconstructionEvaluator:
         confidence: float = 0.95,
         show_errorbar: bool = True,
         statistic: str = "std",
-        combine_tops: bool = False,
         use_signed_deviation: bool = False,
+        use_relative_deviation: bool = True,
+        combine_tops: bool = False,
     ):
         """
         Plot binned resolution or deviation of any reconstructed variable vs. a feature.
@@ -859,8 +880,6 @@ class ReconstructionEvaluator:
         print(f"\nComputing binned {ylabel} for {feature_name}...")
         binned_metrics = []
 
-        
-
         for i, reconstructor in enumerate(self.reconstructors):
             # Compute reconstructed and truth values
             reconstructed = self.compute_reconstructed_variable(
@@ -871,14 +890,12 @@ class ReconstructionEvaluator:
             )
 
             # Compute deviation
-            if use_signed_deviation:
-                deviation = ResolutionCalculator.compute_signed_relative_deviation(
-                    reconstructed, truth
-                )
-            else:
-                deviation = ResolutionCalculator.compute_relative_deviation(
-                    reconstructed, truth
-                )
+            deviation = ResolutionCalculator.compute_deviation(
+                reconstructed,
+                truth,
+                use_signed_deviation=use_signed_deviation,
+                use_relative_deviation=use_relative_deviation,
+            )
 
             # Extend binning mask and weights if combining tops
             if combine_tops:
@@ -889,13 +906,15 @@ class ReconstructionEvaluator:
                 event_weights_ext = event_weights
 
             if show_errorbar:
-                mean_metric, lower, upper = BootstrapCalculator.compute_binned_bootstrap(
-                    binning_mask_ext,
-                    event_weights_ext,
-                    deviation,
-                    config.n_bootstrap,
-                    config.confidence,
-                    statistic=statistic,
+                mean_metric, lower, upper = (
+                    BootstrapCalculator.compute_binned_bootstrap(
+                        binning_mask_ext,
+                        event_weights_ext,
+                        deviation,
+                        config.n_bootstrap,
+                        config.confidence,
+                        statistic=statistic,
+                    )
                 )
                 binned_metrics.append((mean_metric, lower, upper))
             else:
@@ -927,173 +946,523 @@ class ReconstructionEvaluator:
             config,
         )
 
-    def plot_binned_top_mass_resolution(
+    def plot_reco_vs_truth_distribution(
         self,
-        feature_data_type: str,
-        feature_name: str,
-        fancy_feature_label: Optional[str] = None,
-        bins: int = 20,
+        ax,
+        reconstructor_index: int,
+        variable_func: callable,
+        truth_extractor: callable,
+        variable_label: str,
+        bins: int = 50,
         xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 100,
-        confidence: float = 0.95,
-        show_errorbar: bool = True,
+        combine_tops: bool = False,
     ):
-        """Plot binned top mass resolution vs. a feature."""
+        """
+        Plot distribution of reconstructed variable vs. truth.
 
-        return self.plot_binned_reconstructed_variable(
-            feature_data_type=feature_data_type,
-            feature_name=feature_name,
-            variable_func=self._compute_top_masses,
-            truth_extractor=self._extract_true_top_masses,
-            ylabel=r"Relative $m(t)$ Resolution",
-            fancy_feature_label=fancy_feature_label,
+        Args:
+            reconstructor_index: Index of the reconstructor
+            variable_func: Function that takes (top1_p4, top2_p4, lepton_features, jet_features, neutrino_pred)
+                          and returns reconstructed variable(s)
+            truth_extractor: Function to extract truth values from X_test
+            variable_label: Label for the variable being plotted
+            bins: Number of bins
+            xlims: Optional x-axis limits
+            figsize: Figure size
+
+        Returns:
+            Tuple of (figure, axis)
+        """
+        # Compute reconstructed and truth values
+        reconstructed = self.compute_reconstructed_variable(
+            reconstructor_index, variable_func
+        )
+        truth = self.compute_true_variable(truth_extractor)
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+
+        if combine_tops:
+            reconstructed = np.concatenate(reconstructed)
+            truth = np.concatenate(truth)
+            event_weights = np.concatenate([event_weights, event_weights])
+        return DistributionPlotter.plot_feature_distributions(
+            [reconstructed, truth],
+            variable_label,
+            event_weights=event_weights,
             bins=bins,
             xlims=xlims,
-            n_bootstrap=n_bootstrap,
-            confidence=confidence,
-            show_errorbar=show_errorbar,
-            statistic="std",
-            combine_tops=True,
-            use_signed_deviation=False,
+            labels=["reco", "truth"],
+            ax=ax,
+        )
+
+    def plot_deviations_distributions(
+        self,
+        ax,
+        reconstructor_index: int,
+        variable_func: callable,
+        truth_extractor: callable,
+        variable_label: str,
+        use_relative_deviation: bool = True,
+        use_signed_deviation: bool = True,
+        combine_tops: bool = False,
+        **kwargs,
+    ):
+        """Plot distribution of deviations between reconstructed variable and truth."""
+        # Compute reconstructed and truth values
+        reconstructed = self.compute_reconstructed_variable(
+            reconstructor_index, variable_func
+        )
+        truth = self.compute_true_variable(truth_extractor)
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+
+        # Compute deviation
+        deviation = ResolutionCalculator.compute_deviation(
+            reconstructed,
+            truth,
+            use_signed_deviation=use_signed_deviation,
+            use_relative_deviation=use_relative_deviation,
+        )
+        if combine_tops:
+            deviation = np.concatenate(deviation)
+            event_weights = np.concatenate([event_weights, event_weights])
+
+        return DistributionPlotter.plot_feature_distributions(
+            [deviation],
+            f"Deviation in {variable_label}",
+            event_weights=event_weights,
+            labels=[self.reconstructors[reconstructor_index].get_name()],
+            ax=ax,
+            **kwargs,
+        )
+
+    def plot_deviations_distributions_all_reconstructors(
+        self,
+        variable_func: callable,
+        truth_extractor: callable,
+        variable_label: str,
+        figsize: Optional[Tuple[int, int]] = (10, 10),
+        **kwargs,
+    ):
+        """
+        Plot distributions of deviations for all reconstructors.
+
+        Args:
+            variable_func: Function that computes the variable from (leptons, jets, neutrinos)
+            truth_extractor: Function that extracts truth values from X_test
+            variable_label: Label for the variable being plotted
+            xlims: Optional x-axis limits
+            bins: Number of bins
+            figsize: Figure size
+        Returns:
+            Tuple of (figure, axes)
+        """
+        fig, axes = plt.subplots(
+            figsize=figsize,
+        )
+
+        # Collect all deviations and labels
+        all_deviations = []
+        labels = []
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+        
+        # Extract common parameters from kwargs
+        use_relative_deviation = kwargs.pop('use_relative_deviation', True)
+        use_signed_deviation = kwargs.pop('use_signed_deviation', True)
+        combine_tops = kwargs.pop('combine_tops', False)
+        
+        reco_index = 0
+        for reconstructor in self.reconstructors:
+            if isinstance(reconstructor, GroundTruthReconstructor):
+                continue
+            
+            # Compute reconstructed and truth values
+            reconstructed = self.compute_reconstructed_variable(
+                reco_index, variable_func
+            )
+            truth = self.compute_true_variable(truth_extractor)
+            
+            # Compute deviation
+            deviation = ResolutionCalculator.compute_deviation(
+                reconstructed,
+                truth,
+                use_signed_deviation=use_signed_deviation,
+                use_relative_deviation=use_relative_deviation,
+            )
+            if combine_tops:
+                deviation = np.concatenate(deviation)
+            
+            all_deviations.append(deviation)
+            labels.append(reconstructor.get_name())
+            reco_index += 1
+        
+        # Handle combined tops for event weights
+        if combine_tops:
+            event_weights_plot = np.concatenate([event_weights, event_weights])
+        else:
+            event_weights_plot = event_weights
+        
+        # Plot all deviations together
+        DistributionPlotter.plot_feature_distributions(
+            all_deviations,
+            f"Deviation in {variable_label}",
+            event_weights=event_weights_plot,
+            labels=labels,
+            ax=axes,
+            **kwargs,
+        )
+        
+        axes.set_title(f"{variable_label} Deviation for all Reconstructors")
+
+        return fig, axes
+
+    def plot_distributions_all_reconstructors(
+        self,
+        variable_func: callable,
+        truth_extractor: callable,
+        variable_label: str,
+        xlims: Optional[Tuple[float, float]] = None,
+        bins: int = 50,
+        figsize: Optional[Tuple[int, int]] = (10, 10),
+        **kwargs,
+    ):
+        """
+        Plot distributions for all reconstructors and truth.
+
+        Args:
+            variable_func: Function that computes the variable from (leptons, jets, neutrinos)
+            truth_extractor: Function that extracts truth values from X_test
+            variable_label: Label for the variable being plotted
+            xlims: Optional x-axis limits
+            bins: Number of bins
+            figsize: Figure size
+
+        Returns:
+            Tuple of (figure, axes)
+        """
+        num_plots = len(self.reconstructors) - 1  # Exclude ground truth
+
+        num_cols = np.ceil(np.sqrt(num_plots)).astype(int)
+        num_rows = np.ceil(num_plots / num_cols).astype(int)
+        fig, axes = plt.subplots(
+            num_rows,
+            num_cols,
+            figsize=figsize,
+            constrained_layout=True,
+        )
+        axes = axes.flatten()
+
+        reco_index = 0
+        for reconstructor in self.reconstructors:
+            if isinstance(reconstructor, GroundTruthReconstructor):
+                continue
+            ax = axes[reco_index]
+            self.plot_reco_vs_truth_distribution(
+                ax,
+                reco_index,
+                variable_func,
+                truth_extractor,
+                variable_label,
+                bins=bins,
+                xlims=xlims,
+                **kwargs,
+            )
+            reco_index += 1
+            ax.set_title(reconstructor.get_name())
+
+        for i in range(reco_index, len(axes)):
+            fig.delaxes(axes[i])  # Remove unused subplots
+
+        return fig, axes
+
+    # ==================== Plot Specific Variable distributions ====================
+
+    def _plot_variable_distribution(self, variable_key: str, **kwargs):
+        """Generic method to plot variable distributions using configuration."""
+        config = self._get_variable_config(variable_key)
+        return self.plot_distributions_all_reconstructors(
+            variable_func=config["compute_func"],
+            truth_extractor=config["extract_func"],
+            variable_label=config["label"],
+            combine_tops=config.get("combine_tops", False),
+            **kwargs,
+        )
+
+    def plot_c_hel_distributions(self, **kwargs):
+        """Plot cos_hel distributions for all reconstructors and truth."""
+        return self._plot_variable_distribution("c_hel", **kwargs)
+
+    def plot_c_han_distributions(self, **kwargs):
+        """Plot cos_han distributions for all reconstructors and truth."""
+        return self._plot_variable_distribution("c_han", **kwargs)
+
+    def plot_top_mass_distributions(self, **kwargs):
+        """Plot top mass distributions for all reconstructors and truth."""
+        
+        fig, axes =  self._plot_variable_distribution("top_mass", **kwargs)
+        for ax in axes:
+            ticks = ax.get_xticks()
+            ax.set_xticks(ticks)
+            ax.set_xticklabels([f"{tick/1000:.1f}" for tick in ticks])  # Convert to TeV
+        return fig, axes
+
+    def plot_ttbar_mass_distributions(self, **kwargs):
+        """Plot ttbar mass distributions for all reconstructors and truth."""
+        fig, axes = self._plot_variable_distribution("ttbar_mass", **kwargs)
+        for ax in axes:
+            ticks = ax.get_xticks()
+            ax.set_xticks(ticks)
+            ax.set_xticklabels([f"{tick/1000:.1f}" for tick in ticks])  # Convert to TeV
+        return fig, axes
+
+    # ==================== Deviation Distribution Methods ====================
+
+    def _plot_variable_deviation(self, variable_key: str, **kwargs):
+        """Generic method to plot variable deviations using configuration."""
+        config = self._get_variable_config(variable_key)
+        # Set defaults from config, allow kwargs to override
+        defaults = {
+            "use_relative_deviation": config.get("use_relative_deviation", False),
+            "combine_tops": config.get("combine_tops", False),
+        }
+        defaults.update(kwargs)
+
+        return self.plot_deviations_distributions_all_reconstructors(
+            variable_func=config["compute_func"],
+            truth_extractor=config["extract_func"],
+            variable_label=f"{config['label']}",
+            **defaults,
+        )
+
+    def plot_top_mass_deviation_distribution(self, **kwargs):
+        """Plot top mass deviation distribution for all reconstructors."""
+        kwargs.setdefault("use_relative_deviation", True)
+        kwargs.setdefault("combine_tops", True)
+        return self._plot_variable_deviation("top_mass", **kwargs)
+
+    def plot_ttbar_mass_deviation_distribution(self, **kwargs):
+        """Plot ttbar mass deviation distribution for all reconstructors."""
+        return self._plot_variable_deviation("ttbar_mass", **kwargs)
+
+    def plot_c_han_deviation_distribution(self, **kwargs):
+        """Plot cos_han deviation distribution for all reconstructors."""
+        return self._plot_variable_deviation("c_han", **kwargs)
+
+    def plot_c_hel_deviation_distribution(self, **kwargs):
+        """Plot cos_hel deviation distribution for all reconstructors."""
+        return self._plot_variable_deviation("c_hel", **kwargs)
+
+    # ==================== Binned Variable Resolution/Deviation Methods ====================
+
+    def _plot_binned_variable(
+        self,
+        variable_key: str,
+        metric_type: str,
+        feature_data_type: str,
+        feature_name: str,
+        **kwargs,
+    ):
+        """Generic method to plot binned metrics using configuration.
+
+        Args:
+            variable_key: Key identifying the variable (e.g., 'top_mass', 'c_han')
+            metric_type: Either 'resolution' or 'deviation'
+            feature_data_type: Type of feature data for binning
+            feature_name: Name of feature for binning
+            **kwargs: Additional arguments passed to plot_binned_reco_resolution
+        """
+        config = self._get_variable_config(variable_key)
+        resolution_config = config.get("resolution", {})
+
+        # Determine parameters based on metric type
+        if metric_type == "resolution":
+            statistic = "std"
+            use_signed_deviation = False
+            ylabel_template = resolution_config.get(
+                "ylabel_resolution", f"{config['label']} Resolution"
+            )
+        else:  # deviation
+            statistic = "mean"
+            use_signed_deviation = True
+            ylabel_template = resolution_config.get(
+                "ylabel_deviation", f"Mean {config['label']} Deviation"
+            )
+
+        # Get defaults from config
+        defaults = {
+            "statistic": statistic,
+            "use_signed_deviation": use_signed_deviation,
+            "use_relative_deviation": resolution_config.get(
+                "use_relative_deviation", True
+            ),
+            "combine_tops": config.get("combine_tops", False),
+        }
+        defaults.update(kwargs)
+
+        return self.plot_binned_reco_resolution(
+            feature_data_type=feature_data_type,
+            feature_name=feature_name,
+            variable_func=config["compute_func"],
+            truth_extractor=config["extract_func"],
+            ylabel=ylabel_template,
+            **defaults,
+        )
+
+    def plot_binned_top_mass_resolution(
+        self, feature_data_type: str, feature_name: str, **kwargs
+    ):
+        """Plot binned top mass resolution vs. a feature."""
+        return self._plot_binned_variable(
+            "top_mass", "resolution", feature_data_type, feature_name, **kwargs
         )
 
     def plot_binned_ttbar_mass_resolution(
-        self,
-        feature_data_type: str,
-        feature_name: str,
-        fancy_feature_label: Optional[str] = None,
-        bins: int = 20,
-        xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 100,
-        confidence: float = 0.95,
-        show_errorbar: bool = True,
+        self, feature_data_type: str, feature_name: str, **kwargs
     ):
         """Plot binned ttbar mass resolution vs. a feature."""
-        # Define variable computation function
-
-        return self.plot_binned_reconstructed_variable(
-            feature_data_type=feature_data_type,
-            feature_name=feature_name,
-            variable_func=self._compute_ttbar_mass,
-            truth_extractor=self._extract_true_ttbar_mass,
-            ylabel=r"Relative $m(t\overline{t})$ Resolution",
-            fancy_feature_label=fancy_feature_label,
-            bins=bins,
-            xlims=xlims,
-            n_bootstrap=n_bootstrap,
-            confidence=confidence,
-            show_errorbar=show_errorbar,
-            statistic="std",
-            combine_tops=False,
-            use_signed_deviation=False,
+        return self._plot_binned_variable(
+            "ttbar_mass", "resolution", feature_data_type, feature_name, **kwargs
         )
 
     def plot_binned_top_mass_deviation(
-        self,
-        feature_data_type: str,
-        feature_name: str,
-        fancy_feature_label: Optional[str] = None,
-        bins: int = 20,
-        xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 100,
-        confidence: float = 0.95,
-        show_errorbar: bool = True,
+        self, feature_data_type: str, feature_name: str, **kwargs
     ):
         """Plot binned top mass deviation (mean) vs. a feature."""
-
-        return self.plot_binned_reconstructed_variable(
-            feature_data_type=feature_data_type,
-            feature_name=feature_name,
-            variable_func=self._compute_top_masses,
-            truth_extractor=self._extract_true_top_masses,
-            ylabel=r"Mean Relative $m(t)$ Deviation",
-            fancy_feature_label=fancy_feature_label,
-            bins=bins,
-            xlims=xlims,
-            n_bootstrap=n_bootstrap,
-            confidence=confidence,
-            show_errorbar=show_errorbar,
-            statistic="mean",
-            combine_tops=True,
-            use_signed_deviation=True,
+        return self._plot_binned_variable(
+            "top_mass", "deviation", feature_data_type, feature_name, **kwargs
         )
 
     def plot_binned_ttbar_mass_deviation(
-        self,
-        feature_data_type: str,
-        feature_name: str,
-        fancy_feature_label: Optional[str] = None,
-        bins: int = 20,
-        xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 100,
-        confidence: float = 0.95,
-        show_errorbar: bool = True,
+        self, feature_data_type: str, feature_name: str, **kwargs
     ):
         """Plot binned ttbar mass deviation (mean) vs. a feature."""
-
-        return self.plot_binned_reconstructed_variable(
-            feature_data_type=feature_data_type,
-            feature_name=feature_name,
-            variable_func=self._compute_ttbar_mass,
-            truth_extractor=self._extract_true_ttbar_mass,
-            ylabel=r"Mean Relative $m(t\overline{t})$ Deviation",
-            fancy_feature_label=fancy_feature_label,
-            bins=bins,
-            xlims=xlims,
-            n_bootstrap=n_bootstrap,
-            confidence=confidence,
-            show_errorbar=show_errorbar,
-            statistic="mean",
-            combine_tops=False,
-            use_signed_deviation=True,
+        return self._plot_binned_variable(
+            "ttbar_mass", "deviation", feature_data_type, feature_name, **kwargs
         )
 
-    @staticmethod
-    def _extract_true_top_masses(
-        X_test,
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        top_4_vector =lorentz_vector_from_PtEtaPhiE_array( X_test["top_truth"][:, 0, :4])
-        tbar_4_vector = lorentz_vector_from_PtEtaPhiE_array(X_test["top_truth"][:, 1, :4])
-
-        true_top_mass = TopReconstructor.compute_top_masses(
-            top_4_vector, tbar_4_vector
-        )
-        return true_top_mass
-
-    @staticmethod
-    def _extract_true_ttbar_mass(X_test) -> np.ndarray:
-        """Extract true ttbar mass from test data."""
-        top_4_vector =lorentz_vector_from_PtEtaPhiE_array(X_test["top_truth"][:, 0, :4])
-        tbar_4_vector = lorentz_vector_from_PtEtaPhiE_array(X_test["top_truth"][:, 1, :4])
-        true_ttbar_mass = TopReconstructor.compute_ttbar_mass(
-            top_4_vector, tbar_4_vector
-        )
-        return true_ttbar_mass
-
-    @staticmethod
-    def _compute_top_masses(
-        leptons: np.ndarray,
-        jets: np.ndarray,
-        neutrinos: np.ndarray
+    def plot_binned_c_han_resolution(
+        self, feature_data_type: str, feature_name: str, **kwargs
     ):
-        """Compute top and antitop masses from kinematic features."""
-        top_p4, tbar_p4 = TopReconstructor.compute_top_lorentz_vectors(
-            leptons,
-            jets,
-            neutrinos
+        """Plot binned cos_han resolution vs. a feature."""
+        return self._plot_binned_variable(
+            "c_han", "resolution", feature_data_type, feature_name, **kwargs
         )
-        return TopReconstructor.compute_top_masses(top_p4, tbar_p4)
-    
-    @staticmethod
-    def _compute_ttbar_mass(
-        leptons: np.ndarray,
-        jets: np.ndarray,
-        neutrinos: np.ndarray
+
+    def plot_binned_c_hel_resolution(
+        self, feature_data_type: str, feature_name: str, **kwargs
     ):
-        """Compute ttbar mass from kinematic features."""
-        top_p4, tbar_p4 = TopReconstructor.compute_top_lorentz_vectors(
-            leptons,
-            jets,
-            neutrinos
+        """Plot binned cos_hel resolution vs. a feature."""
+        return self._plot_binned_variable(
+            "c_hel", "resolution", feature_data_type, feature_name, **kwargs
         )
-        return TopReconstructor.compute_ttbar_mass(top_p4, tbar_p4)
+
+    def plot_binned_c_han_deviation(
+        self, feature_data_type: str, feature_name: str, **kwargs
+    ):
+        """Plot binned cos_han deviation (mean) vs. a feature."""
+        return self._plot_binned_variable(
+            "c_han", "deviation", feature_data_type, feature_name, **kwargs
+        )
+
+    def plot_binned_c_hel_deviation(
+        self, feature_data_type: str, feature_name: str, **kwargs
+    ):
+        """Plot binned cos_hel deviation (mean) vs. a feature."""
+        return self._plot_binned_variable(
+            "c_hel", "deviation", feature_data_type, feature_name, **kwargs
+        )
+
+    # ==================== Variable Configuration and Computation Methods ====================
+
+    @staticmethod
+    def _get_variable_config(variable_key: str) -> dict:
+        """Get configuration for a specific physics variable.
+
+        Returns a dict with:
+            - compute_func: Function to compute variable from reconstructed kinematics
+            - extract_func: Function to extract truth value from X_test
+            - label: LaTeX label for plotting
+            - combine_tops: Whether to combine both tops for this variable
+            - use_relative_deviation: Whether to use relative deviation
+            - resolution: Dict with ylabel templates for resolution/deviation plots
+        """
+        configs = {
+            "top_mass": {
+                "compute_func": lambda l, j, n: TopReconstructor.compute_top_masses(
+                    *TopReconstructor.compute_top_lorentz_vectors(l, j, n)
+                ),
+                "extract_func": lambda X: TopReconstructor.compute_top_masses(
+                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 0, :4]),
+                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 1, :4]),
+                ),
+                "label": r"$m(t)$ [GeV]",
+                "combine_tops": True,
+                "use_relative_deviation": True,
+                "resolution": {
+                    "use_relative_deviation": True,
+                    "ylabel_resolution": r"Relative $m(t)$ Resolution",
+                    "ylabel_deviation": r"Mean Relative $m(t)$ Deviation",
+                },
+            },
+            "ttbar_mass": {
+                "compute_func": lambda l, j, n: TopReconstructor.compute_ttbar_mass(
+                    *TopReconstructor.compute_top_lorentz_vectors(l, j, n)
+                ),
+                "extract_func": lambda X: TopReconstructor.compute_ttbar_mass(
+                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 0, :4]),
+                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 1, :4]),
+                ),
+                "label": r"$m(t\overline{t})$ [GeV]",
+                "combine_tops": False,
+                "use_relative_deviation": True,
+                "resolution": {
+                    "use_relative_deviation": True,
+                    "ylabel_resolution": r"Relative $m(t\overline{t})$ Resolution",
+                    "ylabel_deviation": r"Mean Relative $m(t\overline{t})$ Deviation",
+                },
+            },
+            "c_han": {
+                "compute_func": lambda l, j, n: c_han(
+                    *TopReconstructor.compute_top_lorentz_vectors(l, j, n),
+                    l[:, 0, :4],
+                    l[:, 1, :4],
+                ),
+                "extract_func": lambda X: c_han(
+                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 0, :4]),
+                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 1, :4]),
+                    X["lepton_truth"][:, 0, :4],
+                    X["lepton_truth"][:, 1, :4],
+                ),
+                "label": r"$\cos(\theta_{han})$",
+                "combine_tops": False,
+                "use_relative_deviation": False,
+                "resolution": {
+                    "use_relative_deviation": False,
+                    "ylabel_resolution": r"$\cos(\theta_{han})$ Resolution",
+                    "ylabel_deviation": r"Mean $\cos(\theta_{han})$ Deviation",
+                },
+            },
+            "c_hel": {
+                "compute_func": lambda l, j, n: c_hel(
+                    *TopReconstructor.compute_top_lorentz_vectors(l, j, n),
+                    l[:, 0, :4],
+                    l[:, 1, :4],
+                ),
+                "extract_func": lambda X: c_hel(
+                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 0, :4]),
+                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 1, :4]),
+                    X["lepton_truth"][:, 0, :4],
+                    X["lepton_truth"][:, 1, :4],
+                ),
+                "label": r"$\cos(\theta_{hel})$",
+                "combine_tops": False,
+                "use_relative_deviation": False,
+                "resolution": {
+                    "use_relative_deviation": False,
+                    "ylabel_resolution": r"$\cos(\theta_{hel})$ Resolution",
+                    "ylabel_deviation": r"Mean $\cos(\theta_{hel})$ Deviation",
+                },
+            },
+        }
+
+        if variable_key not in configs:
+            raise ValueError(f"Unknown variable key: {variable_key}")
+        return configs[variable_key]
