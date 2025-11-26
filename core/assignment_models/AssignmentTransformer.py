@@ -212,7 +212,7 @@ class PhysicsInspiredTransformer(MLReconstructorBase):
         dropout_rate,
         num_heads=8,
         input_as_four_vector=True,
-        compute_high_level_features=True,
+        compute_HLF=True,
     ):
         """
         Builds the Assignment Transformer model.
@@ -229,18 +229,18 @@ class PhysicsInspiredTransformer(MLReconstructorBase):
             self._prepare_inputs(input_as_four_vector=input_as_four_vector)
         )
 
-        if compute_high_level_features:
+        if compute_HLF:
             high_level_feature_layer = ComputeHighLevelFeatures(
-                padding_value=self.config.padding_value, name="high_level_features"
+                padding_value=self.config.padding_value, name="HLF"
             )
-            high_level_features = keras.layers.Reshape(target_shape=(self.config.max_jets, -1))(high_level_feature_layer(
+            HLF = keras.layers.Reshape(target_shape=(self.config.max_jets, -1))(high_level_feature_layer(
                 self.transformed_inputs["jets"],
                 self.transformed_inputs["leptons"],
                 jet_mask=jet_mask,
                 lepton_mask=None,
             ))
             normed_jet_inputs = keras.layers.Concatenate(axis=-1)(
-                [normed_jet_inputs, high_level_features]
+                [normed_jet_inputs, HLF]
             )
 
         flatted_met_inputs = keras.layers.Flatten()(normed_met_inputs)

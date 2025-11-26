@@ -21,7 +21,7 @@ import tensorflow as tf
 PLOTS_DIR = f"../plots/mixed_model/"
 MODEL_DIR = f"../models/mixed_model"
 #MODEL_DIR = f"../models/FeatureConcatTransformer_HLF_d256_l10_h8"
-CONFIG_PATH = "../config/workspace_config_high_level_features.yaml"
+CONFIG_PATH = "../config/workspace_config_HLF.yaml"
 
 import os
 

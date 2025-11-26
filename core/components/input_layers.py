@@ -170,14 +170,14 @@ class ComputeHighLevelFeatures(keras.layers.Layer):
         )
 
         # Concatenate high-level features
-        high_level_features = tf.concat([delta_R, invariant_mass], axis=-1)
+        HLF = tf.concat([delta_R, invariant_mass], axis=-1)
         if jet_lepton_mask is not None:
-            high_level_features = tf.where(
+            HLF = tf.where(
                 jet_lepton_mask,
-                high_level_features,
-                tf.ones_like(high_level_features) * self.padding_value,
+                HLF,
+                tf.ones_like(HLF) * self.padding_value,
             )
-        return high_level_features # Shape: (batch_size, n_jets, n_leptons, 2)
+        return HLF # Shape: (batch_size, n_jets, n_leptons, 2)
 
     def get_config(self):
         config = super().get_config()

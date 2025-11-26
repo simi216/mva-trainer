@@ -35,7 +35,7 @@ def parse_args():
         help="Model architecture to use (default: FeatureConcatTransformer)",
     )
     parser.add_argument(
-        "--use_high_level_features",
+        "--use_HLF",
         action="store_true",
         help="Whether to use high-level features in the model",
     )
@@ -118,7 +118,7 @@ def main():
 
     # Load data configuration
     config_dir = os.path.join(args.root_dir, "config")
-    CONFIG_PATH = os.path.join(config_dir, "workspace_config.yaml") if not args.use_high_level_features else os.path.join(config_dir, "workspace_config_high_level_features.yaml")
+    CONFIG_PATH = os.path.join(config_dir, "workspace_config.yaml") if not args.use_HLF else os.path.join(config_dir, "workspace_config_HLF.yaml")
 
     if not os.path.exists(CONFIG_PATH):
         raise FileNotFoundError(f"Data configuration file not found: {CONFIG_PATH}")
@@ -128,7 +128,7 @@ def main():
     # Create model name with hyperparameters
     MODEL_NAME = (
         f"Regression{args.architecture}_d{args.hidden_dim}_cl{args.num_central_layers}_rl{args.num_regression_layers}"
-    ) if not args.use_high_level_features else (
+    ) if not args.use_HLF else (
         f"Regression{args.architecture}_HLF_d{args.hidden_dim}_cl{args.num_central_layers}_rl{args.num_regression_layers}"
     )
 
@@ -137,7 +137,7 @@ def main():
 
     print(f"Starting training with hyperparameters:")
     print(f"  Architecture: {args.architecture}")
-    print(f"  Use high-level features: {args.use_high_level_features}")
+    print(f"  Use high-level features: {args.use_HLF}")
     print(f"  Hidden dim: {args.hidden_dim}")
     print(f"  Central Transformer layers: {args.num_central_layers}")
     print(f"  Regression Layers {args.num_regression_layers}")
