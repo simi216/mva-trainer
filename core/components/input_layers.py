@@ -129,7 +129,7 @@ class ComputeHighLevelFeatures(keras.layers.Layer):
             jet_mask = tf.expand_dims(
                 jet_mask, axis=2
             )  # Shape: (batch_size, n_jets, 1)
-            jet_lepton_mask = jet_mask
+            jet_lepton_mask = tf.cast(jet_mask, tf.bool)
         if lepton_mask is not None:
             lepton_mask = tf.expand_dims(
                 lepton_mask, axis=1
@@ -139,7 +139,7 @@ class ComputeHighLevelFeatures(keras.layers.Layer):
             else:
                 jet_lepton_mask = lepton_mask
 
-        jet_px = (jet_input[..., 0:1],)
+        jet_px = jet_input[..., 0:1]
         jet_py = jet_input[..., 1:2]
         jet_pz = jet_input[..., 2:3]
         jet_E = jet_input[..., 3:4]
@@ -151,13 +151,14 @@ class ComputeHighLevelFeatures(keras.layers.Layer):
         lep_E = lepton_input[..., 3:4]
 
         # Compute delta R
+        import math as m
         delta_eta = tf.atanh(
             jet_pz / tf.sqrt(jet_px**2 + jet_py**2 + jet_pz**2)
         ) - tf.atanh(lep_pz / tf.sqrt(lep_px**2 + lep_py**2 + lep_pz**2))
         delta_phi = tf.atan2(jet_py, jet_px) - tf.atan2(lep_py, lep_px)
         delta_phi = tf.math.floormod(
-            delta_phi + tf.constant(tf.pi), 2 * tf.constant(tf.pi)
-        ) - tf.constant(tf.pi)
+            delta_phi + tf.constant(m.pi), 2 * tf.constant(m.pi)
+        ) - tf.constant(m.pi)
         delta_R = tf.sqrt(delta_eta**2 + delta_phi**2)
 
         # Compute invariant mass
@@ -172,11 +173,14 @@ class ComputeHighLevelFeatures(keras.layers.Layer):
         # Concatenate high-level features
         HLF = tf.concat([delta_R, invariant_mass], axis=-1)
         if jet_lepton_mask is not None:
+            jet_lepton_mask = tf.expand_dims(jet_lepton_mask, axis=-1)  # (B, J, L, 1)
+            jet_lepton_mask = tf.cast(jet_lepton_mask, tf.bool)
+            # Mask invalid pairs
             HLF = tf.where(
                 jet_lepton_mask,
                 HLF,
-                tf.ones_like(HLF) * self.padding_value,
-            )
+                tf.fill(tf.shape(HLF), self.padding_value),
+            )        
         return HLF # Shape: (batch_size, n_jets, n_leptons, 2)
 
     def get_config(self):

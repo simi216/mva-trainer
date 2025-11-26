@@ -40,8 +40,8 @@ with open(CONFIG_PATH, "r") as file:
 
 plt.rcParams.update({"font.size": 14})
 
-data_config = DataProcessorNominal.load_from_npz(data_configs["npz_datapath"]["nominal"], max_events=4000000)
-DataProcessorToponium.load_from_npz(data_configs["npz_datapath"]["toponium"])
+data_config = DataProcessorNominal.load_from_npz(data_configs["data_path"]["nominal"], max_events=4000000)
+DataProcessorToponium.load_from_npz(data_configs["data_path"]["toponium"])
 
 X_nominal_train, y_nominal_train, X_val, y_val = DataProcessorNominal.split_data(test_size=0.2)
 X_toponium, y_toponium = DataProcessorToponium.get_data()

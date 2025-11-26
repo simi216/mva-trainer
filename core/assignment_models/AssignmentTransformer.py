@@ -230,17 +230,17 @@ class PhysicsInspiredTransformer(MLReconstructorBase):
         )
 
         if compute_HLF:
-            high_level_feature_layer = ComputeHighLevelFeatures(
+            HLF_layer = ComputeHighLevelFeatures(
                 padding_value=self.config.padding_value, name="HLF"
             )
-            HLF = keras.layers.Reshape(target_shape=(self.config.max_jets, -1))(high_level_feature_layer(
-                self.transformed_inputs["jets"],
-                self.transformed_inputs["leptons"],
+            reshaped_HLF = keras.layers.Reshape(target_shape=(self.config.max_jets, -1))(HLF_layer(
+                self.transformed_inputs["jet_inputs"],
+                self.transformed_inputs["lepton_inputs"],
                 jet_mask=jet_mask,
                 lepton_mask=None,
             ))
             normed_jet_inputs = keras.layers.Concatenate(axis=-1)(
-                [normed_jet_inputs, HLF]
+                [normed_jet_inputs, reshaped_HLF]
             )
 
         flatted_met_inputs = keras.layers.Flatten()(normed_met_inputs)

@@ -150,7 +150,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         }
         self.transformed_inputs = {
             "jet_inputs": transformed_jet_inputs,
-            "lep_inputs": transformed_lep_inputs,
+            "lepton_inputs": transformed_lep_inputs,
             "met_inputs": transformed_met_inputs,
         }
         return normed_jet_inputs, normed_lep_inputs, normed_met_inputs, jet_mask
@@ -220,8 +220,9 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             )
         self.model.save(file_path)
 
-        history_path = file_path.replace(".keras", "_history")
-        np.savez(history_path, **self.history.history)
+        if self.history is not None:
+            history_path = file_path.replace(".keras", "_history")
+            np.savez(history_path, **self.history.history)
         print(f"Model saved to {file_path}")
 
 
