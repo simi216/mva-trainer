@@ -7,7 +7,7 @@ hidden_dim=$1
 num_layers=$2
 num_heads=$3
 architecture=$4
-high_level_features=$5
+HLF=$5
 
 # Print environment info for debugging
 echo "Starting training job..."
@@ -29,13 +29,13 @@ cd /afs/desy.de/user/a/aulich/mva-trainer/CONDOR/HypParamGridSearch || exit 1
 #mkdir -p logs
 
 # Run the Python script with the hyperparameters
-if [ "$high_level_features" == "--use_high_level_features" ]; then
+if [ "$HLF" == "--use_HLF" ]; then
     python train_hyperparameter.py \
         --hidden_dim "$hidden_dim" \
         --num_layers "$num_layers" \
         --num_heads "$num_heads" \
         --architecture "$architecture" \
-        --use_high_level_features \
+        --use_HLF \
         --dropout_rate 0.1 \
         --learning_rate 1e-4 \
         --weight_decay 1e-4 \

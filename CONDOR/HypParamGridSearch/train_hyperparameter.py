@@ -32,7 +32,7 @@ def parse_args():
         help="Model architecture to use (default: FeatureConcatTransformer)",
     )
     parser.add_argument(
-        "--use_high_level_features",
+        "--use_HLF",
         action="store_true",
         help="Whether to use high-level features in the model",
     )
@@ -117,7 +117,7 @@ def main():
 
     # Load data configuration
     config_dir = os.path.join(args.root_dir, "config")
-    CONFIG_PATH = os.path.join(config_dir, "workspace_config.yaml") if not args.use_high_level_features else os.path.join(config_dir, "workspace_config_high_level_features.yaml")
+    CONFIG_PATH = os.path.join(config_dir, "workspace_config.yaml") if not args.use_HLF else os.path.join(config_dir, "workspace_config_HLF.yaml")
 
     if not os.path.exists(CONFIG_PATH):
         raise FileNotFoundError(f"Data configuration file not found: {CONFIG_PATH}")
@@ -126,7 +126,7 @@ def main():
     # Create model name with hyperparameters
     MODEL_NAME = (
         f"{args.architecture}_d{args.hidden_dim}_l{args.num_layers}_h{args.num_heads}"
-    ) if not args.use_high_level_features else (
+    ) if not args.use_HLF else (
         f"{args.architecture}_HLF_d{args.hidden_dim}_l{args.num_layers}_h{args.num_heads}"
     )
 
@@ -151,7 +151,7 @@ def main():
     print("Loading data...")
     DataProcessor = DataPreprocessor(load_config)
     config = DataProcessor.load_from_npz(
-        data_config_yaml["npz_datapath"][args.data_type],
+        data_config_yaml["data_path"][args.data_type],
         max_events=args.max_events,
     )
 

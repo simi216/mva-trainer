@@ -144,79 +144,13 @@ def plot_grid_search_results(df, output_dir):
         plt.savefig(os.path.join(output_dir, "grid_search_params_heatmap.png"), dpi=150)
         plt.close()
 
-    # 4. Bar plot of top models
-    df_sorted = df.sort_values("best_val_loss")
-    top_n = min(10, len(df))
-
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-
-    # Top models by loss
-    top_models = df_sorted.head(top_n)
-    model_labels = [
-        f"d{row['hidden_dim']}_l{row['num_layers']}_h{row['num_heads']}" for _, row in top_models.iterrows()
-    ]
-
-    ax1.barh(range(top_n), top_models["best_val_loss"])
-    ax1.set_yticks(range(top_n))
-    ax1.set_yticklabels(model_labels)
-    ax1.set_xlabel("Best Validation Loss")
-    ax1.set_title(f"Top {top_n} Models by Validation Loss")
-    ax1.invert_yaxis()
-
-    # Training epochs
-    ax2.barh(range(top_n), top_models["best_epoch"])
-    ax2.set_yticks(range(top_n))
-    ax2.set_yticklabels(model_labels)
-    ax2.set_xlabel("Best Epoch")
-    ax2.set_title("Convergence Speed")
-    ax2.invert_yaxis()
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "grid_search_top_models.png"), dpi=150)
-    plt.close()
-
-    # 5. Scatter plot: hidden_dim vs num_layers colored by loss
-    plt.figure(figsize=(10, 8))
-    scatter = plt.scatter(
-        df["hidden_dim"],
-        df["num_layers"],
-        c=df["best_val_loss"],
-        s=200,
-        cmap="viridis_r",
-        alpha=0.7,
-        edgecolors="black",
-    )
-    plt.colorbar(scatter, label="Best Validation Loss")
-    plt.xlabel("Hidden Dimension")
-    plt.ylabel("Number of Layers")
-    plt.title("Grid Search Results: Loss Landscape")
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "grid_search_scatter.png"), dpi=150)
-    plt.close()
 
     # 6. Efficiency plot: Loss vs Parameters
     if df["trainable_params"].notna().any():
         plt.figure(figsize=(12, 6))
 
         # Create two subplots
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-
-        # Plot 1: Loss vs Parameters
-        scatter1 = ax1.scatter(
-            df["trainable_params"] / 1e6,  # Convert to millions
-            df["best_val_loss"],
-            c=df["hidden_dim"],
-            s=100,
-            cmap="viridis",
-            alpha=0.7,
-            edgecolors="black",
-        )
-        ax1.set_xlabel("Trainable Parameters (Millions)")
-        ax1.set_ylabel("Best Validation Loss")
-        ax1.set_title("Model Efficiency: Loss vs Model Size")
-        ax1.grid(True, alpha=0.3)
-        plt.colorbar(scatter1, ax=ax1, label="Hidden Dimension")
+        fig, ax2 = plt.subplots(1, figsize=(16, 6))
 
         # Plot 2: Accuracy vs Parameters (if available)
         if df["best_val_acc"].notna().any():
