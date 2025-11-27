@@ -1152,8 +1152,8 @@ class ReconstructionEvaluator:
 
         reco_index = 0
         for reconstructor in self.reconstructors:
-            if isinstance(reconstructor, GroundTruthReconstructor):
-                continue
+#            if isinstance(reconstructor, GroundTruthReconstructor):
+#                continue
             ax = axes[reco_index]
             self.plot_reco_vs_truth_distribution(
                 ax,
@@ -1422,14 +1422,14 @@ class ReconstructionEvaluator:
             "c_han": {
                 "compute_func": lambda l, j, n: c_han(
                     *TopReconstructor.compute_top_lorentz_vectors(l, j, n),
-                    l[:, 0, :4],
-                    l[:, 1, :4],
+                    lorentz_vector_from_PtEtaPhiE_array(l[:, 0, :4]),
+                    lorentz_vector_from_PtEtaPhiE_array(l[:, 1, :4]),
                 ),
                 "extract_func": lambda X: c_han(
                     lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 0, :4]),
                     lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 1, :4]),
-                    X["lepton_truth"][:, 0, :4],
-                    X["lepton_truth"][:, 1, :4],
+                    lorentz_vector_from_PtEtaPhiE_array(X["lepton_truth"][:, 0, :4]),
+                    lorentz_vector_from_PtEtaPhiE_array(X["lepton_truth"][:, 1, :4]),
                 ),
                 "label": r"$\cos(\theta_{han})$",
                 "combine_tops": False,
@@ -1443,14 +1443,14 @@ class ReconstructionEvaluator:
             "c_hel": {
                 "compute_func": lambda l, j, n: c_hel(
                     *TopReconstructor.compute_top_lorentz_vectors(l, j, n),
-                    l[:, 0, :4],
-                    l[:, 1, :4],
+                    lorentz_vector_from_PtEtaPhiE_array(l[:, 0, :4]),
+                    lorentz_vector_from_PtEtaPhiE_array(l[:, 1, :4]),
                 ),
                 "extract_func": lambda X: c_hel(
                     lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 0, :4]),
                     lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 1, :4]),
-                    X["lepton_truth"][:, 0, :4],
-                    X["lepton_truth"][:, 1, :4],
+                    lorentz_vector_from_PtEtaPhiE_array(X["lepton_truth"][:, 0, :4]),
+                    lorentz_vector_from_PtEtaPhiE_array(X["lepton_truth"][:, 1, :4]),
                 ),
                 "label": r"$\cos(\theta_{hel})$",
                 "combine_tops": False,

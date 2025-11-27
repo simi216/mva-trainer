@@ -200,40 +200,34 @@ def boost(v, parent):
     v, parent: shape (N,4), order (px,py,pz,E)
     Returns boosted (N,4) in the same order.
     """
-
-    pv = parent[:, :3]                 # parent spatial momentum
-    Ep = parent[:, 3]                  # parent energy
-    p  = np.linalg.norm(pv, axis=1)
+    pv = parent[:, :3]
+    Ep = parent[:, 3]
     
-    # Safe division for beta, handling zero/invalid Ep
-    with np.errstate(divide='ignore', invalid='ignore'):
-        beta = pv / Ep[:, None]
-    beta = np.where(np.isfinite(beta) & (Ep[:, None] > 0), beta, 0)
-
-    # Avoid division by zero when already at rest
-    nz = (p > 0) & np.isfinite(p)
-    n = np.zeros_like(pv)
-    with np.errstate(divide='ignore', invalid='ignore'):
-        n[nz] = pv[nz] / p[nz, None]
-    n = np.where(np.isfinite(n), n, 0)
-
-    gamma = 1.0 / np.sqrt(np.maximum(1 - np.sum(beta**2, axis=1), 1e-10))
-
-    vv = v[:, :3]                      # spatial part of v
-    E  = v[:, 3]                       # time component
-
-    # decompose v into parallel and perpendicular to parent direction
-    v_par_coeff = np.sum(vv * n, axis=1)[:, None]   # scalar (N,1)
-    v_par  = v_par_coeff * n
-    v_perp = vv - v_par
-
-    # boost formulas
-    v_par_prime = gamma[:, None] * (v_par + beta * E[:, None] * n)
-    E_prime = gamma * (E + np.sum(beta * v_par, axis=1))
-
-    v_prime = v_par_prime + v_perp
+    # Beta points along parent momentum; negate to boost to rest frame
+    p = np.linalg.norm(pv, axis=1)
+    
+    # Safe beta calculation
+    beta = np.zeros_like(pv)
+    mask = (Ep > 0) & (p > 0)
+    beta[mask] = pv[mask] / Ep[mask, None]
+    
+    # Gamma factor
+    beta_sq = np.sum(beta**2, axis=1)
+    gamma = 1.0 / np.sqrt(np.maximum(1 - beta_sq, 1e-10))
+    
+    vv = v[:, :3]
+    E = v[:, 3]
+    
+    # Boost formulas (negating beta for rest frame boost)
+    beta_dot_v = np.sum(beta * vv, axis=1)
+    
+    v_prime = vv - gamma[:, None] * beta * E[:, None] + \
+              (gamma[:, None] - 1) * beta_dot_v[:, None] * beta / \
+              np.maximum(beta_sq[:, None], 1e-10)
+    
+    E_prime = gamma * (E - beta_dot_v)
+    
     return np.column_stack([v_prime, E_prime])
-
 
 # ----------------------------------------------------------------------
 # Common boost sequence (same for cos_han and c_hel)
@@ -268,9 +262,11 @@ def _prep_leptons(top, tbar, lep_pos, lep_neg):
 def c_han(top, tbar, lep_pos, lep_neg):
     p1, p2 = _prep_leptons(top, tbar, lep_pos, lep_neg)
 
-    # CMS-specific flip: z -> -z
+    # CMS-specific flip along tbar direction
     p2 = p2.copy()
-    p2[:, 2] *= -1
+    tbar_dir = tbar[:, :3] / np.linalg.norm(tbar[:, :3], axis=1)[:, None]
+    p2_z = np.sum(p2 * tbar_dir, axis=1)
+    p2 -= 2 * (p2_z[:, None] * tbar_dir)
 
     # normalize
     u1 = p1 / np.linalg.norm(p1, axis=1)[:, None]
