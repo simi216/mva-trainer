@@ -1,5 +1,6 @@
 import keras
 import tensorflow as tf
+import math
 
 
 @keras.utils.register_keras_serializable()
@@ -111,12 +112,12 @@ class ComputeHighLevelFeatures(keras.layers.Layer):
     Computes high-level feature relational features between jets and leptons.
     """
 
-    def __init__(self, padding_value, **kwargs):
+    def __init__(self, padding_value=-999, **kwargs):
         super().__init__(**kwargs)
         self.padding_value = padding_value
 
     def call(self, jet_input, lepton_input, jet_mask=None, lepton_mask=None):
-        # Split jet features
+        # Expand dimensions for broadcasting
         jet_input = tf.expand_dims(
             jet_input, axis=2
         )  # Shape: (batch_size, n_jets, 1, n_features)
@@ -125,40 +126,60 @@ class ComputeHighLevelFeatures(keras.layers.Layer):
         )  # Shape: (batch_size, 1, n_leptons, n_features)
 
         jet_lepton_mask = None
-        if jet_mask is not None:
-            jet_mask = tf.expand_dims(
-                jet_mask, axis=2
-            )  # Shape: (batch_size, n_jets, 1)
-            jet_lepton_mask = tf.cast(jet_mask, tf.bool)
-        if lepton_mask is not None:
-            lepton_mask = tf.expand_dims(
-                lepton_mask, axis=1
-            )  # Shape: (batch_size, 1, n_leptons)
-            if jet_lepton_mask is not None:
-                jet_lepton_mask = jet_lepton_mask & lepton_mask
+        # Create combined mask - ensure it's always (B, J, L)
+        if jet_mask is not None or lepton_mask is not None:
+            if jet_mask is not None:
+                jet_mask = tf.expand_dims(jet_mask, axis=2)  # (B, J, 1)
+                jet_mask = tf.cast(jet_mask, tf.bool)
+            if lepton_mask is not None:
+                lepton_mask = tf.expand_dims(lepton_mask, axis=1)  # (B, 1, L)
+                lepton_mask = tf.cast(lepton_mask, tf.bool)
+            
+            # Combine masks (broadcasting will create (B, J, L))
+            if jet_mask is not None and lepton_mask is not None:
+                jet_lepton_mask = jet_mask & lepton_mask  # (B, J, L)
+            elif jet_mask is not None:
+                jet_lepton_mask = jet_mask  # (B, J, 1)
             else:
-                jet_lepton_mask = lepton_mask
+                jet_lepton_mask = lepton_mask  # (B, 1, L)        # Split jet features
+            jet_lepton_mask = tf.cast(jet_lepton_mask, tf.bool)  # (B, J, L, 1)
+            jet_lepton_mask = tf.expand_dims(jet_lepton_mask, axis=-1)
 
-        jet_px = jet_input[..., 0:1]
+
+        jet_px = jet_input[..., 0:1]  # Shape: (B, J, 1)
         jet_py = jet_input[..., 1:2]
         jet_pz = jet_input[..., 2:3]
         jet_E = jet_input[..., 3:4]
 
         # Split lepton features
-        lep_px = lepton_input[..., 0:1]
+        lep_px = lepton_input[..., 0:1]  # Shape: (B, 1, L)
         lep_py = lepton_input[..., 1:2]
         lep_pz = lepton_input[..., 2:3]
         lep_E = lepton_input[..., 3:4]
 
-        # Compute delta R
-        import math as m
-        delta_eta = tf.atanh(
-            jet_pz / tf.sqrt(jet_px**2 + jet_py**2 + jet_pz**2)
-        ) - tf.atanh(lep_pz / tf.sqrt(lep_px**2 + lep_py**2 + lep_pz**2))
+
+        # Compute delta eta using arctanh for pseudorapidity
+        jet_p_perp_sq = jet_px**2 + jet_py**2
+        jet_p_sq = jet_p_perp_sq + jet_pz**2
+        jet_eta = tf.atanh(
+            tf.clip_by_value(jet_pz / tf.sqrt(jet_p_sq + 1e-8), -0.9999, 0.9999)
+        )
+
+        lep_p_perp_sq = lep_px**2 + lep_py**2
+        lep_p_sq = lep_p_perp_sq + lep_pz**2
+        lep_eta = tf.atanh(
+            tf.clip_by_value(lep_pz / tf.sqrt(lep_p_sq + 1e-8), -0.9999, 0.9999)
+        )
+
+        delta_eta = jet_eta - lep_eta
+
+        # Compute delta phi
         delta_phi = tf.atan2(jet_py, jet_px) - tf.atan2(lep_py, lep_px)
         delta_phi = tf.math.floormod(
-            delta_phi + tf.constant(m.pi), 2 * tf.constant(m.pi)
-        ) - tf.constant(m.pi)
+            delta_phi + tf.constant(math.pi), 2 * tf.constant(math.pi)
+        ) - tf.constant(math.pi)
+
+        # Compute delta R
         delta_R = tf.sqrt(delta_eta**2 + delta_phi**2)
 
         # Compute invariant mass
@@ -166,22 +187,23 @@ class ComputeHighLevelFeatures(keras.layers.Layer):
         total_px = jet_px + lep_px
         total_py = jet_py + lep_py
         total_pz = jet_pz + lep_pz
+
         invariant_mass = tf.sqrt(
             tf.maximum(total_E**2 - total_px**2 - total_py**2 - total_pz**2, 0.0)
         )
 
         # Concatenate high-level features
         HLF = tf.concat([delta_R, invariant_mass], axis=-1)
+
+        # Apply masking if available
         if jet_lepton_mask is not None:
-            jet_lepton_mask = tf.expand_dims(jet_lepton_mask, axis=-1)  # (B, J, L, 1)
-            jet_lepton_mask = tf.cast(jet_lepton_mask, tf.bool)
-            # Mask invalid pairs
             HLF = tf.where(
                 jet_lepton_mask,
                 HLF,
                 tf.fill(tf.shape(HLF), self.padding_value),
-            )        
-        return HLF # Shape: (batch_size, n_jets, n_leptons, 2)
+            )
+
+        return HLF  # Shape: (batch_size, n_jets, n_leptons, 2)
 
     def get_config(self):
         config = super().get_config()

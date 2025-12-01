@@ -245,6 +245,9 @@ class RootPreprocessor:
             parton_info = self._extract_initial_parton_info(events)
             processed.update(parton_info)
 
+        event_number = ak.to_numpy(events.eventNumber)
+        processed.update({"mc_event_number": event_number})
+
 
         return processed
 

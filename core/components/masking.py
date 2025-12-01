@@ -13,17 +13,10 @@ class GenerateMask(keras.layers.Layer):
         mask = tf.reduce_any(not_pad, axis=-1)
         return tf.cast(mask, tf.bool)
 
-    def compute_output_shape(self, input_shape):
-        return input_shape[:-1] + (1,)
-
     def get_config(self):
         config = super().get_config()
         config.update({"padding_value": self.padding_value})
         return config
-
-    @classmethod
-    def from_config(cls, config):
-        return cls(**config)
 
 @keras.utils.register_keras_serializable()
 class TemporalSoftmax(keras.layers.Layer):
@@ -76,9 +69,6 @@ class TemporalSoftmax(keras.layers.Layer):
             softmax_output *= mask
         return softmax_output
 
-    def compute_output_shape(self, input_shape):
-        return input_shape
-
     def get_config(self):
         config = super().get_config()
         config.update({"axis": self.axis})
@@ -110,9 +100,6 @@ class TransposeLayer(keras.layers.Layer):
 
     def call(self, inputs):
         return tf.transpose(inputs, perm=self.perm)
-
-    def compute_output_shape(self, input_shape):
-        return tuple(input_shape[i] for i in self.perm)
 
     def get_config(self):
         config = super().get_config()

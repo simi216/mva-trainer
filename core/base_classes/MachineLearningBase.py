@@ -7,7 +7,7 @@ import tensorflow as tf
 import tf2onnx
 import os
 from core.components import onnx_support
-from core.components import GenerateMask, InputPtEtaPhiELayer, InputMetPhiLayer
+from core.components import GenerateMask, InputPtEtaPhiELayer, InputMetPhiLayer, ComputeHighLevelFeatures
 import core.components as components
 import core.utils as utils
 from copy import deepcopy
@@ -110,14 +110,17 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 X_train["met_inputs"] = met_data
         return X_train, y_train, sample_weights
 
-    def _prepare_inputs(self, input_as_four_vector, log_E=True):
+    def _prepare_inputs(self, input_as_four_vector, log_E=True, compute_HLF=False):
         jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
         lep_inputs = keras.Input(
             shape=(self.NUM_LEPTONS, self.n_leptons), name="lep_inputs"
         )
         met_inputs = keras.Input(shape=(1, self.n_met), name="met_inputs")
 
-        # Normalise inputs
+        # Generate jet mask
+        jet_mask = GenerateMask(padding_value=-999, name="jet_mask")(jet_inputs)
+
+        # Transform inputs
         if input_as_four_vector:
             transformed_jet_inputs = InputPtEtaPhiELayer(
                 name="jet_input_transform",
@@ -137,6 +140,13 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             transformed_lep_inputs = lep_inputs
             transformed_met_inputs = met_inputs
 
+        if compute_HLF:
+            high_level_features = ComputeHighLevelFeatures(
+                name="compute_high_level_features",
+                padding_value=self.padding_value,
+            )(jet_input = transformed_jet_inputs, lepton_input = transformed_lep_inputs, jet_mask = jet_mask)
+
+        # Normalize inputs
         normed_jet_inputs = keras.layers.Normalization(name="jet_input_normalization")(
             transformed_jet_inputs
         )
@@ -146,9 +156,6 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         normed_met_inputs = keras.layers.Normalization(name="met_input_normalization")(
             transformed_met_inputs
         )
-        # Generate masks
-        jet_mask = GenerateMask(padding_value=-999, name="jet_mask")(jet_inputs)
-
         self.inputs = {
             "jet_inputs": jet_inputs,
             "lep_inputs": lep_inputs,
@@ -159,7 +166,25 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             "lepton_inputs": transformed_lep_inputs,
             "met_inputs": transformed_met_inputs,
         }
-        return normed_jet_inputs, normed_lep_inputs, normed_met_inputs, jet_mask
+
+        if compute_HLF:
+            normed_hlf_inputs = keras.layers.Normalization(name="hlf_input_normalization")(
+                high_level_features
+            )
+            self.inputs["hlf_inputs"] = high_level_features
+            self.transformed_inputs["hlf_inputs"] = high_level_features
+            return (
+                normed_jet_inputs,
+                normed_lep_inputs,
+                normed_met_inputs,
+                normed_hlf_inputs,
+                jet_mask,
+            )
+        else:
+            return normed_jet_inputs, normed_lep_inputs, normed_met_inputs, jet_mask
+        
+        
+    
 
     def train_model(
         self,
@@ -185,17 +210,35 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         if self.history is not None:
             print("Warning: Overwriting existing training history.")
 
-        self.history = self.model.fit(
-            X_train,
-            y_train,
-            sample_weight=sample_weights,
-            class_weight=self.class_weights,
-            epochs=epochs,
-            batch_size=batch_size,
-            validation_split=validation_split,
-            callbacks=callbacks,
-            **kwargs,
-        )
+        if self.history is None:
+            self.history = self.model.fit(
+                X_train,
+                y_train,
+                sample_weight=sample_weights,
+                class_weight=self.class_weights,
+                epochs=epochs,
+                batch_size=batch_size,
+                validation_split=validation_split,
+                callbacks=callbacks,
+                **kwargs,
+            )
+        else:
+            append_history = self.model.fit(
+                X_train,
+                y_train,
+                sample_weight=sample_weights,
+                class_weight=self.class_weights,
+                epochs=epochs,
+                batch_size=batch_size,
+                validation_split=validation_split,
+                callbacks=callbacks,
+                initial_epoch=len(self.history.epoch),
+                **kwargs,
+            )
+            # Append new history to existing history
+            for key in append_history.history:
+                self.history.history[key].extend(append_history.history[key])
+            self.history.epoch.extend([e + self.history.epoch[-1] + 1 for e in append_history.epoch])
         return self.history
 
     def save_model(self, file_path="model.keras"):
