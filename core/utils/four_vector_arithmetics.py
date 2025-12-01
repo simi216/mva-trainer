@@ -22,6 +22,29 @@ def lorentz_vector_from_pt_eta_phi_e(pt, eta, phi, e, padding_value = -999):
     pz = np.where(mask, padding_value, pt * np.sinh(eta))
     return px, py, pz, e
 
+def lorentz_vector_array_from_pt_eta_phi_e(pt, eta, phi, e, padding_value = -999):
+    """
+    Computes the four-momentum vector components from pt, eta, phi, and energy.
+
+    Args:   
+        pt (np.ndarray): Transverse momentum.
+        eta (np.ndarray): Pseudorapidity.
+        phi (np.ndarray): Azimuthal angle.
+        e (np.ndarray): Energy.
+    Returns:
+        tuple: A tuple containing the four-momentum components (px, py, pz, e).
+    """
+    mask = (pt == padding_value) | (eta == padding_value) | (phi == padding_value) | (e == padding_value)
+    phi = np.where(mask, 0, phi)
+    eta = np.where(mask, 0, eta)
+    pt = np.where(mask, 0, pt)
+    e = np.where(mask, padding_value, e)
+    px = np.where(mask, padding_value, pt * np.cos(phi))
+    py = np.where(mask, padding_value, pt * np.sin(phi))
+    pz = np.where(mask, padding_value, pt * np.sinh(eta))
+    return np.stack((px, py, pz, e), axis=-1)
+
+
 def compute_mass_from_lorentz_vector(px, py, pz, e, padding_value = -999):
     """
     Computes the invariant mass from four-momentum components.

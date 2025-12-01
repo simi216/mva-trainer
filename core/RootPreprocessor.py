@@ -18,7 +18,7 @@ from typing import Optional, Dict, List, Tuple
 from dataclasses import dataclass
 import os
 from tqdm import tqdm
-from core.utils import lorentz_vector_from_PtEtaPhiE_array, compute_mass_from_lorentz_vector_array
+from core.utils import lorentz_vector_array_from_pt_eta_phi_e, compute_mass_from_lorentz_vector_array
 
 
 @dataclass
@@ -571,7 +571,7 @@ class RootPreprocessor:
 
 
         # Score = large bonus if b-tagged + pT 
-        b_tag_mask = btag > 2
+        b_tag_mask = (btag > 2).astype(np.float32)
 
         # sort descending
         bjet_indices = np.lexsort(( -jet_pt, -b_tag_mask ), axis=1)[:, :2]
@@ -593,10 +593,10 @@ class RootPreprocessor:
         b2_e   = jets["ordered_jet_e"][rows, b2_idx]
 
         # --- compute invariant mass ---
-        b1_4 = lorentz_vector_from_PtEtaPhiE_array(b1_pt, b1_eta, b1_phi, b1_e)
-        b2_4 = lorentz_vector_from_PtEtaPhiE_array(b2_pt, b2_eta, b2_phi, b2_e)
-        l1_4 = lorentz_vector_from_PtEtaPhiE_array(l1_pt, l1_eta, l1_phi, l1_e)
-        l2_4 = lorentz_vector_from_PtEtaPhiE_array(l2_pt, l2_eta, l2_phi, l2_e)
+        b1_4 = lorentz_vector_array_from_pt_eta_phi_e(b1_pt, b1_eta, b1_phi, b1_e)
+        b2_4 = lorentz_vector_array_from_pt_eta_phi_e(b2_pt, b2_eta, b2_phi, b2_e)
+        l1_4 = lorentz_vector_array_from_pt_eta_phi_e(l1_pt, l1_eta, l1_phi, l1_e)
+        l2_4 = lorentz_vector_array_from_pt_eta_phi_e(l2_pt, l2_eta, l2_phi, l2_e)
 
         total = b1_4 + b2_4 + l1_4 + l2_4
         return {"reco_mllbb": compute_mass_from_lorentz_vector_array(total)}
@@ -924,13 +924,16 @@ def preprocess_root_directory(
                 data_collected.append(preprocessor.get_processed_data())
                 num_events = len(preprocessor.get_processed_data()["lep_pt"])
                 num_total_events += num_events
-                print(f"Processed {num_events} events from {filename}. Total events so far: {num_total_events}\n")
+                print(f"Processed {num_events} events from {filename}. Total events so far: {num_total_events}\n\n")
         if max_events is not None and num_total_events >= max_events:
             print(f"Reached maximum number of events: {max_events}. Stopping processing.")
             break
+    print(f"Finished processing files. Total events processed: {num_total_events}")
     print("\nMerging data from all files...")
     merged_data = {}
+    n_keys = len(data_collected[0].keys())
     for key in data_collected[0].keys():
+        print(f"Merging key: {key} ({len(merged_data)+1}/{n_keys})")
         for data in data_collected:
             if key not in data:
                 raise KeyError(f"Key '{key}' not found in one of the data dictionaries.")
