@@ -18,6 +18,7 @@ from typing import Optional, Dict, List, Tuple
 from dataclasses import dataclass
 import os
 from tqdm import tqdm
+from core.utils import lorentz_vector_from_PtEtaPhiE_array, compute_mass_from_lorentz_vector_array
 
 
 @dataclass
@@ -39,6 +40,8 @@ class PreprocessorConfig:
     n_jets_min: int = 2
     max_jets_for_truth: int = 10  # Maximum jet index for truth matching
     max_saved_jets: int = 10  # Maximum number of jets to save
+
+    padding_value: float = -999.0  # Padding value for missing data
 
 
 class RootPreprocessor:
@@ -223,6 +226,10 @@ class RootPreprocessor:
         # Process event weights
         event_weight = self._proccess_event_weight(events)
         processed.update({"weight_mc": event_weight})
+    
+        # Compute reconstructed mllbb
+        reco_mllbb = self._compute_reco_mllbb(leptons, jets)
+        processed.update(reco_mllbb)
 
         # Extract truth information
         truth = self._extract_truth_info(events)
@@ -237,6 +244,7 @@ class RootPreprocessor:
         if self.config.save_initial_parton_info:
             parton_info = self._extract_initial_parton_info(events)
             processed.update(parton_info)
+
 
         return processed
 
@@ -300,22 +308,22 @@ class RootPreprocessor:
         # Pad to 2 leptons and convert to numpy
         max_leptons = 2
         lep_pt_np = ak.to_numpy(
-            ak.fill_none(ak.pad_none(lep_pt, max_leptons, clip=True), -999.0)
+            ak.fill_none(ak.pad_none(lep_pt, max_leptons, clip=True), self.config.padding_value)
         )
         lep_eta_np = ak.to_numpy(
-            ak.fill_none(ak.pad_none(lep_eta, max_leptons, clip=True), -999.0)
+            ak.fill_none(ak.pad_none(lep_eta, max_leptons, clip=True), self.config.padding_value)
         )
         lep_phi_np = ak.to_numpy(
-            ak.fill_none(ak.pad_none(lep_phi, max_leptons, clip=True), -999.0)
+            ak.fill_none(ak.pad_none(lep_phi, max_leptons, clip=True), self.config.padding_value)
         )
         lep_e_np = ak.to_numpy(
-            ak.fill_none(ak.pad_none(lep_e, max_leptons, clip=True), -999.0)
+            ak.fill_none(ak.pad_none(lep_e, max_leptons, clip=True), self.config.padding_value)
         )
         lep_charge_np = ak.to_numpy(
-            ak.fill_none(ak.pad_none(lep_charge, max_leptons, clip=True), -999.0)
+            ak.fill_none(ak.pad_none(lep_charge, max_leptons, clip=True), self.config.padding_value)
         )
         lep_pid_np = ak.to_numpy(
-            ak.fill_none(ak.pad_none(lep_pid, max_leptons, clip=True), -999.0)
+            ak.fill_none(ak.pad_none(lep_pid, max_leptons, clip=True), self.config.padding_value)
         )
         lep_truth_np = ak.to_numpy(
             ak.fill_none(ak.pad_none(lep_truth, max_leptons, clip=True), -1)
@@ -382,12 +390,12 @@ class RootPreprocessor:
         max_jets = self.config.max_saved_jets
 
         # Pad and convert to numpy
-        jet_pt_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_pt, max_jets, clip=True), -999.0))
-        jet_eta_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_eta, max_jets, clip=True), -999.0))
-        jet_phi_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_phi, max_jets, clip=True), -999.0))
-        jet_e_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_e, max_jets, clip=True), -999.0))
-        jet_btag_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_btag, max_jets, clip=True), -999.0))
-        jet_truth_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_truth, max_jets, clip=True), -999.0))
+        jet_pt_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_pt, max_jets, clip=True), self.config.padding_value))
+        jet_eta_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_eta, max_jets, clip=True), self.config.padding_value))
+        jet_phi_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_phi, max_jets, clip=True), self.config.padding_value))
+        jet_e_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_e, max_jets, clip=True), self.config.padding_value))
+        jet_btag_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_btag, max_jets, clip=True), self.config.padding_value))
+        jet_truth_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_truth, max_jets, clip=True), self.config.padding_value))
 
         # Build jet truth index array
         event_jet_truth_idx = np.full((n_events, 6), -1, dtype=np.int32)
@@ -508,7 +516,7 @@ class RootPreprocessor:
             l1j_py = l1_py + j_py
             l1j_pz = l1_pz + j_pz
             m_l1j_squared = l1j_e**2 - l1j_px**2 - l1j_py**2 - l1j_pz**2
-            m_l1j = np.where(m_l1j_squared > 0, np.sqrt(np.abs(m_l1j_squared)), -999.0)
+            m_l1j = np.where(m_l1j_squared > 0, np.sqrt(np.abs(m_l1j_squared)), self.config.padding_value)
 
             # l2 + jet
             l2j_e = l2_e + j_e
@@ -516,18 +524,18 @@ class RootPreprocessor:
             l2j_py = l2_py + j_py
             l2j_pz = l2_pz + j_pz
             m_l2j_squared = l2j_e**2 - l2j_px**2 - l2j_py**2 - l2j_pz**2
-            m_l2j = np.where(m_l2j_squared > 0, np.sqrt(np.abs(m_l2j_squared)), -999.0)
+            m_l2j = np.where(m_l2j_squared > 0, np.sqrt(np.abs(m_l2j_squared)), self.config.padding_value)
 
         # Mark invalid jets
-        valid_mask = j_pt != -999.0
-        m_l1j = np.where(valid_mask, m_l1j, -999.0)
-        m_l2j = np.where(valid_mask, m_l2j, -999.0)
+        valid_mask = j_pt != self.config.padding_value
+        m_l1j = np.where(valid_mask, m_l1j, self.config.padding_value)
+        m_l2j = np.where(valid_mask, m_l2j, self.config.padding_value)
 
         # Delta R (vectorized)
         dR_l1j = self._delta_r(l1_eta, l1_phi, j_eta, j_phi)
         dR_l2j = self._delta_r(l2_eta, l2_phi, j_eta, j_phi)
-        dR_l1j = np.where(valid_mask, dR_l1j, -999.0)
-        dR_l2j = np.where(valid_mask, dR_l2j, -999.0)
+        dR_l1j = np.where(valid_mask, dR_l1j, self.config.padding_value)
+        dR_l2j = np.where(valid_mask, dR_l2j, self.config.padding_value)
 
         # Delta R between leptons
         dR_l1l2 = self._delta_r(
@@ -544,6 +552,55 @@ class RootPreprocessor:
             "dR_l2j": dR_l2j,
             "dR_l1l2": dR_l1l2,
         }
+    
+    def _compute_reco_mllbb(self, leptons, jets):
+        # --- extract lepton 4-vectors ---
+        l1_pt  = leptons["lep_pt"][:, 0]
+        l1_eta = leptons["lep_eta"][:, 0]
+        l1_phi = leptons["lep_phi"][:, 0]
+        l1_e   = leptons["lep_e"][:, 0]
+
+        l2_pt  = leptons["lep_pt"][:, 1]
+        l2_eta = leptons["lep_eta"][:, 1]
+        l2_phi = leptons["lep_phi"][:, 1]
+        l2_e   = leptons["lep_e"][:, 1]
+
+        # --- select 2 b-jets or fallback leading jets ---
+        btag = jets["ordered_jet_b_tag"]
+        jet_pt = jets["ordered_jet_pt"]
+
+
+        # Score = large bonus if b-tagged + pT 
+        b_tag_mask = btag > 2
+
+        # sort descending
+        bjet_indices = np.lexsort(( -jet_pt, -b_tag_mask ), axis=1)[:, :2]
+
+         # fallback to leading jets if less than 2 b-tagged jets
+
+        rows = np.arange(jet_pt.shape[0])
+        b1_idx, b2_idx = bjet_indices[:,0], bjet_indices[:,1]
+
+        # --- extract jet 4-vectors ---
+        b1_pt  = jets["ordered_jet_pt"][rows, b1_idx]
+        b1_eta = jets["ordered_jet_eta"][rows, b1_idx]
+        b1_phi = jets["ordered_jet_phi"][rows, b1_idx]
+        b1_e   = jets["ordered_jet_e"][rows, b1_idx]
+
+        b2_pt  = jets["ordered_jet_pt"][rows, b2_idx]
+        b2_eta = jets["ordered_jet_eta"][rows, b2_idx]
+        b2_phi = jets["ordered_jet_phi"][rows, b2_idx]
+        b2_e   = jets["ordered_jet_e"][rows, b2_idx]
+
+        # --- compute invariant mass ---
+        b1_4 = lorentz_vector_from_PtEtaPhiE_array(b1_pt, b1_eta, b1_phi, b1_e)
+        b2_4 = lorentz_vector_from_PtEtaPhiE_array(b2_pt, b2_eta, b2_phi, b2_e)
+        l1_4 = lorentz_vector_from_PtEtaPhiE_array(l1_pt, l1_eta, l1_phi, l1_e)
+        l2_4 = lorentz_vector_from_PtEtaPhiE_array(l2_pt, l2_eta, l2_phi, l2_e)
+
+        total = b1_4 + b2_4 + l1_4 + l2_4
+        return {"reco_mllbb": compute_mass_from_lorentz_vector_array(total)}
+
 
     @staticmethod
     def _delta_r(eta1, phi1, eta2, phi2):
