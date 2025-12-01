@@ -108,7 +108,7 @@ class DataPlotter:
             feature_name (str): The name of the feature to apply the cut on.
             cut_function (function): A function that takes feature data and returns a boolean mask for valid events.
         """
-        feature_data = self.get_feature_data(feature_type, feature_name)
+        feature_data = self.get_feature_data(feature_type, feature_name, uncut = True)
         cut_mask = cut_function(feature_data)
         self.event_cuts = self.event_cuts & cut_mask
 
@@ -118,7 +118,7 @@ class DataPlotter:
         """
         self.event_cuts = np.ones(self.data_processor.data_length, dtype=bool)
 
-    def get_feature_data(self, feature_type: str, feature_name: str):
+    def get_feature_data(self, feature_type: str, feature_name: str, uncut=False):
         """
         Retrieves feature data after applying registered data cuts.
 
@@ -130,7 +130,10 @@ class DataPlotter:
             np.ndarray: The feature data after applying cuts.
         """
         feature_data = self.data_processor.get_feature_data(feature_type, feature_name)
-        return feature_data[self.event_cuts]
+        if uncut:
+            return feature_data
+        else:
+            return feature_data[self.event_cuts]
 
     def get_all_feature_data(self, feature_type: str):
         """
@@ -272,4 +275,51 @@ class DataPlotter:
         ax.set_xlabel(f"{feature_name_x}")
         ax.set_ylabel(f"{feature_name_y} ")
         ax.set_title(f"2D Distribution of {feature_name_x} and {feature_name_y}")
+        return fig, ax
+    
+    def plot_binned_feature_mean(
+        self,
+        binning_feature_type: str,
+        binning_feature_name: str,
+        target_feature_type: str,
+        target_feature_name: str,
+        bins: int = 10,
+        xlims: tuple = None,
+    ):
+        """
+        Plots the mean of a target feature binned by another feature.
+
+        Args:
+            binning_feature_type (str): The type of the feature to bin by (e.g., 'jet', 'lepton', 'met').
+            binning_feature_name (str): The name of the feature to bin by.
+            target_feature_type (str): The type of the target feature (e.g., 'jet', 'lepton', 'met').
+            target_feature_name (str): The name of the target feature to compute the mean of.
+            bins (int): Number of bins for the binning feature.
+            xlims (tuple): Limits for the x-axis (min, max).
+        """
+        binning_feature_data = self.get_feature_data(binning_feature_type, binning_feature_name)
+        target_feature_data = self.get_feature_data(target_feature_type, target_feature_name)
+
+        if xlims is None:
+            x_min = np.min(binning_feature_data[binning_feature_data != self.padding_value])
+            x_max = np.max(binning_feature_data[binning_feature_data != self.padding_value])
+        else:
+            x_min, x_max = xlims
+
+        bin_edges = np.linspace(x_min, x_max, bins + 1)
+        bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+        mean_values = []
+        for i in range(bins):
+            mask = (
+                (binning_feature_data >= bin_edges[i])
+                & (binning_feature_data < bin_edges[i + 1])
+                & (target_feature_data != self.padding_value)
+            )
+            if np.sum(mask) > 0:
+                mean_values.append(np.mean(target_feature_data[mask]))
+            else:
+                mean_values.append(np.nan)
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(bin_centers, mean_values, marker="o", linestyle="-")
         return fig, ax

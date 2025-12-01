@@ -208,24 +208,33 @@ def boost(v, parent):
     
     # Safe beta calculation
     beta = np.zeros_like(pv)
-    mask = (Ep > 0) & (p > 0)
+    mask = (Ep > 1e-10) & (p > 0) & np.isfinite(Ep) & np.all(np.isfinite(pv), axis=1)
     beta[mask] = pv[mask] / Ep[mask, None]
     
-    # Gamma factor
+    # Gamma factor with safe division and overflow protection
     beta_sq = np.sum(beta**2, axis=1)
+    beta_sq = np.clip(beta_sq, 0, 1 - 1e-15)  # Ensure < 1 for physical values
     gamma = 1.0 / np.sqrt(np.maximum(1 - beta_sq, 1e-10))
+    gamma = np.clip(gamma, 1.0, 1e6)  # Limit gamma to reasonable values
     
     vv = v[:, :3]
     E = v[:, 3]
     
     # Boost formulas (negating beta for rest frame boost)
-    beta_dot_v = np.sum(beta * vv, axis=1)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        beta_dot_v = np.sum(beta * vv, axis=1)
+        
+        # Safe computation of boost components
+        denominator = np.maximum(beta_sq[:, None], 1e-10)
+        boost_correction = (gamma[:, None] - 1) * beta_dot_v[:, None] * beta / denominator
+        
+        v_prime = vv - gamma[:, None] * beta * E[:, None] + boost_correction
+        E_prime = gamma * (E - beta_dot_v)
     
-    v_prime = vv - gamma[:, None] * beta * E[:, None] + \
-              (gamma[:, None] - 1) * beta_dot_v[:, None] * beta / \
-              np.maximum(beta_sq[:, None], 1e-10)
-    
-    E_prime = gamma * (E - beta_dot_v)
+    # Replace any NaN or Inf with original values
+    valid = np.isfinite(v_prime).all(axis=1) & np.isfinite(E_prime)
+    v_prime = np.where(valid[:, None], v_prime, v[:, :3])
+    E_prime = np.where(valid, E_prime, v[:, 3])
     
     return np.column_stack([v_prime, E_prime])
 
@@ -264,7 +273,10 @@ def c_han(top, tbar, lep_pos, lep_neg):
 
     # CMS-specific flip along tbar direction
     p2 = p2.copy()
-    tbar_dir = tbar[:, :3] / np.linalg.norm(tbar[:, :3], axis=1)[:, None]
+    tbar_norm = np.linalg.norm(tbar[:, :3], axis=1, keepdims=True)
+    tbar_norm = np.maximum(tbar_norm, 1e-6)  # Avoid division by zero
+    tbar_norm = np.where(np.isfinite(tbar_norm), tbar_norm, 1e-6)  # Handle non-finite values
+    tbar_dir = tbar[:, :3] / tbar_norm
     p2_z = np.sum(p2 * tbar_dir, axis=1)
     p2 -= 2 * (p2_z[:, None] * tbar_dir)
 

@@ -272,15 +272,15 @@ class ReconstructionEvaluator:
         names = []
         for i, reconstructor in enumerate(self.reconstructors):
             if isinstance(reconstructor, GroundTruthReconstructor):
-                print(f"{reconstructor.get_name()}: Ground Truth (skipping)")
+                print(f"{reconstructor.get_assignment_name()}: Ground Truth (skipping)")
                 continue
             mean_acc, lower, upper = self._bootstrap_accuracy(i, config)
             accuracies.append((mean_acc, lower, upper))
             print(
-                f"{reconstructor.get_name()}: {mean_acc:.4f} "
+                f"{reconstructor.get_assignment_name()}: {mean_acc:.4f} "
                 f"[{lower:.4f}, {upper:.4f}]"
             )
-            names.append(reconstructor.get_name())
+            names.append(reconstructor.get_assignment_name())
 
         return AccuracyPlotter.plot_overall_accuracies(names, accuracies, config)
 
@@ -303,15 +303,15 @@ class ReconstructionEvaluator:
         names = []
         for i, reconstructor in enumerate(self.reconstructors):
             if isinstance(reconstructor, GroundTruthReconstructor):
-                print(f"{reconstructor.get_name()}: Ground Truth (skipping)")
+                print(f"{reconstructor.get_assignment_name()}: Ground Truth (skipping)")
                 continue
             mean_acc, lower, upper = self._bootstrap_selection_accuracy(i, config)
             selection_accuracies.append((mean_acc, lower, upper))
             print(
-                f"{reconstructor.get_name()}: {mean_acc:.4f} "
+                f"{reconstructor.get_assignment_name()}: {mean_acc:.4f} "
                 f"[{lower:.4f}, {upper:.4f}]"
             )
-            names.append(reconstructor.get_name())
+            names.append(reconstructor.get_assignment_name())
 
         return SelectionAccuracyPlotter.plot_selection_accuracies(
             names, selection_accuracies, config
@@ -418,14 +418,14 @@ class ReconstructionEvaluator:
 
         for i, reconstructor in enumerate(self.reconstructors):
             if isinstance(reconstructor, GroundTruthReconstructor):
-                print(f"{reconstructor.get_name()}: Ground Truth (skipping)")
+                print(f"{reconstructor.get_full_reco_name()}: Ground Truth (skipping)")
                 # continue
 
             # Check if reconstructor supports neutrino reconstruction
             neutrino_pred = self.prediction_manager.get_neutrino_predictions(i)
             if neutrino_pred is None:
                 print(
-                    f"{reconstructor.get_name()}: No neutrino reconstruction (skipping)"
+                    f"{reconstructor.get_full_reco_name()}: No neutrino reconstruction (skipping)"
                 )
                 continue
 
@@ -434,10 +434,10 @@ class ReconstructionEvaluator:
             )
             deviations.append((mean_dev, lower, upper))
             print(
-                f"{reconstructor.get_name()}: {mean_dev:.4f} "
+                f"{reconstructor.get_full_reco_name()}: {mean_dev:.4f} "
                 f"[{lower:.4f}, {upper:.4f}]"
             )
-            names.append(reconstructor.get_name())
+            names.append(reconstructor.get_full_reco_name())
 
         if not deviations:
             raise ValueError(
@@ -519,7 +519,7 @@ class ReconstructionEvaluator:
                     binning_mask, accuracy_data, event_weights
                 )
                 binned_accuracies.append((binned_acc, binned_acc, binned_acc))
-            names.append(reconstructor.get_name())
+            names.append(reconstructor.get_assignment_name())
         # Compute bin counts
         bin_counts = np.sum(
             event_weights.reshape(1, -1) * binning_mask, axis=1
@@ -610,7 +610,7 @@ class ReconstructionEvaluator:
                     binning_mask, accuracy_data, event_weights
                 )
                 binned_accuracies.append((binned_acc, binned_acc, binned_acc))
-            names.append(reconstructor.get_name())
+            names.append(reconstructor.get_assignment_name())
         # Compute bin counts
         bin_counts = np.sum(
             event_weights.reshape(1, -1) * binning_mask, axis=1
@@ -646,7 +646,7 @@ class ReconstructionEvaluator:
             )
         ]
         names = [
-            r.get_name()
+            r.get_assignment_name()
             for r in self.reconstructors
             if not isinstance(r, GroundTruthReconstructor)
         ]
@@ -672,7 +672,7 @@ class ReconstructionEvaluator:
         """Plot complementarity matrix between reconstructors."""
         matrix = self.compute_complementarity_matrix()
         names = [
-            r.get_name()
+            r.get_assignment_name()
             for r in self.reconstructors
             if not isinstance(r, GroundTruthReconstructor)
         ]
@@ -933,7 +933,7 @@ class ReconstructionEvaluator:
 
         # Plot
         feature_label = fancy_feature_label or feature_name
-        names = [r.get_name() for r in self.reconstructors]
+        names = [r.get_full_reco_name() for r in self.reconstructors]
 
         return ResolutionPlotter.plot_binned_resolution(
             bin_centers,
@@ -1029,7 +1029,7 @@ class ReconstructionEvaluator:
             [deviation],
             f"Deviation in {variable_label}",
             event_weights=event_weights,
-            labels=[self.reconstructors[reconstructor_index].get_name()],
+            labels=[self.reconstructors[reconstructor_index].get_full_reco_name()],
             ax=ax,
             **kwargs,
         )
@@ -1091,7 +1091,7 @@ class ReconstructionEvaluator:
                 deviation = np.concatenate(deviation)
             
             all_deviations.append(deviation)
-            labels.append(reconstructor.get_name())
+            labels.append(reconstructor.get_full_reco_name())
             reco_index += 1
         
         # Handle combined tops for event weights
@@ -1122,6 +1122,7 @@ class ReconstructionEvaluator:
         xlims: Optional[Tuple[float, float]] = None,
         bins: int = 50,
         figsize: Optional[Tuple[int, int]] = (10, 10),
+        save_individual_plots: bool = False,
         **kwargs,
     ):
         """
@@ -1138,18 +1139,29 @@ class ReconstructionEvaluator:
         Returns:
             Tuple of (figure, axes)
         """
-        num_plots = len(self.reconstructors) - 1  # Exclude ground truth
+        num_plots = len(self.reconstructors)  # Exclude ground truth
 
         num_cols = np.ceil(np.sqrt(num_plots)).astype(int)
         num_rows = np.ceil(num_plots / num_cols).astype(int)
-        fig, axes = plt.subplots(
-            num_rows,
-            num_cols,
-            figsize=figsize,
-            constrained_layout=True,
-        )
-        axes = axes.flatten()
 
+        if not save_individual_plots:
+            fig, axes = plt.subplots(
+                num_rows,
+                num_cols,
+                figsize=figsize,
+                constrained_layout=True,
+            )
+            axes = axes.flatten()
+        else:
+            fig, axes = [], []
+            for i in range(num_plots):
+                fig_i, ax_i = plt.subplots(
+                    figsize=figsize,
+                    constrained_layout=True,
+                )
+                fig.append(fig_i)
+                axes.append(ax_i)
+            
         reco_index = 0
         for reconstructor in self.reconstructors:
 #            if isinstance(reconstructor, GroundTruthReconstructor):
@@ -1166,10 +1178,11 @@ class ReconstructionEvaluator:
                 **kwargs,
             )
             reco_index += 1
-            ax.set_title(reconstructor.get_name())
+            ax.set_title(reconstructor.get_full_reco_name())
 
-        for i in range(reco_index, len(axes)):
-            fig.delaxes(axes[i])  # Remove unused subplots
+        if not save_individual_plots:
+            for i in range(reco_index, len(axes)):
+                fig.delaxes(axes[i])  # Remove unused subplots
 
         return fig, axes
 

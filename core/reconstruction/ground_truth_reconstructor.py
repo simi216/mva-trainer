@@ -4,10 +4,13 @@ from core.DataLoader import DataConfig
 
 class GroundTruthReconstructor(EventReconstructorBase):
     def __init__(
-        self, config: DataConfig, name="ground_truth_reconstructor", use_nu_flows=False
+        self, config: DataConfig, use_nu_flows=False
     ):
         super().__init__(
-            config=config, name=name, perform_regression=False, use_nu_flows=use_nu_flows
+            config=config,
+            assignment_name="Ground truth",
+            full_reco_name="True Assignment+ " + r"$\nu^2$-Flows" if use_nu_flows else r"True $\nu$",
+            perform_regression=False, use_nu_flows=use_nu_flows
         )
         self.config = config
 

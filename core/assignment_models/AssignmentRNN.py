@@ -14,7 +14,7 @@ class FeatureConcatRNN(MLReconstructorBase):
     def __init__(self, config : DataConfig, name="RNN"):
         if config.has_neutrino_truth:
             print("FeatureConcatRNN is designed for classification tasks; regression targets will be ignored.")
-        super().__init__(config, name, perform_regression=False)
+        super().__init__(config, assignment_name=name, perform_regression=False)
 
     def build_model(self, hidden_dim, num_layers, dropout_rate, recurrent_type="lstm",input_as_four_vector=True):
 

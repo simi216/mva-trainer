@@ -30,7 +30,7 @@ def compute_sample_weights(X_train : dict, y_train, padding_value: float = -999)
 
     for n in num_jets:
         mask = valid_jets == n
-        event_weights[mask] *= (1.0 / np.sum(mask))  # Weight inversely proportional to count
+        #event_weights[mask] *= (1.0 / np.sum(mask))  # Weight inversely proportional to count
 
     # Normalize weights to have mean of 1
     event_weights /= np.mean(event_weights)

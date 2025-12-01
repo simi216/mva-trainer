@@ -199,7 +199,7 @@ class DataConfig:
         NUM_LEPTONS: Maximum number of leptons per event
         padding_value: Value used for padding
         has_neutrino_truth: Whether regression targets are present
-        regression_target_names: Names of regression targets (optional)
+        regression_target_full_reco_names: Names of regression targets (optional)
         has_event_weight: Whether event weights are present
         feature_indices: Dictionary mapping feature names to their indices
         data_shapes: Dictionary describing array shapes for each feature type

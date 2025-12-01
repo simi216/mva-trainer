@@ -96,18 +96,6 @@ class FeatureConcatTransformer(MLReconstructorBase):
             jets_transformed,
             mask=jet_mask,
         )
-        # MET Residual Connection
-        neutrino_residual = keras.layers.RepeatVector(
-            self.config.NUM_LEPTONS, name="neutrino_residual"
-        )(
-            keras.layers.Dense(
-                hidden_dim, activation="relu", name="neutrino_residual_embedding"
-            )(flatted_met_inputs)
-        )
-        neutrino_momentum_head = keras.layers.Add(name="neutrino_residual_add")(
-            [neutrino_momentum_head, neutrino_residual]
-        )
-
         neutrino_self_attention = neutrino_momentum_head
         for i in range(regression_transformer_stack_size):
             neutrino_self_attention = SelfAttentionBlock(
@@ -218,17 +206,6 @@ class SimpleNeutrinoRegessor(MLReconstructorBase):
         )(
             jets_transformed,
             mask=jet_mask,
-        )
-        # MET Residual Connection
-        neutrino_residual = keras.layers.RepeatVector(
-            self.config.NUM_LEPTONS, name="neutrino_residual"
-        )(
-            keras.layers.Dense(
-                hidden_dim, activation="relu", name="neutrino_residual_embedding"
-            )(flatted_met_inputs)
-        )
-        neutrino_momentum_head = keras.layers.Add(name="neutrino_residual_add")(
-            [neutrino_momentum_head, neutrino_residual]
         )
 
         neutrino_momentum_flat = keras.layers.Flatten()(neutrino_momentum_head)

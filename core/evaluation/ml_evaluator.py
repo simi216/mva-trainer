@@ -212,7 +212,10 @@ class MLEvaluator:
         """Plot training and validation loss/accuracy over epochs for all models."""
         for reconstructor in self.reconstructors:
             if reconstructor.history is None:
-                model_name = reconstructor.get_name()
+                if not reconstructor.perform_regression:
+                    model_name = reconstructor.get_assignment_name()
+                else:
+                    model_name = reconstructor.get_full_reco_name()
                 raise ValueError(
                     f"No training history found for model {model_name}. "
                     "Please train the model before plotting history."
@@ -232,7 +235,10 @@ class MLEvaluator:
         # Plot loss for all models
         for idx, reconstructor in enumerate(self.reconstructors):
             history = reconstructor.history
-            model_name = reconstructor.get_name()
+            if not reconstructor.perform_regression:
+                    model_name = reconstructor.get_assignment_name()
+            else:
+                model_name = reconstructor.get_full_reco_name()
 
             axes[0].plot(
                 history.history["loss"], label=f"{model_name} (Train)", linestyle="-", color=color_map(idx)
@@ -250,8 +256,10 @@ class MLEvaluator:
         # Plot accuracy for all models
         for idx, reconstructor in enumerate(self.reconstructors):
             history = reconstructor.history
-            model_name = reconstructor.get_name()
-
+            if not reconstructor.perform_regression:
+                    model_name = reconstructor.get_assignment_name()
+            else:
+                model_name = reconstructor.get_full_reco_name()
             axes[1].plot(
                 history.history["accuracy"],
                 label=f"{model_name} (Train)",
@@ -276,8 +284,10 @@ class MLEvaluator:
             for idx, reconstructor in enumerate(self.reconstructors):
                 history = reconstructor.history
                 if "regression_loss" in history.history:
-                    model_name = reconstructor.get_name()
-
+                    if not reconstructor.perform_regression:
+                        model_name = reconstructor.get_assignment_name()
+                    else:
+                        model_name = reconstructor.get_full_reco_name()
                     axes[2].plot(
                         history.history["regression_loss"],
                         label=f"{model_name} (Train)",
@@ -301,7 +311,10 @@ class MLEvaluator:
             for idx, reconstructor in enumerate(self.reconstructors):
                 history = reconstructor.history
                 if "regression_deviation" in history.history:
-                    model_name = reconstructor.get_name()
+                    if not reconstructor.perform_regression:
+                        model_name = reconstructor.get_assignment_name()
+                    else:
+                        model_name = reconstructor.get_full_reco_name()
 
                     axes[3].plot(
                         history.history["regression_deviation"],
@@ -361,6 +374,7 @@ class MLEvaluator:
         self,
         num_repeats: int = 10,
         save_dir: Optional[str] = None,
+        rename_features : Optional[callable] = None,
     ):
         """
         Plot feature importance scores for all models.
@@ -373,12 +387,21 @@ class MLEvaluator:
             List of (fig, ax) tuples for each model
         """
         results = []
+        if rename_features is not None:
+            print("Renaming features:")
+            for feature_type in self.feature_indices:
+                for feature_name in self.feature_indices[feature_type]:
+                    new_name = rename_features(feature_name)
+                    print(f"  {feature_name} -> {new_name}")
+
 
         for idx, (reconstructor, calc) in enumerate(
             zip(self.reconstructors, self.feature_importance_calcs)
         ):
-            model_name = reconstructor.get_name()
-
+            if not reconstructor.perform_regression:
+                model_name = reconstructor.get_assignment_name()
+            else:
+                model_name = reconstructor.get_full_reco_name()
             # Get available features for this model
             available_features = []
             for feature_type in ["jet", "lepton", "met"]:
@@ -407,8 +430,12 @@ class MLEvaluator:
                 )
                 features = [item[0] for item in sorted_items]
                 scores = [item[1] for item in sorted_items]
+                features = [item[0] for item in sorted_items]
+                if rename_features is not None:
+                    features = [rename_features(feature) for feature in features]
+                scores = [item[1] for item in sorted_items]
 
-                fig, ax = plt.subplots(figsize=(10, 6))
+                fig, ax = plt.subplots(figsize=(6, 6))
                 ax.barh(features, scores, color="skyblue")
                 ax.set_xlabel("Importance Score")
                 ax.set_title(f"Feature Importance - {model_name}")
@@ -432,8 +459,12 @@ class MLEvaluator:
                 )
                 features = [item[0] for item in sorted_items]
                 scores = [item[1] for item in sorted_items]
+                features = [item[0] for item in sorted_items]
+                if rename_features is not None:
+                    features = [rename_features(feature) for feature in features]
+                scores = [item[1] for item in sorted_items]
 
-                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
 
                 ax1.barh(features, scores, color="skyblue")
                 ax1.set_xlabel("Importance Score")
@@ -446,6 +477,10 @@ class MLEvaluator:
                     regression_importances.items(), key=lambda x: x[1], reverse=True
                 )
                 features = [item[0] for item in sorted_items]
+                scores = [item[1] for item in sorted_items]
+                features = [item[0] for item in sorted_items]
+                if rename_features is not None:
+                    features = [rename_features(feature) for feature in features]
                 scores = [item[1] for item in sorted_items]
 
                 ax2.barh(features, scores, color="salmon")
@@ -507,7 +542,10 @@ class MLEvaluator:
         results = {}
 
         for idx, reconstructor in enumerate(self.reconstructors):
-            model_name = reconstructor.get_name()
+            if not reconstructor.perform_regression:
+                model_name = reconstructor.get_assignment_name()
+            else:
+                model_name = reconstructor.get_full_reco_name()            
             print(f"\nEvaluating inference time for {model_name}...")
 
             # Prepare test subset with exactly num_samples
@@ -615,9 +653,10 @@ class MLEvaluator:
         results = {}
 
         for idx, reconstructor in enumerate(self.reconstructors):
-            model_name = reconstructor.get_name()
-            
-            # Get total and trainable parameters
+            if not reconstructor.perform_regression:
+                model_name = reconstructor.get_assignment_name()
+            else:
+                model_name = reconstructor.get_full_reco_name()            # Get total and trainable parameters
             total_params = reconstructor.model.count_params()
             
             # Count trainable parameters

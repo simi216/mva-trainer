@@ -8,8 +8,16 @@ from core.utils.four_vector_arithmetics import (
 
 
 class BaselineAssigner(EventReconstructorBase):
-    def __init__(self, config: DataConfig, name="baseline_assigner", mode="min", use_nu_flows=False):
-        super().__init__(config, name, perform_regression=False, use_nu_flows=use_nu_flows)
+    def __init__(
+        self,
+        config: DataConfig,
+        name = "baseline_assigner",
+        mode="min",
+        use_nu_flows=False,
+    ):
+        super().__init__(
+            config, assignment_name=name, full_reco_name= name + (r"+ $\nu^2$-Flows" if use_nu_flows else r"True $\nu$"), perform_regression=False, use_nu_flows=use_nu_flows
+        )
         """Initializes the BaselineAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
@@ -20,6 +28,11 @@ class BaselineAssigner(EventReconstructorBase):
         self.mode = mode
         self.NUM_LEPTONS = config.NUM_LEPTONS
         self.max_jets = config.max_jets
+        self.padding_value = config.padding_value
+        self.lepton_features = config.lepton_features
+        self.jet_features = config.jet_features
+        self.feature_index_dict = config.feature_indices
+        self.b_tag_threshold = 2
 
     def compute_comparison_feature(self, data_dict):
         """
@@ -47,15 +60,19 @@ class BaselineAssigner(EventReconstructorBase):
     def get_viable_jets_mask(self, data_dict):
         """
         Computes a mask indicating viable jets for each lepton based on the padding value.
+        Selects jets with b-tag score >= 2. If there are fewer than 2 such jets,
+        fills up with the pt-leading non-tagged jets.
 
         Args:
             data_dict (dict): A dictionary containing input data for the model.
         Returns:
-            np.ndarray: A 3D boolean array of shape (num_events, NUM_LEPTONS, max_jets) indicating viable jets.
+            np.ndarray: A 3D boolean array of shape (num_events, max_jets, NUM_LEPTONS)
+                        indicating viable jets.
         """
         jet_mask = self.get_jets_mask(data_dict)
         jet_b_tag = None
         jet_pt = None
+
         for feature in self.feature_index_dict["jet"]:
             if "btag" in feature.lower() or "b_tag" in feature.lower():
                 jet_b_tag = data_dict["jet"][
@@ -63,26 +80,44 @@ class BaselineAssigner(EventReconstructorBase):
                 ]
             if "pt" in feature.lower():
                 jet_pt = data_dict["jet"][:, :, self.feature_index_dict["jet"][feature]]
+
         if jet_b_tag is not None:
-            b_tag_mask = jet_b_tag >= 2 & jet_mask[:, :, 0]
-            less_than_2_b_tag_jet_mask = np.sum(b_tag_mask) < 2
+            b_tag_mask = (jet_b_tag >= 2) & jet_mask[:, :, 0]
+
+            less_than_2_b_tag_jet_mask = np.sum(b_tag_mask, axis=1) < 2
+            more_than_2_b_tag_jet_mask = np.sum(b_tag_mask, axis=1) >= 2
+
+            # For more than 2 b-tagged jets, keep only the leading 2 by pt
+            if more_than_2_b_tag_jet_mask.any():
+                b_tagged_jet_pt = jet_pt * b_tag_mask
+                second_leading_b_tagged_jet_pt = np.partition(
+                    b_tagged_jet_pt[more_than_2_b_tag_jet_mask], -2, axis=1
+                )[:, -2][:, np.newaxis]
+                b_tag_mask[more_than_2_b_tag_jet_mask] &= (
+                    b_tagged_jet_pt[more_than_2_b_tag_jet_mask]
+                    >= second_leading_b_tagged_jet_pt
+                )
+
+            # For less than 2 b-tagged jets, fill up with leading non-tagged jets
             iteration = 0
             while less_than_2_b_tag_jet_mask.any():
-                jet_pt[b_tag_mask] = -1
-                leading_jet_pt_indices = np.argmax(jet_pt, axis=1)
+                jet_pt_masked = jet_pt.copy()
+                jet_pt_masked[b_tag_mask] = -1
+
+                leading_jet_pt_indices = np.argmax(jet_pt_masked, axis=1)
                 leading_jet_pt_indices = leading_jet_pt_indices[:, np.newaxis]
-                print(np.sum(update_mask, axis=1))
-                update_mask = less_than_2_b_tag_jet_mask[:, np.newaxis] & (
-                    np.arange(jet_mask.shape[1]) == leading_jet_pt_indices
-                )
+
+                update_mask = less_than_2_b_tag_jet_mask[:, np.newaxis] & leading_jet_pt_indices == np.arange(
+                    self.max_jets
+                )[np.newaxis, :]
                 b_tag_mask |= update_mask
                 less_than_2_b_tag_jet_mask = np.sum(b_tag_mask, axis=1) < 2
+
                 iteration += 1
                 if iteration > self.max_jets:
                     raise RuntimeError(
                         "Exceeded maximum iterations while ensuring at least 2 b-tagged jets."
                     )
-                    break
             jet_mask = jet_mask & b_tag_mask[:, :, np.newaxis]
         return jet_mask
 
@@ -120,19 +155,27 @@ class BaselineAssigner(EventReconstructorBase):
 
 class DeltaRAssigner(BaselineAssigner):
     def __init__(
-        self, config: DataConfig, mode="min", b_tag_threshold=2, use_nu_flows=True
+        self,
+        config: DataConfig,
+        mode="min",
+        use_nu_flows=True,
+        name=None,
     ):
-        super().__init__(config, name = r"$\Delta R(\ell,j)$-Assigner + $\nu^2$-Flows", mode=mode, use_nu_flows=use_nu_flows)
+        super().__init__(
+            config,
+            name=(
+                name
+                if name is not None
+                else r"$\Delta R(\ell,j)$-Assigner"
+            ),
+            mode=mode,
+            use_nu_flows=use_nu_flows,
+        )
         """Initializes the DeltaRAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
             mode (str): The mode of assignment, either "min" or "max".
         """
-        self.padding_value = config.padding_value
-        self.lepton_features = config.lepton_features
-        self.jet_features = config.jet_features
-        self.feature_index_dict = config.feature_indices
-        self.b_tag_threshold = b_tag_threshold
 
     def compute_comparison_feature(self, data_dict):
         """
@@ -175,82 +218,30 @@ class DeltaRAssigner(BaselineAssigner):
         return delta_r
 
 
-class LeptonJetMassAssigner(BaselineAssigner):
-    def __init__(self, config: DataConfig, mode="min", use_nu_flows=False):
-        super().__init__(config, mode=mode, use_nu_flows=use_nu_flows, name= r"$m(\ell,j)$-Assigner")
-        """Initializes the LeptonJetMassAssigner class.
-        Args:
-            config (DataConfig): Configuration object containing data parameters.
-            mode (str): The mode of assignment, either "min" or "max".
-        """
-        self.padding_value = config.padding_value
-        self.lepton_features = config.lepton_features
-        self.jet_features = config.jet_features
-        self.feature_index_dict = config.feature_indices
-
-    def compute_comparison_feature(self, data_dict):
-        """
-        Computes the Delta R between leptons and jets.
-
-        Args:
-            data_dict (dict): A dictionary containing input data for the model.
-        Returns:
-            np.ndarray: A 3D array of shape (num_events, max_jets,NUM_LEPTONS) representing the Delta R values.
-        """
-        leptons = data_dict["lepton"]
-        jets = data_dict["jet"]
-        lepton_energy = leptons[:, :, self.feature_index_dict["lepton"]["lep_e"]][
-            :, np.newaxis, :
-        ]
-        lepton_pt = leptons[:, :, self.feature_index_dict["lepton"]["lep_pt"]][
-            :, np.newaxis, :
-        ]
-        lepton_eta = leptons[:, :, self.feature_index_dict["lepton"]["lep_eta"]][
-            :, np.newaxis, :
-        ]
-        lepton_phi = leptons[:, :, self.feature_index_dict["lepton"]["lep_phi"]][
-            :, np.newaxis, :
-        ]
-        jet_energy = jets[:, :, self.feature_index_dict["jet"]["ordered_jet_e"]][
-            :, :, np.newaxis
-        ]
-        jet_pt = jets[:, :, self.feature_index_dict["jet"]["ordered_jet_pt"]][
-            :, :, np.newaxis
-        ]
-        jet_eta = jets[:, :, self.feature_index_dict["jet"]["ordered_jet_eta"]][
-            :, :, np.newaxis
-        ]
-        jet_phi = jets[:, :, self.feature_index_dict["jet"]["ordered_jet_phi"]][
-            :, :, np.newaxis
-        ]
-        lep_px, lep_py, lep_pz, lep_e = lorentz_vector_from_pt_eta_phi_e(
-            lepton_pt, lepton_eta, lepton_phi, lepton_energy
-        )
-        jet_px, jet_py, jet_pz, jet_e = lorentz_vector_from_pt_eta_phi_e(
-            jet_pt, jet_eta, jet_phi, jet_energy
-        )
-        combined_px = lep_px + jet_px
-        combined_py = lep_py + jet_py
-        combined_pz = lep_pz + jet_pz
-        combined_e = lep_e + jet_e
-        invariant_mass = compute_mass_from_lorentz_vector(
-            combined_px, combined_py, combined_pz, combined_e
-        )
-        return invariant_mass
-
-
-class ChiSquareAssigner(EventReconstructorBase):
+class ChiSquareAssigner(BaselineAssigner):
     """Assigns jets to leptons based on mass combinatorics involving neutrino momenta."""
+
     def __init__(
         self,
         config: DataConfig,
-        use_nu_flows = True,
-        use_nu_flows_for_assignment = True,
+        use_nu_flows=True,
+        use_nu_flows_for_assignment=True,
         top_mass=173.15e3,
-        all_jets_considered=False,
-        name = None,
     ):
-        super().__init__(config, name =( r"$\chi^2$-Method (" + (r"$\nu^2$-Flows)" if use_nu_flows_for_assignment else r"True $\nu$)")) if not name else name, perform_regression=False, use_nu_flows=use_nu_flows)
+        super().__init__(
+            config,
+            name=(
+                (
+                    r"$\chi^2$-Method ("
+                    + (
+                        r"$\nu^2$-Flows)"
+                        if use_nu_flows_for_assignment
+                        else r"True $\nu$)"
+                    )
+                )
+            ),
+            use_nu_flows=use_nu_flows,
+        )
         """Initializes the ChiSquareAssigner class.
         Args:
             config (DataConfig): Configuration object containing data parameters.
@@ -259,66 +250,11 @@ class ChiSquareAssigner(EventReconstructorBase):
         self.feature_index_dict = config.feature_indices
         self.max_jets = config.max_jets
         self.top_mass = top_mass
-        self.all_jets_considered = all_jets_considered
         if use_nu_flows and config.nu_flows_neutrino_momentum_features is None:
             raise ValueError(
                 "Neutrino flows momentum features must be specified in the config when use_nu_flows is True."
             )
         self.use_nu_flows_for_assignment = use_nu_flows_for_assignment
-
-
-    def get_jets_mask(self, data_dict):
-        padding_value = self.config.padding_value
-        jet_mask = (data_dict["jet"] != padding_value).all(
-            axis=-1
-        )  # Shape: (num_events, max_jets)
-
-        jet_mask = np.repeat(jet_mask[:, :, np.newaxis], self.NUM_LEPTONS, axis=2)
-        return jet_mask
-
-    def get_viable_jets_mask(self, data_dict):
-        """
-        Computes a mask indicating viable jets for each lepton based on the padding value.
-
-        Args:
-            data_dict (dict): A dictionary containing input data for the model.
-        Returns:
-            np.ndarray: A 3D boolean array of shape (num_events, NUM_LEPTONS, max_jets) indicating viable jets.
-        """
-        jet_mask = self.get_jets_mask(data_dict)
-        if self.all_jets_considered:
-            return jet_mask
-        jet_b_tag = None
-        jet_pt = None
-        for feature in self.feature_index_dict["jet"]:
-            if "btag" in feature.lower() or "b_tag" in feature.lower():
-                jet_b_tag = data_dict["jet"][
-                    :, :, self.feature_index_dict["jet"][feature]
-                ]
-            if "pt" in feature.lower():
-                jet_pt = data_dict["jet"][:, :, self.feature_index_dict["jet"][feature]]
-        if jet_b_tag is not None:
-            b_tag_mask = jet_b_tag >= 2 & jet_mask[:, :, 0]
-            less_than_2_b_tag_jet_mask = np.sum(b_tag_mask) < 2
-            iteration = 0
-            while less_than_2_b_tag_jet_mask.any():
-                jet_pt[b_tag_mask] = -1
-                leading_jet_pt_indices = np.argmax(jet_pt, axis=1)
-                leading_jet_pt_indices = leading_jet_pt_indices[:, np.newaxis]
-                print(np.sum(update_mask, axis=1))
-                update_mask = less_than_2_b_tag_jet_mask[:, np.newaxis] & (
-                    np.arange(jet_mask.shape[1]) == leading_jet_pt_indices
-                )
-                b_tag_mask |= update_mask
-                less_than_2_b_tag_jet_mask = np.sum(b_tag_mask, axis=1) < 2
-                iteration += 1
-                if iteration > self.max_jets:
-                    raise RuntimeError(
-                        "Exceeded maximum iterations while ensuring at least 2 b-tagged jets."
-                    )
-                    break
-            jet_mask = jet_mask & b_tag_mask[:, :, np.newaxis]
-        return jet_mask
 
     def get_neutrino_momenta(self, data_dict):
         if self.use_nu_flows_for_assignment:
@@ -327,13 +263,15 @@ class ChiSquareAssigner(EventReconstructorBase):
             return data_dict["neutrino_truth"]
 
     def construct_neutrino_four_vectors(self, data_dict):
-        neutrino_3_vector = self.get_neutrino_momenta(
-            data_dict
+        neutrino_3_vector = self.get_neutrino_momenta(data_dict)
+        nu_e = np.linalg.norm(neutrino_3_vector[:, 0, :], axis=-1)
+        anu_e = np.linalg.norm(neutrino_3_vector[:, 1, :], axis=-1)
+        nu_four_vector = np.concatenate(
+            [neutrino_3_vector[:, 0, :], nu_e[:, np.newaxis]], axis=-1
         )
-        nu_e = np.linalg.norm(neutrino_3_vector[:, 0,:], axis=-1)
-        anu_e = np.linalg.norm(neutrino_3_vector[:, 1,:], axis=-1)
-        nu_four_vector = np.concatenate([neutrino_3_vector[:, 0,:], nu_e[:, np.newaxis]], axis=-1)
-        anu_four_vector = np.concatenate([neutrino_3_vector[:, 1,:], anu_e[:, np.newaxis]], axis=-1)
+        anu_four_vector = np.concatenate(
+            [neutrino_3_vector[:, 1, :], anu_e[:, np.newaxis]], axis=-1
+        )
         return nu_four_vector, anu_four_vector
 
     def get_invariant_mass(self, four_vector):
@@ -389,17 +327,16 @@ class ChiSquareAssigner(EventReconstructorBase):
             data_dict
         )  # Shape: (num_events, max_jets, NUM_LEPTONS)
         W_boson_candidates = lepton_four_vectors + np.stack(
-            [nu_four_vector,anu_four_vector], axis=1
+            [nu_four_vector, anu_four_vector], axis=1
         )  # Shape: (num_events, NUM_LEPTONS,4)
         W_boson_candidates = W_boson_candidates[:, np.newaxis, :, :]
         top_candidates = W_boson_candidates + jet_four_vectors[:, :, np.newaxis, :]
         # Shape: (num_events, max_jets, NUM_LEPTONS,4)
 
-
         top_masses = self.get_invariant_mass(
             top_candidates
         )  # Shape: (num_events, max_jets, NUM_LEPTONS)
-        mass_differences = np.abs(
+        mass_differences = np.square(
             top_masses - self.top_mass
         )  # Shape: (num_events, max_jets, NUM_LEPTONS)
         mass_differences_masked = np.where(
@@ -408,6 +345,7 @@ class ChiSquareAssigner(EventReconstructorBase):
         num_events = mass_differences_masked.shape[0]
         predicted_indices = np.zeros((num_events, self.max_jets, self.NUM_LEPTONS))
         from scipy.optimize import linear_sum_assignment
+
         for e in range(num_events):
             cost_matrix = mass_differences_masked[e].T  # Shape: (NUM_LEPTONS, max_jets)
             try:

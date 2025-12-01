@@ -10,11 +10,12 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
     def __init__(
         self,
         config: DataConfig,
-        name="event_reconstructor",
+        assignment_name,
+        full_reco_name,
         perform_regression=True,
         use_nu_flows=True,
     ):
-        super().__init__(config=config, name=name)
+        super().__init__(config=config, assignment_name=assignment_name, full_reco_name=full_reco_name)
         self.max_jets = config.max_jets
         self.NUM_LEPTONS = config.NUM_LEPTONS
         if perform_regression and not config.has_neutrino_truth:
@@ -35,7 +36,6 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
         self.perform_regression = perform_regression
         self.use_nu_flows = use_nu_flows
 
-    @abstractmethod
     def predict_indices(self, data_dict):
         pass
 
@@ -100,13 +100,14 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
     def __init__(
         self,
         config: DataConfig,
-        name="ml_assigner",
+        name,
         perform_regression=False,
         use_nu_flows=True,
     ):
         super().__init__(
             config=config,
-            name=name,
+            assignment_name=name,
+            full_reco_name= name if perform_regression else name + (r" + $\nu^2$-Flows" if use_nu_flows else r" + True $\nu$"),
             perform_regression=perform_regression,
             use_nu_flows=use_nu_flows,
         )

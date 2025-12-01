@@ -1,7 +1,6 @@
 import tensorflow as tf
 import keras
 
-
 @keras.utils.register_keras_serializable()
 class AssignmentLoss(keras.losses.Loss):
     def __init__(self, lambda_excl=0.0, epsilon=1e-7, name="assignment_loss", **kwargs):
@@ -9,49 +8,110 @@ class AssignmentLoss(keras.losses.Loss):
         self.lambda_excl = lambda_excl
         self.epsilon = epsilon
 
-    def call(self, y_true, y_pred, sample_weight=None):
-        # Detect mask: jets where probabilities sum to ~0
-        sum_probs = tf.reduce_sum(y_pred, axis=-1)  # (batch, jets)
-        mask = tf.cast(sum_probs > self.epsilon, y_pred.dtype)  # (batch, jets)
-        mask_expanded = mask[..., tf.newaxis]  # (batch, jets, 1)
+    def call(self, y_true, y_pred):
+        # y_true: (batch, n_jets, 2)
+        # y_pred: (batch, n_jets, 2)
+        # IMPORTANT: supply mask in y_true[..., 2] or as sample_weight argument
 
-        # Number of true leptons (should be 2)
-        num_true = tf.reduce_sum(y_true * mask_expanded)
-        num_true = tf.maximum(num_true, 1.0)
 
-        # Apply mask and clip predictions
-        y_true_masked = y_true * mask_expanded
-        y_pred_safe = tf.clip_by_value(y_pred, self.epsilon, 1.0)
+        # Clip probabilities
+        y_pred = tf.clip_by_value(y_pred, self.epsilon, 1.0)
 
-        # Cross-entropy (per jet, per lepton)
-        ce = -y_true_masked * tf.math.log(y_pred_safe)
-        ce_total = tf.reduce_sum(ce, axis=[1, 2])
-        ce_loss = ce_total / num_true
+        # ---- Cross entropy ----
+        ce = -y_true * tf.math.log(y_pred)
+        ce = tf.reduce_mean(ce, axis=[1,2])   # sum over jets and leptons
+        ce_loss = ce
 
-        # Exclusion penalty (soft exclusivity)
+        # ---- Exclusivity penalty ----
+        # Penalize p(j,1)*p(j,2) for each jet
         if self.lambda_excl > 0:
-            penalty_per_jet = tf.math.softplus(sum_probs - 1.0) ** 2
-            exclusion_penalty = tf.reduce_sum(penalty_per_jet * mask, axis=-1)
-            exclusion_penalty = exclusion_penalty / tf.maximum(
-                tf.reduce_sum(mask, axis=-1), 1.0
-            )
-            excl_loss = self.lambda_excl * exclusion_penalty
+            p1 = y_pred[:, :, 0]
+            p2 = y_pred[:, :, 1]
+            overlap = p1 * p2      # shape (batch, jets)
+            overlap = overlap
+            excl_loss = self.lambda_excl * tf.reduce_sum(overlap, axis=-1) # sum over jets
         else:
             excl_loss = 0.0
 
-        total_loss = ce_loss + excl_loss
-
-        if sample_weight is not None:
-            sample_weight = tf.cast(sample_weight, total_loss.dtype)
-            sample_weight = tf.reshape(sample_weight, [-1])
-            total_loss = total_loss * sample_weight
-
-        return total_loss
+        return ce_loss + excl_loss
 
     def get_config(self):
-        config = super().get_config()
-        config.update({"lambda_excl": self.lambda_excl, "epsilon": self.epsilon})
-        return config
+        cfg = super().get_config()
+        cfg.update({"lambda_excl": self.lambda_excl, "epsilon": self.epsilon})
+        return cfg
+
+
+@keras.utils.register_keras_serializable()
+class FocalAssignmentLoss(keras.losses.Loss):
+    def __init__(self,
+                 lambda_excl=0.0,
+                 focal_gamma=0.0,
+                 epsilon=1e-7,
+                 name="assignment_loss",
+                 **kwargs):
+        super().__init__(name=name, **kwargs)
+        self.lambda_excl = lambda_excl
+        self.focal_gamma = focal_gamma
+        self.epsilon = epsilon
+
+    def call(self, y_true, y_pred):
+        """
+        y_true: (batch, n_jets, 2) OR (batch, n_jets, 3) with mask in channel 2
+        y_pred: (batch, n_jets, 2)
+        """
+
+        # ---------------------------
+        # Extract or create mask
+        # ---------------------------
+
+        # ---------------------------
+        # Numerical safety
+        # ---------------------------
+        y_pred = tf.clip_by_value(y_pred, self.epsilon, 1.0)
+
+        # ---------------------------
+        # Cross entropy
+        # ---------------------------
+        # base CE
+        ce = -y_true * tf.math.log(y_pred)  # (batch, jets, 2)
+
+        # focal weighting only for true classes
+        if self.focal_gamma > 0.0:
+            p_t = tf.reduce_sum(y_true * y_pred, axis=-1, keepdims=True)  # (batch, jets, 1)
+            focal_factor = tf.pow(1.0 - p_t, self.focal_gamma)
+            ce = ce * focal_factor  # (batch, jets, 2)
+
+
+        # sum over jets + leptons, normalize by #valid jets
+        ce_loss = tf.reduce_mean(ce, axis=[1, 2]) 
+
+        # ---------------------------
+        # Exclusivity penalty
+        # ---------------------------
+        if self.lambda_excl > 0.0:
+            p1 = y_pred[:, :, 0]
+            p2 = y_pred[:, :, 1]
+            overlap = p1 * p2  # (batch, jets)
+
+            # sum jets, mean over batch
+            excl = tf.reduce_sum(overlap, axis=1)
+            excl_loss = self.lambda_excl * excl
+        else:
+            excl_loss = 0.0
+
+        # ---------------------------
+        # Total loss
+        # ---------------------------
+        return ce_loss + excl_loss
+
+    def get_config(self):
+        cfg = super().get_config()
+        cfg.update({
+            "lambda_excl": self.lambda_excl,
+            "focal_gamma": self.focal_gamma,
+            "epsilon": self.epsilon,
+        })
+        return cfg
 
 
 @keras.utils.register_keras_serializable()

@@ -26,7 +26,7 @@ class KerasModelWrapper(keras.Model):
 
 
 class MLWrapperBase(BaseUtilityModel, ABC):
-    def __init__(self, config: DataConfig, name="ml_assigner"):
+    def __init__(self, config: DataConfig, name="ml_assigner", assignment_name=None, full_reco_name=None):
         """
         Initializes the AssignmentBaseModel class.
         Args:
@@ -51,7 +51,13 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         self.inputs = {}
         self.transformed_inputs = {}
 
-        super().__init__(config=config, name=name)
+        # Use assignment_name and full_reco_name if provided, otherwise fall back to name
+        if assignment_name is None:
+            assignment_name = name
+        if full_reco_name is None:
+            full_reco_name = name
+        
+        super().__init__(config=config, assignment_name=assignment_name, full_reco_name=full_reco_name)
 
     def build_model(self, **kwargs):
         raise NotImplementedError("Subclasses must implement build_model method.")

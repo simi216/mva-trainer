@@ -145,9 +145,9 @@ class AccuracyPlotter:
             width=(bins[1] - bins[0]),
             alpha=0.2,
             color="red",
-            label="Event Count",
+            #label="Event Count",
         )
-        ax_twin.set_ylabel("Event Count", color="red")
+        ax_twin.set_ylabel("Normalised Event Count", color="red")
         ax_twin.tick_params(axis="y", labelcolor="red")
 
     @staticmethod
@@ -341,9 +341,9 @@ class ConfusionMatrixPlotter:
         cols = int(np.ceil(n_reconstructors / rows))
 
         fig, axes = plt.subplots(
-            rows,
             cols,
-            figsize=(figsize_per_plot[0] * cols, figsize_per_plot[1] * rows),
+            rows,
+            figsize=(figsize_per_plot[0] * rows, figsize_per_plot[1] * cols),
         )
         axes = axes.flatten() if n_reconstructors > 1 else [axes]
 
@@ -368,14 +368,14 @@ class ConfusionMatrixPlotter:
                 cmap="Blues",
                 cbar_kws={"label": "Normalized Count" if normalize else "Count"},
             )
-            axes[i].set_title(f"Confusion Matrix: {name}")
+            axes[i].set_title(f"{name}")
             axes[i].set_xlabel("Predicted Label")
             axes[i].set_ylabel("True Label")
 
         # Remove unused subplots
         for j in range(i + 1, len(axes)):
             fig.delaxes(axes[j])
-
+        fig.suptitle("Confusion Matrix")
         fig.tight_layout()
         return fig, axes[: i + 1]
 
