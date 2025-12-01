@@ -42,6 +42,7 @@ class LoadConfig:
 
     # Optional features
     met_features: Optional[List[str]] = None
+    global_event_features: Optional[List[str]] = None
     non_training_features: Optional[List[str]] = None
 
     # Regression target features
@@ -127,6 +128,8 @@ class LoadConfig:
                 "Both top_lepton_truth_features and tbar_lepton_truth_features "
                 "must be provided together."
             )
+        if self.global_event_features:
+            clipping.update({feat: 1 for feat in self.global_event_features})
         return clipping
 
     def to_data_config(self) -> "DataConfig":
@@ -154,6 +157,8 @@ class LoadConfig:
             tbar_truth_features=self.tbar_truth_features,
             top_lepton_truth_features=self.top_lepton_truth_features,
             tbar_lepton_truth_features=self.tbar_lepton_truth_features,
+            global_event_features=self.global_event_features,
+            has_global_event_features=self.global_event_features is not None,
             has_top_truth=self.top_truth_features is not None,
             has_lepton_truth=self.top_lepton_truth_features is not None,
             has_event_weight=self.event_weight is not None,
@@ -210,6 +215,8 @@ class DataConfig:
     jet_features: List[str]
     lepton_features: List[str]
     met_features: Optional[List[str]] = None
+    global_event_features: Optional[List[str]] = None
+    has_global_event_features: bool = False
 
     # Non-training features
     non_training_features: Optional[List[str]] = None
@@ -352,6 +359,10 @@ class DataConfig:
                 self.NUM_LEPTONS,
                 len(self.top_lepton_truth_features),
             )
+        
+        if self.has_global_event_features:
+            # Shape: (n_events, n_features)
+            self.data_shapes["global_event"] = (None, len(self.global_event_features))
 
         # Shape: (n_events, max_jets, NUM_LEPTONS)
         self.data_shapes["labels"] = (None, self.max_jets, self.NUM_LEPTONS)
@@ -379,6 +390,26 @@ class DataConfig:
     def get_n_neutrino_truth(self) -> int:
         """Get number of regression target features."""
         return len(self.neutrino_momentum_features) if self.neutrino_momentum_features else 0
+
+    def get_n_nu_flows_neutrino_truth(self) -> int:
+        """Get number of nu-flows regression target features."""
+        return len(self.nu_flows_neutrino_momentum_features) if self.nu_flows_neutrino_momentum_features else 0
+
+    def get_n_top_truth(self) -> int:
+        """Get number of top truth features."""
+        return len(self.top_truth_features) if self.top_truth_features else 0
+    
+    def get_n_lepton_truth(self) -> int:
+        """Get number of lepton truth features."""
+        return len(self.top_lepton_truth_features) if self.top_lepton_truth_features else 0
+    
+    def get_n_non_training_features(self) -> int:
+        """Get number of non-training features."""
+        return len(self.non_training_features) if self.non_training_features else 0
+    
+    def get_n_global_event_features(self) -> int:
+        """Get number of global event features."""
+        return len(self.global_event_features) if self.global_event_features else 0
 
     def get_feature_index(self, feature_type: str, feature_name: str) -> int:
         """
@@ -424,6 +455,8 @@ class DataConfig:
             return self.top_truth_features if self.top_truth_features else []
         elif feature_type == "lepton_truth":
             return self.top_lepton_truth_features if self.top_lepton_truth_features else []
+        elif feature_type == "global_event":
+            return self.global_event_features if self.global_event_features else []
         else:
             raise ValueError(f"Unknown feature type: {feature_type}")
 
@@ -528,6 +561,25 @@ class DataConfig:
                     f"  Names: {', '.join(self.met_features)}",
                 ]
             )
+        if self.global_event_features:
+            lines.extend(
+                [
+                    "",
+                    "Global Event Features:",
+                    f"  Count: {len(self.global_event_features)}",
+                    f"  Names: {', '.join(self.global_event_features)}",
+                ]
+            )
+
+        if self.non_training_features:
+            lines.extend(
+                [
+                    "",
+                    "Non-Training Features:",
+                    f"  Count: {len(self.non_training_features)}",
+                    f"  Names: {', '.join(self.non_training_features)}",
+                ]
+            )
 
         if self.custom_features:
             lines.extend(
@@ -556,6 +608,35 @@ class DataConfig:
                 f"  Count: {len(self.neutrino_momentum_features)}",
                 f" Max neutrinos: {self.NUM_LEPTONS}",
                 f"  Names: {', '.join(self.neutrino_momentum_features)}",
+                ]
+            )
+        if self.has_nu_flows_neutrino_truth:
+            lines.extend(
+                [
+                "Nu-flows Neutrino Momentum Features:",
+                f"  Count: {len(self.nu_flows_neutrino_momentum_features)}",
+                f" Max neutrinos: {self.NUM_LEPTONS}",
+                f"  Names: {', '.join(self.nu_flows_neutrino_momentum_features)}",
+                ]
+            )
+        if self.has_top_truth:
+            lines.extend(
+                [
+                "",
+                "Top Truth Features:",
+                f"  Count: {len(self.top_truth_features)}",
+                f" Max tops: {self.NUM_LEPTONS}",
+                f"  Names: {', '.join(self.top_truth_features)}",
+                ]
+            )
+        if self.has_lepton_truth:
+            lines.extend(
+                [
+                "",
+                "Lepton Truth Features:",
+                f"  Count: {len(self.top_lepton_truth_features)}",
+                f" Max leptons: {self.NUM_LEPTONS}",
+                f"  Names: {', '.join(self.top_lepton_truth_features)}",
                 ]
             )
 

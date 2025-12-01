@@ -174,12 +174,13 @@ class FeatureBuilder:
             self.config.nu_flows_neutrino_momentum_features
             and self.config.nu_flows_antineutrino_momentum_features
         ):
-            features["nu_flows_neutrino_truth"] = (
-                self._build_nu_flows_neutrino_truth()
-            )
+            features["nu_flows_neutrino_truth"] = self._build_nu_flows_neutrino_truth()
         if self.config.top_truth_features and self.config.tbar_truth_features:
             features["top_truth"] = self._build_top_truth_features()
-        if self.config.lepton_truth_features and self.config.antilepton_truth_features:
+        if (
+            self.config.top_lepton_truth_features
+            and self.config.tbar_lepton_truth_features
+        ):
             features["lepton_truth"] = self._build_lepton_truth_features()
 
         return features
@@ -214,6 +215,12 @@ class FeatureBuilder:
         data = self.data[met_vars].to_numpy()
         return data.reshape(self.data_length, 1, -1)
 
+    def _build_global_event_features(self) -> np.ndarray:
+        """Build global event feature array (n_events, n_features)."""
+        global_event_vars = self.config.global_event_features
+        data = self.data[global_event_vars].to_numpy()
+        return data.reshape(self.data_length, -1)
+
     def _build_non_training_features(self) -> np.ndarray:
         """Build non-training feature array (n_events, n_features)."""
         return self.data[self.config.non_training_features].to_numpy()
@@ -242,22 +249,35 @@ class FeatureBuilder:
             + self.config.nu_flows_antineutrino_momentum_features
         )
 
-
         data = self.data[nu_flows_vars].to_numpy()
         data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)  # n_targets
         return data
 
     def _build_top_truth_features(self) -> np.ndarray:
         """Build top quark truth feature array (n_events, n_features)."""
-        top_truth_vars = self.config.top_truth_features + self.config.tbar_truth_features
-        data = self.data[top_truth_vars].to_numpy().reshape(self.data_length, self.config.NUM_LEPTONS, -1)
+        top_truth_vars = (
+            self.config.top_truth_features + self.config.tbar_truth_features
+        )
+        data = (
+            self.data[top_truth_vars]
+            .to_numpy()
+            .reshape(self.data_length, self.config.NUM_LEPTONS, -1)
+        )
         return data
 
     def _build_lepton_truth_features(self) -> np.ndarray:
         """Build lepton truth feature array (n_events, n_features)."""
-        lepton_truth_vars = self.config.lepton_truth_features + self.config.antilepton_truth_features
-        data = self.data[lepton_truth_vars].to_numpy().reshape(self.data_length, self.config.NUM_LEPTONS, -1)
+        lepton_truth_vars = (
+            self.config.top_lepton_truth_features
+            + self.config.tbar_lepton_truth_features
+        )
+        data = (
+            self.data[lepton_truth_vars]
+            .to_numpy()
+            .reshape(self.data_length, self.config.NUM_LEPTONS, -1)
+        )
         return data
+
 
 class LabelBuilder:
     """Builds training labels from truth information."""
@@ -705,9 +725,9 @@ class DataPreprocessor:
                     "assignment_labels": self.feature_data["assignment_labels"][
                         test_indices
                     ],
-                    "neutrino_truth": self.feature_data.get(
-                        "neutrino_truth", None
-                    )[test_indices],
+                    "neutrino_truth": self.feature_data.get("neutrino_truth", None)[
+                        test_indices
+                    ],
                 }
 
                 X_test = {
@@ -751,7 +771,9 @@ class DataPreprocessor:
 
         return X_even, y_even, X_odd, y_odd
 
-    def load_from_npz(self, npz_path: str, max_events : Optional[int] = None) -> DataConfig:
+    def load_from_npz(
+        self, npz_path: str, max_events: Optional[int] = None
+    ) -> DataConfig:
         """
         Load preprocessed data from NPZ file.
 
@@ -780,6 +802,11 @@ class DataPreprocessor:
             self.feature_data["lepton"] = np.array(
                 [loaded[lep_key] for lep_key in self.load_config.lepton_features]
             ).transpose(1, 2, 0)
+
+        if self.load_config.global_event_features:
+            self.feature_data["global_event"] = np.array(
+                [loaded[ge_key] for ge_key in self.load_config.global_event_features]
+            ).transpose(1, 0)
 
         if self.load_config.met_features:
             self.feature_data["met"] = np.array(
@@ -846,7 +873,10 @@ class DataPreprocessor:
                 .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
             )
 
-        if self.load_config.top_lepton_truth_features and self.load_config.tbar_lepton_truth_features:
+        if (
+            self.load_config.top_lepton_truth_features
+            and self.load_config.tbar_lepton_truth_features
+        ):
             data_length = len(loaded[self.load_config.top_lepton_truth_features[0]])
             self.feature_data["lepton_truth"] = (
                 np.array(
@@ -869,7 +899,6 @@ class DataPreprocessor:
             ),
         )
         assignment_labels, reco_mask = label_builder.build_labels()
-
 
         # Apply reconstruction mask to all features
         for key in self.feature_data:
@@ -922,9 +951,12 @@ def combine_datasets(
 
     return combined
 
+
 def combine_train_datasets(
-    X: List[dict[str: np.ndarray]], y: List[dict[str: np.ndarray]], weights: Optional[List[float]] = None
-) -> dict[str: np.ndarray]:
+    X: List[dict[str : np.ndarray]],
+    y: List[dict[str : np.ndarray]],
+    weights: Optional[List[float]] = None,
+) -> dict[str : np.ndarray]:
     """
     Combine multiple training datasets into one.
 
@@ -951,7 +983,9 @@ def combine_train_datasets(
             event_weights = []
             for i, x in enumerate(X):
                 n_events = x["event_weight"].shape[0]
-                event_weights.append(x["event_weight"] / np.mean(x["event_weight"]) * weights[i])
+                event_weights.append(
+                    x["event_weight"] / np.mean(x["event_weight"]) * weights[i]
+                )
             combined_X["event_weight"] = np.concatenate(event_weights, axis=0)
 
     permutation = np.random.permutation(combined_X[list(combined_X.keys())[0]].shape[0])
