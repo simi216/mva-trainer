@@ -1071,8 +1071,6 @@ class ReconstructionEvaluator:
         
         reco_index = 0
         for reconstructor in self.reconstructors:
-            if isinstance(reconstructor, GroundTruthReconstructor):
-                continue
             
             # Compute reconstructed and truth values
             reconstructed = self.compute_reconstructed_variable(

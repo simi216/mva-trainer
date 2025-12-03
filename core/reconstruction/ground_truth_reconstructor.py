@@ -9,7 +9,7 @@ class GroundTruthReconstructor(EventReconstructorBase):
         super().__init__(
             config=config,
             assignment_name="Ground truth",
-            full_reco_name="True Assignment+ " + r"$\nu^2$-Flows" if use_nu_flows else r"True $\nu$",
+            full_reco_name="True Assignment + " +( r"$\nu^2$-Flows" if use_nu_flows else r"True $\nu$"),
             perform_regression=False, use_nu_flows=use_nu_flows
         )
         self.config = config

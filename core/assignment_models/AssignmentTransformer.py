@@ -40,9 +40,14 @@ class CrossAttentionModel(MLReconstructorBase):
             keras.Model: The constructed Keras model.
         """
         # Input layers
-        normed_jet_inputs, normed_lep_inputs, normed_met_inputs, jet_mask = (
-            self._prepare_inputs(input_as_four_vector=input_as_four_vector)
-        )
+        normed_inputs, masks = self._prepare_inputs(
+            input_as_four_vector=True)
+
+        normed_jet_inputs = normed_inputs["jet_inputs"]
+        normed_lep_inputs = normed_inputs["lepton_inputs"]
+        normed_met_inputs = normed_inputs["met_inputs"]
+        jet_mask = masks["jet_mask"]
+
 
         flatted_met_inputs = keras.layers.Flatten()(normed_met_inputs)
 
@@ -141,6 +146,7 @@ class FeatureConcatTransformer(MLReconstructorBase):
         dropout_rate,
         num_heads=8,
         compute_HLF=False,
+        use_global_event_features = False,
     ):
         """
         Builds the Assignment Transformer model.
@@ -153,23 +159,33 @@ class FeatureConcatTransformer(MLReconstructorBase):
             keras.Model: The constructed Keras model.
         """
         # Input layers
-        if not compute_HLF:
-            normed_jet_inputs, normed_lep_inputs, normed_met_inputs, jet_mask = (
-                self._prepare_inputs(input_as_four_vector=True, compute_HLF=compute_HLF)
+        normed_inputs, masks = self._prepare_inputs(
+            input_as_four_vector=True,
+            compute_HLF=compute_HLF,
+            use_global_event_features=use_global_event_features)
+        normed_jet_inputs = normed_inputs["jet_inputs"]
+        normed_lep_inputs = normed_inputs["lepton_inputs"]
+        normed_met_inputs = normed_inputs["met_inputs"]
+        jet_mask = masks["jet_mask"]
+
+        if compute_HLF:
+            normed_HLF_inputs = normed_inputs["hlf_inputs"]
+            flat_normed_HLF_inputs = keras.layers.Reshape((self.max_jets,-1))(normed_HLF_inputs)
+            normed_jet_inputs = keras.layers.Concatenate(axis=-1)(
+                [normed_jet_inputs, flat_normed_HLF_inputs]
             )
-        else:
-            (
-                normed_jet_inputs,
-                normed_lep_inputs,
-                normed_met_inputs,
-                normed_HLF_inputs,
-                jet_mask,
-            ) = self._prepare_inputs(
-                input_as_four_vector=True, compute_HLF=compute_HLF
+
+        if self.config.has_global_event_features:
+            normed_global_event_inputs = normed_inputs["global_event_inputs"]
+            flatted_global_event_inputs = keras.layers.Flatten()(normed_global_event_inputs)
+            # Add global event features to jets
+            global_event_repeated_jets = keras.layers.RepeatVector(self.max_jets)(
+                flatted_global_event_inputs
             )
             normed_jet_inputs = keras.layers.Concatenate(axis=-1)(
-                [normed_jet_inputs, normed_HLF_inputs]
+                [normed_jet_inputs, global_event_repeated_jets]
             )
+
 
         flatted_met_inputs = keras.layers.Flatten()(normed_met_inputs)
         flatted_lepton_inputs = keras.layers.Flatten()(normed_lep_inputs)

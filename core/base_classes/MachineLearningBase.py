@@ -7,10 +7,16 @@ import tensorflow as tf
 import tf2onnx
 import os
 from core.components import onnx_support
-from core.components import GenerateMask, InputPtEtaPhiELayer, InputMetPhiLayer, ComputeHighLevelFeatures
+from core.components import (
+    GenerateMask,
+    InputPtEtaPhiELayer,
+    InputMetPhiLayer,
+    ComputeHighLevelFeatures,
+)
 import core.components as components
 import core.utils as utils
 from copy import deepcopy
+
 
 @keras.utils.register_keras_serializable()
 class KerasModelWrapper(keras.Model):
@@ -26,7 +32,13 @@ class KerasModelWrapper(keras.Model):
 
 
 class MLWrapperBase(BaseUtilityModel, ABC):
-    def __init__(self, config: DataConfig, name="ml_assigner", assignment_name=None, full_reco_name=None):
+    def __init__(
+        self,
+        config: DataConfig,
+        name="ml_assigner",
+        assignment_name=None,
+        full_reco_name=None,
+    ):
         """
         Initializes the AssignmentBaseModel class.
         Args:
@@ -43,6 +55,9 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         self.n_jets: int = len(config.jet_features)
         self.n_leptons: int = len(config.lepton_features)
         self.n_met: int = len(config.met_features) if config.met_features else 0
+        self.n_global: int = (
+            len(config.global_event_features) if config.has_global_event_features else 0
+        )
         self.padding_value: float = config.padding_value
         self.feature_index_dict = config.feature_indices
         self.perform_regression = False
@@ -50,14 +65,20 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         # initialize empty dicts to hold inputs and transformed inputs
         self.inputs = {}
         self.transformed_inputs = {}
+        self.normed_inputs = {}
+        self.masks = {}
 
         # Use assignment_name and full_reco_name if provided, otherwise fall back to name
         if assignment_name is None:
             assignment_name = name
         if full_reco_name is None:
             full_reco_name = name
-        
-        super().__init__(config=config, assignment_name=assignment_name, full_reco_name=full_reco_name)
+
+        super().__init__(
+            config=config,
+            assignment_name=assignment_name,
+            full_reco_name=full_reco_name,
+        )
 
     def build_model(self, **kwargs):
         raise NotImplementedError("Subclasses must implement build_model method.")
@@ -108,14 +129,31 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 raise ValueError("met data not found in X_train.")
             else:
                 X_train["met_inputs"] = met_data
+
+        if self.config.has_global_event_features and "global_event_inputs" in self.model.input:
+            global_event_data = None
+            for key in X_train.keys():
+                if "global_event" in key:
+                    global_event_data = X_train.pop(key)
+                    break
+            if global_event_data is None:
+                raise ValueError("Global event data not found in X_train.")
+            else:
+                X_train["global_event_inputs"] = global_event_data
         return X_train, y_train, sample_weights
 
-    def _prepare_inputs(self, input_as_four_vector, log_E=True, compute_HLF=False):
+    def _prepare_inputs(self, input_as_four_vector, log_E=True, compute_HLF=False, use_global_event_features=False):
         jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
         lep_inputs = keras.Input(
             shape=(self.NUM_LEPTONS, self.n_leptons), name="lep_inputs"
         )
         met_inputs = keras.Input(shape=(1, self.n_met), name="met_inputs")
+
+        if self.config.has_global_event_features:
+            global_event_inputs = keras.Input(
+                shape=(self.n_global,),
+                name="global_event_inputs",
+            )
 
         # Generate jet mask
         jet_mask = GenerateMask(padding_value=-999, name="jet_mask")(jet_inputs)
@@ -144,7 +182,11 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             high_level_features = ComputeHighLevelFeatures(
                 name="compute_high_level_features",
                 padding_value=self.padding_value,
-            )(jet_input = transformed_jet_inputs, lepton_input = transformed_lep_inputs, jet_mask = jet_mask)
+            )(
+                jet_input=transformed_jet_inputs,
+                lepton_input=transformed_lep_inputs,
+                jet_mask=jet_mask,
+            )
 
         # Normalize inputs
         normed_jet_inputs = keras.layers.Normalization(name="jet_input_normalization")(
@@ -156,6 +198,11 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         normed_met_inputs = keras.layers.Normalization(name="met_input_normalization")(
             transformed_met_inputs
         )
+        if self.config.has_global_event_features and use_global_event_features:
+            print("Adding normalization for global event features")
+            normed_global_event_inputs = keras.layers.Normalization(
+                name="global_event_input_normalization"
+            )(global_event_inputs)
         self.inputs = {
             "jet_inputs": jet_inputs,
             "lep_inputs": lep_inputs,
@@ -166,25 +213,27 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             "lepton_inputs": transformed_lep_inputs,
             "met_inputs": transformed_met_inputs,
         }
+        self.normed_inputs = {
+            "jet_inputs": normed_jet_inputs,
+            "lepton_inputs": normed_lep_inputs,
+            "met_inputs": normed_met_inputs,
+        }
+        self.masks = {"jet_mask": jet_mask}
 
         if compute_HLF:
-            normed_hlf_inputs = keras.layers.Normalization(name="hlf_input_normalization")(
-                high_level_features
-            )
+            normed_hlf_inputs = keras.layers.Normalization(
+                name="hlf_input_normalization", axis=(-1, -2)
+            )(high_level_features)
             self.inputs["hlf_inputs"] = high_level_features
             self.transformed_inputs["hlf_inputs"] = high_level_features
-            return (
-                normed_jet_inputs,
-                normed_lep_inputs,
-                normed_met_inputs,
-                normed_hlf_inputs,
-                jet_mask,
-            )
-        else:
-            return normed_jet_inputs, normed_lep_inputs, normed_met_inputs, jet_mask
-        
-        
-    
+            self.normed_inputs["hlf_inputs"] = normed_hlf_inputs
+
+        if self.config.has_global_event_features and use_global_event_features:
+            self.inputs["global_event_inputs"] = global_event_inputs
+            self.transformed_inputs["global_event_inputs"] = global_event_inputs
+            self.normed_inputs["global_event_inputs"] = normed_global_event_inputs
+
+        return self.normed_inputs, self.masks
 
     def train_model(
         self,
@@ -195,7 +244,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         sample_weights=None,
         validation_split=0.2,
         callbacks=None,
-        copy_data = False,
+        copy_data=False,
         **kwargs,
     ):
         if self.model is None:
@@ -238,7 +287,9 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             # Append new history to existing history
             for key in append_history.history:
                 self.history.history[key].extend(append_history.history[key])
-            self.history.epoch.extend([e + self.history.epoch[-1] + 1 for e in append_history.epoch])
+            self.history.epoch.extend(
+                [e + self.history.epoch[-1] + 1 for e in append_history.epoch]
+            )
         return self.history
 
     def save_model(self, file_path="model.keras"):
@@ -273,7 +324,6 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             history_path = file_path.replace(".keras", "_history")
             np.savez(history_path, **self.history.history)
         print(f"Model saved to {file_path}")
-
 
     def load_model(self, file_path):
         """
@@ -318,7 +368,6 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         else:
             print(f"WARNING: No training history found at {history_path}")
 
-
     def adapt_normalization_layers(self, data: dict):
         """
         Adapts the normalization layers in a functional model.
@@ -336,6 +385,8 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         )
         lep_data = data["lepton"][:num_events, :, :]
         met_data = data["met"][:num_events, :, :]
+        if self.config.has_global_event_features:
+            global_event_data = data["global_event"][:num_events, :]
 
         # --- Helper: build a submodel up to (but not including) a target layer ---
         def get_pre_norm_submodel(model, target_layer_name):
@@ -357,38 +408,42 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             )
             return submodel
 
+        input_data = {
+            "jet_inputs": unpadded_jet_data,
+            "lep_inputs": lep_data,
+            "met_inputs": met_data,
+        }
+
+        if self.config.has_global_event_features:
+            input_data["global_event_inputs"] = global_event_data
+
         # --- Loop over normalization layers and adapt each ---
         for layer in self.model.layers:
             if isinstance(layer, keras.layers.Normalization):
                 submodel = get_pre_norm_submodel(self.model, layer.name)
+                submodel_inputs = submodel.inputs
+                print("Submodel inputs: ", submodel_inputs)
+                if not isinstance(submodel_inputs, list):
+                    submodel_inputs = [submodel_inputs]
 
-                if layer.name == "jet_input_normalization":
-                    transformed = submodel(
-                        {
-                            "jet_inputs": unpadded_jet_data,
-                            "lep_inputs": lep_data,
-                            "met_inputs": met_data,
-                        }
-                    )
-                    layer.adapt(transformed)
-                elif layer.name == "lep_input_normalization":
-                    transformed = submodel(
-                        {
-                            "jet_inputs": unpadded_jet_data,
-                            "lep_inputs": lep_data,
-                            "met_inputs": met_data,
-                        }
-                    )
-                    layer.adapt(transformed)
-                elif layer.name == "met_input_normalization":
-                    transformed = submodel(
-                        {
-                            "jet_inputs": unpadded_jet_data,
-                            "lep_inputs": lep_data,
-                            "met_inputs": met_data,
-                        }
-                    )
-                    layer.adapt(transformed)
+                # Prepare input data for the submodel
+                submodel_input_data = {}
+                for input_tensor in submodel_inputs:
+                    print("Input tensor: ", input_tensor, input_tensor.name)
+                    input_name = input_tensor.name.split(":")[0]
+                    if input_name not in input_data:
+                        raise ValueError(
+                            f"Input '{input_name}' required for submodel not found in input_data."
+                        )
+                    submodel_input_data[input_name] = input_data[input_name]
+                # Get transformed data from submodel
+                transformed_data = submodel.predict(
+                    submodel_input_data,
+                    batch_size=1024,
+                )
+                layer.adapt(transformed_data)
+                del submodel
+                print("Adapted normalization layer: ", layer.name)
 
     def export_to_onnx(self, onnx_file_path="model.onnx"):
         """

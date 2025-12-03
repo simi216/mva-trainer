@@ -118,12 +118,6 @@ class ComputeHighLevelFeatures(keras.layers.Layer):
 
     def call(self, jet_input, lepton_input, jet_mask=None, lepton_mask=None):
         # Expand dimensions for broadcasting
-        jet_input = tf.expand_dims(
-            jet_input, axis=2
-        )  # Shape: (batch_size, n_jets, 1, n_features)
-        lepton_input = tf.expand_dims(
-            lepton_input, axis=1
-        )  # Shape: (batch_size, 1, n_leptons, n_features)
 
         jet_lepton_mask = None
         # Create combined mask - ensure it's always (B, J, L)
@@ -146,16 +140,16 @@ class ComputeHighLevelFeatures(keras.layers.Layer):
             jet_lepton_mask = tf.expand_dims(jet_lepton_mask, axis=-1)
 
 
-        jet_px = jet_input[..., 0:1]  # Shape: (B, J, 1)
-        jet_py = jet_input[..., 1:2]
-        jet_pz = jet_input[..., 2:3]
-        jet_E = jet_input[..., 3:4]
+        jet_px = tf.expand_dims(jet_input[..., 0:1], axis =2)  # Shape: (B, J, 1, 1)
+        jet_py = tf.expand_dims(jet_input[..., 1:2], axis =2)
+        jet_pz = tf.expand_dims(jet_input[..., 2:3], axis =2)
+        jet_E = tf.expand_dims(jet_input[..., 3:4], axis =2)
 
         # Split lepton features
-        lep_px = lepton_input[..., 0:1]  # Shape: (B, 1, L)
-        lep_py = lepton_input[..., 1:2]
-        lep_pz = lepton_input[..., 2:3]
-        lep_E = lepton_input[..., 3:4]
+        lep_px = tf.expand_dims(lepton_input[..., 0:1], axis =1)  # Shape: (B, 1, L,1)
+        lep_py = tf.expand_dims(lepton_input[..., 1:2], axis =1)
+        lep_pz = tf.expand_dims(lepton_input[..., 2:3], axis =1)
+        lep_E = tf.expand_dims(lepton_input[..., 3:4], axis =1)
 
 
         # Compute delta eta using arctanh for pseudorapidity

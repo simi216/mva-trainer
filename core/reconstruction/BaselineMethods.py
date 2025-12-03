@@ -16,7 +16,7 @@ class BaselineAssigner(EventReconstructorBase):
         use_nu_flows=False,
     ):
         super().__init__(
-            config, assignment_name=name, full_reco_name= name + (r"+ $\nu^2$-Flows" if use_nu_flows else r"True $\nu$"), perform_regression=False, use_nu_flows=use_nu_flows
+            config, assignment_name=name, full_reco_name= name + (r"+ $\nu^2$-Flows" if use_nu_flows else r" + True $\nu$"), perform_regression=False, use_nu_flows=use_nu_flows
         )
         """Initializes the BaselineAssigner class.
         Args:
@@ -166,7 +166,7 @@ class DeltaRAssigner(BaselineAssigner):
             name=(
                 name
                 if name is not None
-                else r"$\Delta R(\ell,j)$-Assigner"
+                else r"$\Delta R(\ell,j)$-Method"
             ),
             mode=mode,
             use_nu_flows=use_nu_flows,
@@ -232,7 +232,7 @@ class ChiSquareAssigner(BaselineAssigner):
             config,
             name=(
                 (
-                    r"$\chi^2$-Method ("
+                    r"$\chi^2$-Method("
                     + (
                         r"$\nu^2$-Flows)"
                         if use_nu_flows_for_assignment
