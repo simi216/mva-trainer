@@ -40,6 +40,7 @@ class PreprocessorConfig:
     n_jets_min: int = 2
     max_jets_for_truth: int = 10  # Maximum jet index for truth matching
     max_saved_jets: int = 10  # Maximum number of jets to save
+    lepton_parton_match_format : str = "old"
 
     padding_value: float = -999.0  # Padding value for missing data
 
@@ -126,19 +127,33 @@ class RootPreprocessor:
         mask = mask & (jet_truth_0 <= self.config.max_jets_for_truth)
         mask = mask & (jet_truth_3 <= self.config.max_jets_for_truth)
 
-        # Check lepton truth indices
-        electron_truth_0 = ak.fill_none(
-            ak.pad_none(events.event_electron_truth_idx, 2)[:, 0], -1
-        )
-        electron_truth_1 = ak.fill_none(
-            ak.pad_none(events.event_electron_truth_idx, 2)[:, 1], -1
-        )
-        muon_truth_0 = ak.fill_none(
-            ak.pad_none(events.event_muon_truth_idx, 2)[:, 0], -1
-        )
-        muon_truth_1 = ak.fill_none(
-            ak.pad_none(events.event_muon_truth_idx, 2)[:, 1], -1
-        )
+        if self.config.lepton_parton_match_format == "old":
+            # Check lepton truth indices
+            electron_truth_0 = ak.fill_none(
+                ak.pad_none(events.event_electron_truth_idx, 2)[:, 0], -1
+            )
+            electron_truth_1 = ak.fill_none(
+                ak.pad_none(events.event_electron_truth_idx, 2)[:, 1], -1
+            )
+            muon_truth_0 = ak.fill_none(
+                ak.pad_none(events.event_muon_truth_idx, 2)[:, 0], -1
+            )
+            muon_truth_1 = ak.fill_none(
+                ak.pad_none(events.event_muon_truth_idx, 2)[:, 1], -1
+            )
+        else:  # new format
+            electron_truth_0 = ak.fill_none(
+                ak.pad_none(events.event_lepton_truth_idx, 2)[:, 1], -1
+            )
+            electron_truth_1 = ak.fill_none(
+                ak.pad_none(events.event_lepton_truth_idx, 2)[:, 4], -1
+            )
+            muon_truth_0 = ak.fill_none(
+                ak.pad_none(events.event_lepton_truth_idx, 2)[:, 1], -1
+            )
+            muon_truth_1 = ak.fill_none(
+                ak.pad_none(events.event_lepton_truth_idx, 2)[:, 4], -1
+            )
 
         has_truth_lep_0 = (electron_truth_0 != -1) | (muon_truth_0 != -1)
         has_truth_lep_1 = (electron_truth_1 != -1) | (muon_truth_1 != -1)
@@ -266,11 +281,24 @@ class RootPreprocessor:
         # Combine electrons and muons using vectorized operations
         n_events = len(events)
 
-        # Pad electron truth indices and broadcast properly
-        el_truth_padded = ak.fill_none(
-            ak.pad_none(events.event_electron_truth_idx, 2), -1
-        )
-        mu_truth_padded = ak.fill_none(ak.pad_none(events.event_muon_truth_idx, 2), -1)
+
+        if self.config.lepton_parton_match_format == "old":
+            # Pad electron truth indices and broadcast properly
+            el_truth_padded = ak.fill_none(
+                ak.pad_none(events.event_electron_truth_idx, 2), -1
+            )
+            mu_truth_padded = ak.fill_none(ak.pad_none(events.event_muon_truth_idx, 2), -1)
+        else:  # new format
+            el_truth_padded = ak.fill_none(
+                ak.pad_none(events.event_lepton_truth_idx, 6), -1
+            )
+            mu_truth_padded = ak.fill_none(
+                ak.pad_none(events.event_lepton_truth_idx, 6), -1
+            )
+            el_truth_padded = el_truth_padded[:, [1, 4]]
+            mu_truth_padded = mu_truth_padded[:, [1, 4]]
+    
+
 
         # Create lepton arrays with truth matching - use broadcasting that works with jagged arrays
         # For electrons - expand truth indices to match electron array shape
@@ -842,6 +870,7 @@ def preprocess_root_file(
     save_initial_parton_info: bool = True,
     verbose: bool = True,
     max_jets: int = 10,
+    lepton_parton_match_format: str = "old",
 ) -> Dict[str, np.ndarray]:
     """
     Convenience function to preprocess a ROOT file.
@@ -865,6 +894,7 @@ def preprocess_root_file(
         save_initial_parton_info=save_initial_parton_info,
         verbose=verbose,
         max_saved_jets=max_jets,
+        lepton_parton_match_format=lepton_parton_match_format,
     )
 
     preprocessor = RootPreprocessor(config)
@@ -885,6 +915,7 @@ def preprocess_root_directory(
     verbose: bool = True,
     max_jets: int = 10,
     max_events: Optional[int] = None,
+    lepton_parton_match_format: str = "old",
 ):
     """
     Process all ROOT files in a directory.
@@ -920,6 +951,7 @@ def preprocess_root_directory(
                     save_initial_parton_info=save_initial_parton_info,
                     verbose=verbose,
                     max_saved_jets=max_jets,
+                    lepton_parton_match_format=lepton_parton_match_format,
                 )
 
                 preprocessor = RootPreprocessor(config)
