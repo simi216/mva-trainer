@@ -10,7 +10,7 @@ methods with support for:
 - Mass resolution calculations
 - Comprehensive visualization tools
 """
-from .reconstruction_base import EventReconstructorBase, MLReconstructorBase
+from .reconstruction_base import EventReconstructorBase, FFMLRecoBase
 from .BaselineMethods import *
 from .ground_truth_reconstructor import GroundTruthReconstructor, FixedPrecisionReconstructor
 

@@ -117,7 +117,7 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
         return results
 
 
-class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
+class FFMLRecoBase(EventReconstructorBase, MLWrapperBase):
     def __init__(
         self,
         config: DataConfig,

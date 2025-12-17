@@ -23,8 +23,8 @@ This repository contains a standalone analysis framework for training and evalua
 
 - **Preprocessing**: The preprocessing is now done entirely in **pure Python**, replacing the previous C++ implementation. The preprocessing pipeline is defined in `core/RootPreprocessor.py` and can output to either ROOT or NPZ format for fast I/O. See [Preprocessing](#preprocessing) for details.
 - **Data Loading**: The data loading and preprocessing is done using the `DataPreprocessor` class, which is defined in the `core/DataLoader.py` file. This class is used to load the data from preprocessed files and arrange it in a format that can be used for training and evaluation.
-- **Reconstruction Models**: The reconstruction models are defined in the `core/reconstruction` directory. The base class for all reconstruction models is the `BaseReconstructor` class, which is defined in the `core/reconstruction/Reconstruction.py` file. Machine learning-based reconstruction models are to be implemented by inheriting from the `MLReconstructorBase` class, while baseline reconstruction models are to be implemented by inheriting from the `BaselineReconstructor` class.
-- **Model Training**: The training of the models is handled by the `MLReconstructorBase` class which provides methods for training and evaluating machine learning-based reconstruction models.
+- **Reconstruction Models**: The reconstruction models are defined in the `core/reconstruction` directory. The base class for all reconstruction models is the `BaseReconstructor` class, which is defined in the `core/reconstruction/Reconstruction.py` file. Machine learning-based reconstruction models are to be implemented by inheriting from the `FFMLRecoBase` class, while baseline reconstruction models are to be implemented by inheriting from the `BaselineReconstructor` class.
+- **Model Training**: The training of the models is handled by the `FFMLRecoBase` class which provides methods for training and evaluating machine learning-based reconstruction models.
 - **Evaluation**: The evaluation of the models is done using the `ReconstructionEvaluator` class, which is defined in the `core/reconstruction/Evaluation.py` file. This class provides methods for evaluating the performance of various reconstruction models using different metrics and visualizations.
 - **Export Models for use in TopCPToolKit**: The trained machine learning models can be exported for use in the TopCPToolKit. The `export_to_onnx` method in the `MLWrapperBase` class is used to export the trained model to a format that can be used in the TopCPToolKit.
 - **Condor Integration**: The framework includes integration with the Condor job scheduler for distributed training and evaluation. The Condor scripts are located in the `CONDOR` directory.
@@ -210,9 +210,9 @@ The DataPreprocessor provides additional functionality:
 The base class for all reconstruction models is the `BaseReconstructor` class, which is defined in the `core/reconstruction/Reconstruction.py` file. This class provides the basic functionality for all reconstruction models regardless of the underlying model type.
 
 ### Machine Learning Models
-Machine learning-based reconstruction models are to be implemented by inheriting from the `MLReconstructorBase` class, which is defined in the `core/reconstruction/Reconstruction.py` file. This class provides additional functionality for machine learning-based reconstruction models, such as training and evaluation methods and handling the input and output data formats.
+Machine learning-based reconstruction models are to be implemented by inheriting from the `FFMLRecoBase` class, which is defined in the `core/reconstruction/Reconstruction.py` file. This class provides additional functionality for machine learning-based reconstruction models, such as training and evaluation methods and handling the input and output data formats.
 
-To implement a new machine learning-based reconstruction model, you need to create a new class that inherits from the `MLReconstructorBase` class and implement the following method:
+To implement a new machine learning-based reconstruction model, you need to create a new class that inherits from the `FFMLRecoBase` class and implement the following method:
 - `build_model(self, **kwargs)`: This method is used to define the architecture of the machine learning model. You can use TensorFlow/Keras to define the model architecture.
 
 ### Baseline Models
@@ -220,7 +220,7 @@ Baseline reconstruction models are to be implemented by inheriting from the `Bas
 
 
 ## Model Training
-The training of the models is handled by the `MLReconstructorBase` class which provides methods for training and evaluating machine learning-based reconstruction models. The training process involves loading the data using the `DataPreprocessor` class, preprocessing the data, and then training the model using the specified architecture and hyperparameters.
+The training of the models is handled by the `FFMLRecoBase` class which provides methods for training and evaluating machine learning-based reconstruction models. The training process involves loading the data using the `DataPreprocessor` class, preprocessing the data, and then training the model using the specified architecture and hyperparameters.
 
 
 ## Evaluation

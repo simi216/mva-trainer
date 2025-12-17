@@ -143,16 +143,16 @@ class RootPreprocessor:
             )
         else:  # new format
             electron_truth_0 = ak.fill_none(
-                ak.pad_none(events.event_lepton_truth_idx, 2)[:, 1], -1
+                ak.pad_none(events.event_electron_truth_idx, 2)[:, 1], -1
             )
             electron_truth_1 = ak.fill_none(
-                ak.pad_none(events.event_lepton_truth_idx, 2)[:, 4], -1
+                ak.pad_none(events.event_electron_truth_idx, 2)[:, 4], -1
             )
             muon_truth_0 = ak.fill_none(
-                ak.pad_none(events.event_lepton_truth_idx, 2)[:, 1], -1
+                ak.pad_none(events.event_muon_truth_idx, 2)[:, 1], -1
             )
             muon_truth_1 = ak.fill_none(
-                ak.pad_none(events.event_lepton_truth_idx, 2)[:, 4], -1
+                ak.pad_none(events.event_muon_truth_idx, 2)[:, 4], -1
             )
 
         has_truth_lep_0 = (electron_truth_0 != -1) | (muon_truth_0 != -1)
@@ -290,10 +290,10 @@ class RootPreprocessor:
             mu_truth_padded = ak.fill_none(ak.pad_none(events.event_muon_truth_idx, 2), -1)
         else:  # new format
             el_truth_padded = ak.fill_none(
-                ak.pad_none(events.event_lepton_truth_idx, 6), -1
+                ak.pad_none(events.event_electron_truth_idx, 6), -1
             )
             mu_truth_padded = ak.fill_none(
-                ak.pad_none(events.event_lepton_truth_idx, 6), -1
+                ak.pad_none(events.event_muon_truth_idx, 6), -1
             )
             el_truth_padded = el_truth_padded[:, [1, 4]]
             mu_truth_padded = mu_truth_padded[:, [1, 4]]

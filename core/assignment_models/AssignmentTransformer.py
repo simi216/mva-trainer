@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 
 
-from core.reconstruction import MLReconstructorBase
+from core.reconstruction import FFMLRecoBase
 from core.components import (
     MultiHeadAttentionBlock,
     SelfAttentionBlock,
@@ -16,7 +16,7 @@ from core.components import (
 from core import DataConfig
 
 
-class CrossAttentionModel(MLReconstructorBase):
+class CrossAttentionModel(FFMLRecoBase):
     def __init__(self, config: DataConfig, name="CrossAttentionModel"):
         super().__init__(config, name=name)
         self.perform_regression = False
@@ -127,7 +127,7 @@ class CrossAttentionModel(MLReconstructorBase):
         self._build_model_base(jet_assignment_probs, name="CrossAttentionModel")
 
 
-class FeatureConcatTransformer(MLReconstructorBase):
+class FeatureConcatTransformer(FFMLRecoBase):
     def __init__(
         self, config: DataConfig, name="FeatureConcatTransformer", use_nu_flows=True
     ):
@@ -162,6 +162,7 @@ class FeatureConcatTransformer(MLReconstructorBase):
         normed_inputs, masks = self._prepare_inputs(
             input_as_four_vector=True,
             compute_HLF=compute_HLF,
+            log_variables=False,
             use_global_event_features=use_global_event_features)
         normed_jet_inputs = normed_inputs["jet_inputs"]
         normed_lep_inputs = normed_inputs["lepton_inputs"]

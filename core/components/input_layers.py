@@ -6,20 +6,17 @@ import math
 @keras.utils.register_keras_serializable()
 class InputPtEtaPhiELayer(keras.layers.Layer):
     """
-    Converts particle features from (pt, eta, phi, E)
-    to (px, py, pz, E), while passing through residual features.
+    Converts input features from (pt, eta, phi, E) to (px, py, pz, E).
+    Optionally applies logarithmic scaling to pt and E.
 
-    A boolean mask can be passed to `call(inputs, mask=...)`
-    where True marks valid entries. Masked entries are zeroed
-    before computation to avoid numerical issues.
-
-    Expected input shape: (..., N_features) where the first 4 are
-    (pt, eta, phi, E), followed by any residual features.
+    Args:
+        log_variables (bool): Whether to apply logarithmic scaling to pt and E.
+        padding_value (float): The value to use for padding masked entries.
     """
 
-    def __init__(self, log_E, padding_value, **kwargs):
+    def __init__(self, log_variables, padding_value, **kwargs):
         super().__init__(**kwargs)
-        self.log_E = log_E
+        self.log_variables = log_variables
         self.padding_value = padding_value
 
     def call(self, inputs, mask=None):
@@ -43,11 +40,16 @@ class InputPtEtaPhiELayer(keras.layers.Layer):
         else:
             # No mask passed — process everything
             safe_pt, safe_eta, safe_phi, safe_energy = pt, eta, phi, energy
-        if self.log_E:
-            safe_energy = tf.where(
+        if self.log_variables:
+            safe_non_zero_energy = tf.where(
                 safe_energy > 0, safe_energy, tf.ones_like(safe_energy) * 1e-6
             )
-            safe_energy = tf.math.log(safe_energy)
+            safe_non_zero_pt = tf.where(
+                safe_pt > 0, safe_pt, tf.ones_like(safe_pt) * 1e-6
+            )
+            safe_log_energy = tf.math.log(safe_non_zero_energy)
+            safe_log_pt = tf.math.log(safe_non_zero_pt)
+            
 
         # Compute Cartesian components
         px = safe_pt * tf.cos(safe_phi)
@@ -55,9 +57,14 @@ class InputPtEtaPhiELayer(keras.layers.Layer):
         pz = safe_pt * tf.sinh(tf.clip_by_value(safe_eta, -10.0, 10.0))
 
         # Concatenate outputs
-        outputs = tf.concat([px, py, pz, safe_energy, residual], axis=-1)
+        if self.log_variables:
+            outputs = tf.concat(
+                [px, py, pz,safe_energy, safe_log_energy, safe_log_pt, residual], axis=-1
+            )
+        else:
+            outputs = tf.concat([px, py, pz, safe_energy, residual], axis=-1)
 
-        # If mask exists, restore masked entries to 0 (or optionally NaN / -999)
+        # If mask exists, restore masked entries to padding value
         if mask is not None:
             outputs = tf.where(
                 mask, outputs, tf.ones_like(outputs) * self.padding_value
@@ -69,7 +76,7 @@ class InputPtEtaPhiELayer(keras.layers.Layer):
         config = super().get_config()
         config.update(
             {
-                "log_E": self.log_E,
+                "log_variables": self.log_variables,
                 "padding_value": self.padding_value,
             }
         )

@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 
 
-from core.reconstruction import MLReconstructorBase
+from core.reconstruction import FFMLRecoBase
 from core.components import (
     SelfAttentionBlock,
     MLP,
@@ -12,7 +12,7 @@ from core.components import (
 )
 
 
-class FeatureConcatTransformer(MLReconstructorBase):
+class FeatureConcatTransformer(FFMLRecoBase):
     def __init__(self, config, name="FeatureConcatTransformer"):
         super().__init__(config, name=name, perform_regression=True, use_nu_flows=False)
 
@@ -122,7 +122,7 @@ class FeatureConcatTransformer(MLReconstructorBase):
         )
 
 
-class SimpleNeutrinoRegessor(MLReconstructorBase):
+class SimpleNeutrinoRegessor(FFMLRecoBase):
     def __init__(self, config, name="SimpleNeutrinoRegessor"):
         super().__init__(config, name=name)
         self.perform_regression = True

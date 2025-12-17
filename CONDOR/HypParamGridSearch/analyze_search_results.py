@@ -28,7 +28,7 @@ def parse_model_name(model_name):
 
 def load_and_evaluate_model(model_dir, validation_data, data_config):
     """Load a trained model and evaluate its performance."""
-    model = core.reconstruction.MLReconstructorBase(data_config, name="model")
+    model = core.reconstruction.FFMLRecoBase(data_config, name="model")
     model.load_model(os.path.join(model_dir, "model.keras"))
     results = model.evaluate(validation_data)
     return results

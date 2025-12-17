@@ -8,7 +8,7 @@ import timeit
 from core.reconstruction import (
     EventReconstructorBase,
     GroundTruthReconstructor,
-    MLReconstructorBase,
+    FFMLRecoBase,
 )
 from .evaluator_base import (
     PlotConfig,
@@ -53,7 +53,7 @@ class PredictionManager:
     def _compute_all_predictions(self):
         """Compute predictions for all reconstructors."""
         for reconstructor in self.reconstructors:
-            if isinstance(reconstructor, MLReconstructorBase):
+            if isinstance(reconstructor, FFMLRecoBase):
                 assignment_pred, neutrino_regression = (
                     reconstructor.complete_forward_pass(self.X_test)
                 )

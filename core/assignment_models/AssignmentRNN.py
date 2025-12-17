@@ -2,7 +2,7 @@ import keras
 import tensorflow as tf
 from keras.layers import LSTM, GRU, RNN, LSTMCell, Bidirectional, GRUCell
 
-from core.reconstruction import MLReconstructorBase
+from core.reconstruction import FFMLRecoBase
 from core.Configs import DataConfig
 from core.components import (
     MLP,
@@ -10,7 +10,7 @@ from core.components import (
 )
 
 
-class FeatureConcatRNN(MLReconstructorBase):
+class FeatureConcatRNN(FFMLRecoBase):
     def __init__(self, config : DataConfig, name="RNN"):
         if config.has_neutrino_truth:
             print("FeatureConcatRNN is designed for classification tasks; regression targets will be ignored.")

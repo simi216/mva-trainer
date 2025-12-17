@@ -142,7 +142,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 X_train["global_event_inputs"] = global_event_data
         return X_train, y_train, sample_weights
 
-    def _prepare_inputs(self, input_as_four_vector, log_E=True, compute_HLF=False, use_global_event_features=False):
+    def _prepare_inputs(self, input_as_four_vector, log_variables=True, compute_HLF=False, use_global_event_features=False):
         jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
         lep_inputs = keras.Input(
             shape=(self.NUM_LEPTONS, self.n_leptons), name="lep_inputs"
@@ -162,12 +162,12 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         if input_as_four_vector:
             transformed_jet_inputs = InputPtEtaPhiELayer(
                 name="jet_input_transform",
-                log_E=log_E,
+                log_variables=log_variables,
                 padding_value=self.padding_value,
             )(jet_inputs)
             transformed_lep_inputs = InputPtEtaPhiELayer(
                 name="lep_input_transform",
-                log_E=log_E,
+                log_variables=log_variables,
                 padding_value=self.padding_value,
             )(lep_inputs)
             transformed_met_inputs = InputMetPhiLayer(name="met_input_transform")(
@@ -535,7 +535,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         for idx, name in flat_feature_index_dict.items():
             inputs_list[idx] = name
 
-    def print_TopCPToolkitConfig(self, output_file):
+    def save_TopCPToolkitConfig(self, output_file):
         """
         Prints a configuration file for TopCPToolKit based on the model's feature indices.
         Args:
