@@ -23,261 +23,6 @@ from typing import Optional, Dict, List, Tuple, Union
 from .Configs import LoadConfig, DataConfig, get_load_config_from_yaml
 
 
-# =============================================================================
-# Raw Data Loader
-# =============================================================================
-
-
-class DataLoader:
-    """
-    Loads and pads data from ROOT files using uproot.
-
-    Handles:
-    - Loading branches from ROOT TTrees
-    - Padding/clipping variable-length features
-    - Converting to pandas DataFrame
-    """
-
-    def __init__(self, feature_clipping: Dict[str, int]):
-        """
-        Initialize the data loader.
-
-        Args:
-            feature_clipping: Dict mapping feature names to clipping values
-                             (1 for scalar, >1 for variable-length features)
-        """
-        if not isinstance(feature_clipping, dict):
-            raise ValueError("feature_clipping must be a dictionary")
-
-        self.features = list(feature_clipping.keys())
-        self.clipping = feature_clipping
-        self.data = None
-
-    def load_data(
-        self, file_path: str, tree_name: str, max_events: Optional[int] = None
-    ) -> None:
-        """
-        Load data from ROOT file.
-
-        Args:
-            file_path: Path to ROOT file
-            tree_name: Name of TTree in file
-            max_events: Optional limit on number of events to load
-        """
-        self._validate_inputs(file_path, tree_name)
-        raw_data = self._load_from_root(file_path, tree_name, max_events)
-        self.data = raw_data
-        self._pad_and_flatten()
-
-    def get_data(self) -> pd.DataFrame:
-        """Return the loaded and processed data."""
-        if self.data is None:
-            raise ValueError("Data not loaded. Call load_data() first.")
-        return self.data
-
-    def _validate_inputs(self, file_path: str, tree_name: str) -> None:
-        """Validate input parameters."""
-        if not isinstance(file_path, str):
-            raise ValueError("file_path must be a string")
-
-    def _load_from_root(
-        self, file_path: str, tree_name: str, max_events: Optional[int]
-    ) -> ak.Array:
-        """Load branches from ROOT file."""
-        with uproot.open(file_path) as file:
-            if tree_name not in file:
-                raise ValueError(f"Tree '{tree_name}' not found in {file_path}")
-
-            tree = file[tree_name]
-            missing = [b for b in self.features if b not in tree.keys()]
-            if missing:
-                raise ValueError(
-                    f"Missing branches in '{tree_name}': {missing}\n"
-                    f"Available: {list(tree.keys())}"
-                )
-
-            kwargs = {"library": "ak"}
-            if max_events is not None:
-                kwargs["entry_stop"] = max_events
-
-            data = tree.arrays(self.features, **kwargs)
-
-        if data is None:
-            raise ValueError(f"No data loaded from {file_path}")
-
-        return data
-
-    def _pad_and_flatten(self, padding_value: float = -999.0) -> None:
-        """Pad variable-length features and convert to DataFrame."""
-        data_dict = {}
-
-        for feature in self.features:
-            if feature not in self.data.fields:
-                raise ValueError(f"Feature '{feature}' not found in data")
-
-            clip_size = self.clipping[feature]
-
-            if clip_size == 1:
-                # Scalar feature
-                data_dict[feature] = ak.fill_none(self.data[feature], padding_value)
-            else:
-                # Variable-length feature: pad and split into columns
-                padded = ak.pad_none(self.data[feature], clip_size, clip=True, axis=1)
-                filled = ak.fill_none(padded, padding_value)
-
-                for i in range(clip_size):
-                    data_dict[f"{feature}_{i}"] = filled[:, i]
-        data = pd.DataFrame(data_dict)
-        nan_filter = ~data.isna().any(axis=1)
-        self.data = data[nan_filter].reset_index(drop=True)
-
-
-# =============================================================================
-# Feature Builders
-# =============================================================================
-
-
-class FeatureBuilder:
-    """Builds structured feature arrays from flattened DataFrame."""
-
-    def __init__(self, load_config: LoadConfig, data: pd.DataFrame):
-        self.config = load_config
-        self.data = data
-        self.data_length = len(data)
-
-    def build_all_features(self) -> Dict[str, np.ndarray]:
-        """Build all feature types into structured arrays."""
-        features = {}
-
-        features["lepton"] = self._build_lepton_features()
-        features["jet"] = self._build_jet_features()
-
-        if self.config.met_features:
-            features["met"] = self._build_met_features()
-
-        if self.config.non_training_features:
-            features["non_training"] = self._build_non_training_features()
-
-        if self.config.event_weight:
-            features["event_weight"] = self._build_event_weight()
-
-        if self.config.mc_event_number:
-            features["event_number"] = self._build_event_number()
-
-        if (
-            self.config.neutrino_momentum_features
-            and self.config.antineutrino_momentum_features
-        ):
-            features["neutrino_truth"] = self._build_neutrino_truth()
-
-        if (
-            self.config.nu_flows_neutrino_momentum_features
-            and self.config.nu_flows_antineutrino_momentum_features
-        ):
-            features["nu_flows_neutrino_truth"] = self._build_nu_flows_neutrino_truth()
-        if self.config.top_truth_features and self.config.tbar_truth_features:
-            features["top_truth"] = self._build_top_truth_features()
-        if (
-            self.config.top_lepton_truth_features
-            and self.config.tbar_lepton_truth_features
-        ):
-            features["lepton_truth"] = self._build_lepton_truth_features()
-
-        return features
-
-    def _build_lepton_features(self) -> np.ndarray:
-        """Build lepton feature array (n_events, NUM_LEPTONS, n_features)."""
-        lepton_vars = self.config.lepton_features
-        columns = [
-            f"{var}_{idx}"
-            for idx in range(self.config.NUM_LEPTONS)
-            for var in lepton_vars
-        ]
-
-        data = self.data[columns].to_numpy()
-        data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)
-        return data
-
-    def _build_jet_features(self) -> np.ndarray:
-        """Build jet feature array (n_events, max_jets, n_features)."""
-        jet_vars = self.config.jet_features
-        columns = [
-            f"{var}_{idx}" for idx in range(self.config.max_jets) for var in jet_vars
-        ]
-
-        data = self.data[columns].to_numpy()
-        data = data.reshape(self.data_length, self.config.max_jets, -1)
-        return data
-
-    def _build_met_features(self) -> np.ndarray:
-        """Build MET feature array (n_events, 1, n_features)."""
-        met_vars = self.config.met_features
-        data = self.data[met_vars].to_numpy()
-        return data.reshape(self.data_length, 1, -1)
-
-    def _build_global_event_features(self) -> np.ndarray:
-        """Build global event feature array (n_events, n_features)."""
-        global_event_vars = self.config.global_event_features
-        data = self.data[global_event_vars].to_numpy()
-        return data.reshape(self.data_length, -1)
-
-    def _build_non_training_features(self) -> np.ndarray:
-        """Build non-training feature array (n_events, n_features)."""
-        return self.data[self.config.non_training_features].to_numpy()
-
-    def _build_event_weight(self) -> np.ndarray:
-        """Build event weight array (n_events,)."""
-        return self.data[self.config.event_weight].to_numpy()
-
-    def _build_event_number(self) -> np.ndarray:
-        """Build event number array (n_events,)."""
-        return self.data[self.config.mc_event_number].to_numpy()
-
-    def _build_neutrino_truth(self) -> np.ndarray:
-        """Build regression target array (n_events, NUM_LEPTONS, n_targets)."""
-        neutrino_vars = self.config.neutrino_momentum_features
-        antineutrino_vars = self.config.antineutrino_momentum_features
-        columns = neutrino_vars + antineutrino_vars
-        data = self.data[columns].to_numpy()
-        data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)  # n_targets
-        return data
-
-    def _build_nu_flows_neutrino_truth(self) -> np.ndarray:
-        """Build NuFlows regression target array (n_events, NUM_LEPTONS, n_targets)."""
-        nu_flows_vars = (
-            self.config.nu_flows_neutrino_momentum_features
-            + self.config.nu_flows_antineutrino_momentum_features
-        )
-
-        data = self.data[nu_flows_vars].to_numpy()
-        data = data.reshape(self.data_length, self.config.NUM_LEPTONS, -1)  # n_targets
-        return data
-
-    def _build_top_truth_features(self) -> np.ndarray:
-        """Build top quark truth feature array (n_events, n_features)."""
-        top_truth_vars = (
-            self.config.top_truth_features + self.config.tbar_truth_features
-        )
-        data = (
-            self.data[top_truth_vars]
-            .to_numpy()
-            .reshape(self.data_length, self.config.NUM_LEPTONS, -1)
-        )
-        return data
-
-    def _build_lepton_truth_features(self) -> np.ndarray:
-        """Build lepton truth feature array (n_events, n_features)."""
-        lepton_truth_vars = (
-            self.config.top_lepton_truth_features
-            + self.config.tbar_lepton_truth_features
-        )
-        data = (
-            self.data[lepton_truth_vars]
-            .to_numpy()
-            .reshape(self.data_length, self.config.NUM_LEPTONS, -1)
-        )
-        return data
-
 
 class LabelBuilder:
     """Builds training labels from truth information."""
@@ -396,47 +141,164 @@ class DataPreprocessor:
         self.cut_dict = {}
         self.data_normalisation_factors = {}
 
+
+
     # -------------------------------------------------------------------------
     # Data Loading
     # -------------------------------------------------------------------------
-
-    def load_data(
-        self,
-        file_path: str,
-        tree_name: str,
-        max_events: Optional[int] = None,
-        cut_neg_weights: bool = True,
+    def load_from_npz(
+        self, npz_path: str, max_events: Optional[int] = None
     ) -> DataConfig:
         """
-        Load and preprocess data from ROOT file.
-
-        After loading, creates a DataConfig describing the loaded data structure.
+        Load preprocessed data from NPZ file.
 
         Args:
-            file_path: Path to ROOT file
-            tree_name: Name of TTree
-            max_events: Optional limit on events to load
-            cut_neg_weights: Whether to remove negative event weights
+            npz_path: Path to NPZ file
         """
-        if self.data is not None:
-            raise ValueError("Data already loaded. Create new instance for new data.")
+        loaded = np.load(npz_path)
 
-        # Load raw data
-        feature_clipping = self.load_config.get_feature_clipping_dict()
-        loader = DataLoader(feature_clipping)
-        loader.load_data(file_path, tree_name, max_events)
-        self.data = loader.get_data()
+        if max_events is not None:
+            loaded_array = {}
+            for key in loaded.files:
+                loaded_array[key] = loaded[key][:max_events]
+            loaded = loaded_array
 
-        # Apply preprocessing
-        self._filter_negative_weights(cut_neg_weights)
-        self.data_length = len(self.data)
+        if loaded is None:
+            raise ValueError(f"Could not read file {npz_path}")
 
-        # Build features and labels
-        self._build_features_and_labels()
+        self.feature_data = {}
+
+        if self.load_config.jet_features:
+            self.feature_data["jet"] = np.array(
+                [loaded[jet_key] for jet_key in self.load_config.jet_features]
+            ).transpose(1, 2, 0)[:, : self.load_config.max_jets, :]
+
+        if self.load_config.lepton_features:
+            self.feature_data["lepton"] = np.array(
+                [loaded[lep_key] for lep_key in self.load_config.lepton_features]
+            ).transpose(1, 2, 0)
+
+        if self.load_config.global_event_features:
+            self.feature_data["global_event"] = np.array(
+                [loaded[ge_key] for ge_key in self.load_config.global_event_features]
+            ).transpose(1, 0)
+
+        if self.load_config.met_features:
+            self.feature_data["met"] = np.array(
+                [loaded[met_key] for met_key in self.load_config.met_features]
+            ).transpose(1, 0)[:, np.newaxis, :]
+
+        if self.load_config.non_training_features:
+            self.feature_data["non_training"] = np.array(
+                [loaded[nt_key] for nt_key in self.load_config.non_training_features]
+            ).transpose(1, 0)
+
+        if self.load_config.event_weight:
+            self.feature_data["event_weight"] = loaded[self.load_config.event_weight]
+
+        if self.load_config.mc_event_number:
+            self.feature_data["event_number"] = loaded[self.load_config.mc_event_number]
+
+        if (
+            self.load_config.neutrino_momentum_features
+            and self.load_config.antineutrino_momentum_features
+        ):
+            data_length = len(loaded[self.load_config.neutrino_momentum_features[0]])
+            self.feature_data["neutrino_truth"] = (
+                np.array(
+                    [
+                        loaded[nu_key]
+                        for nu_key in self.load_config.neutrino_momentum_features
+                        + self.load_config.antineutrino_momentum_features
+                    ]
+                )
+                .transpose(1, 0)
+                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
+            )
+
+        if (
+            self.load_config.nu_flows_neutrino_momentum_features
+            and self.load_config.nu_flows_antineutrino_momentum_features
+        ):
+            data_length = len(
+                loaded[self.load_config.nu_flows_neutrino_momentum_features[0]]
+            )
+            self.feature_data["nu_flows_neutrino_truth"] = (
+                np.array(
+                    [
+                        loaded[nu_key]
+                        for nu_key in self.load_config.nu_flows_neutrino_momentum_features
+                        + self.load_config.nu_flows_antineutrino_momentum_features
+                    ]
+                )
+                .transpose(1, 0)
+                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
+            )
+        if self.load_config.top_truth_features and self.load_config.tbar_truth_features:
+            data_length = len(loaded[self.load_config.top_truth_features[0]])
+            self.feature_data["top_truth"] = (
+                np.array(
+                    [
+                        loaded[top_key]
+                        for top_key in self.load_config.top_truth_features
+                        + self.load_config.tbar_truth_features
+                    ]
+                )
+                .transpose(1, 0)
+                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
+            )
+
+        if (
+            self.load_config.top_lepton_truth_features
+            and self.load_config.tbar_lepton_truth_features
+        ):
+            data_length = len(loaded[self.load_config.top_lepton_truth_features[0]])
+            self.feature_data["lepton_truth"] = (
+                np.array(
+                    [
+                        loaded[lep_key]
+                        for lep_key in self.load_config.top_lepton_truth_features
+                        + self.load_config.tbar_lepton_truth_features
+                    ]
+                )
+                .transpose(1, 0)
+                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
+            )
+
+        # Build labels and apply reconstruction mask
+        label_builder = LabelBuilder(
+            self.load_config,
+            (
+                loaded[self.load_config.jet_truth_label],
+                loaded[self.load_config.lepton_truth_label],
+            ),
+        )
+        assignment_labels, reco_mask = label_builder.build_labels()
+
+        # Apply reconstruction mask to all features
+        for key in self.feature_data:
+            if self.feature_data[key] is not None:
+                self.feature_data[key] = self.feature_data[key][reco_mask]
+
+        self.feature_data["assignment_labels"] = assignment_labels
+
+        # Remove events with NaNs in NuFlows targets if present
+        if "nu_flows_neutrino_truth" in self.feature_data:
+            nu_flows_nan_mask = ~np.isnan(
+                self.feature_data["nu_flows_neutrino_truth"]
+            ).any(axis=(1, 2))
+            for key in self.feature_data:
+                if self.feature_data[key] is not None:
+                    self.feature_data[key] = self.feature_data[key][nu_flows_nan_mask]
+
+        self.data_length = len(self.feature_data["assignment_labels"])
 
         # Create DataConfig for downstream use
         self.data_config = self.load_config.to_data_config()
         return self.data_config
+
+
+
 
     def get_data_config(self) -> DataConfig:
         """
@@ -462,28 +324,6 @@ class DataPreprocessor:
             n_after = len(self.data)
             if n_before != n_after:
                 print(f"Removed {n_before - n_after} events with negative weights")
-
-    def _build_features_and_labels(self) -> None:
-        """Build structured feature arrays and labels."""
-        # Build features
-        feature_builder = FeatureBuilder(self.load_config, self.data)
-        self.feature_data = feature_builder.build_all_features()
-
-        # Build labels and apply reconstruction mask
-        label_builder = LabelBuilder(self.load_config, self.data)
-        pair_truth, reco_mask = label_builder.build_labels()
-
-        # Apply reconstruction mask to all features
-        for key in self.feature_data:
-            if self.feature_data[key] is not None:
-                self.feature_data[key] = self.feature_data[key][reco_mask]
-
-        self.data_length = len(pair_truth)
-
-        self.feature_data["assignment_labels"] = pair_truth
-
-        # Clear DataFrame to save memory
-        self.data = None
 
     # -------------------------------------------------------------------------
     # Custom Features
@@ -770,157 +610,6 @@ class DataPreprocessor:
         }
 
         return X_even, y_even, X_odd, y_odd
-
-    def load_from_npz(
-        self, npz_path: str, max_events: Optional[int] = None
-    ) -> DataConfig:
-        """
-        Load preprocessed data from NPZ file.
-
-        Args:
-            npz_path: Path to NPZ file
-        """
-        loaded = np.load(npz_path)
-
-        if max_events is not None:
-            loaded_array = {}
-            for key in loaded.files:
-                loaded_array[key] = loaded[key][:max_events]
-            loaded = loaded_array
-
-        if loaded is None:
-            raise ValueError(f"Could not read file {npz_path}")
-
-        self.feature_data = {}
-
-        if self.load_config.jet_features:
-            self.feature_data["jet"] = np.array(
-                [loaded[jet_key] for jet_key in self.load_config.jet_features]
-            ).transpose(1, 2, 0)[:, : self.load_config.max_jets, :]
-
-        if self.load_config.lepton_features:
-            self.feature_data["lepton"] = np.array(
-                [loaded[lep_key] for lep_key in self.load_config.lepton_features]
-            ).transpose(1, 2, 0)
-
-        if self.load_config.global_event_features:
-            self.feature_data["global_event"] = np.array(
-                [loaded[ge_key] for ge_key in self.load_config.global_event_features]
-            ).transpose(1, 0)
-
-        if self.load_config.met_features:
-            self.feature_data["met"] = np.array(
-                [loaded[met_key] for met_key in self.load_config.met_features]
-            ).transpose(1, 0)[:, np.newaxis, :]
-
-        if self.load_config.non_training_features:
-            self.feature_data["non_training"] = np.array(
-                [loaded[nt_key] for nt_key in self.load_config.non_training_features]
-            ).transpose(1, 0)
-
-        if self.load_config.event_weight:
-            self.feature_data["event_weight"] = loaded[self.load_config.event_weight]
-
-        if self.load_config.mc_event_number:
-            self.feature_data["event_number"] = loaded[self.load_config.mc_event_number]
-
-        if (
-            self.load_config.neutrino_momentum_features
-            and self.load_config.antineutrino_momentum_features
-        ):
-            data_length = len(loaded[self.load_config.neutrino_momentum_features[0]])
-            self.feature_data["neutrino_truth"] = (
-                np.array(
-                    [
-                        loaded[nu_key]
-                        for nu_key in self.load_config.neutrino_momentum_features
-                        + self.load_config.antineutrino_momentum_features
-                    ]
-                )
-                .transpose(1, 0)
-                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
-            )
-
-        if (
-            self.load_config.nu_flows_neutrino_momentum_features
-            and self.load_config.nu_flows_antineutrino_momentum_features
-        ):
-            data_length = len(
-                loaded[self.load_config.nu_flows_neutrino_momentum_features[0]]
-            )
-            self.feature_data["nu_flows_neutrino_truth"] = (
-                np.array(
-                    [
-                        loaded[nu_key]
-                        for nu_key in self.load_config.nu_flows_neutrino_momentum_features
-                        + self.load_config.nu_flows_antineutrino_momentum_features
-                    ]
-                )
-                .transpose(1, 0)
-                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
-            )
-        if self.load_config.top_truth_features and self.load_config.tbar_truth_features:
-            data_length = len(loaded[self.load_config.top_truth_features[0]])
-            self.feature_data["top_truth"] = (
-                np.array(
-                    [
-                        loaded[top_key]
-                        for top_key in self.load_config.top_truth_features
-                        + self.load_config.tbar_truth_features
-                    ]
-                )
-                .transpose(1, 0)
-                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
-            )
-
-        if (
-            self.load_config.top_lepton_truth_features
-            and self.load_config.tbar_lepton_truth_features
-        ):
-            data_length = len(loaded[self.load_config.top_lepton_truth_features[0]])
-            self.feature_data["lepton_truth"] = (
-                np.array(
-                    [
-                        loaded[lep_key]
-                        for lep_key in self.load_config.top_lepton_truth_features
-                        + self.load_config.tbar_lepton_truth_features
-                    ]
-                )
-                .transpose(1, 0)
-                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
-            )
-
-        # Build labels and apply reconstruction mask
-        label_builder = LabelBuilder(
-            self.load_config,
-            (
-                loaded[self.load_config.jet_truth_label],
-                loaded[self.load_config.lepton_truth_label],
-            ),
-        )
-        assignment_labels, reco_mask = label_builder.build_labels()
-
-        # Apply reconstruction mask to all features
-        for key in self.feature_data:
-            if self.feature_data[key] is not None:
-                self.feature_data[key] = self.feature_data[key][reco_mask]
-
-        self.feature_data["assignment_labels"] = assignment_labels
-
-        # Remove events with NaNs in NuFlows targets if present
-        if "nu_flows_neutrino_truth" in self.feature_data:
-            nu_flows_nan_mask = ~np.isnan(
-                self.feature_data["nu_flows_neutrino_truth"]
-            ).any(axis=(1, 2))
-            for key in self.feature_data:
-                if self.feature_data[key] is not None:
-                    self.feature_data[key] = self.feature_data[key][nu_flows_nan_mask]
-
-        self.data_length = len(self.feature_data["assignment_labels"])
-
-        # Create DataConfig for downstream use
-        self.data_config = self.load_config.to_data_config()
-        return self.data_config
 
 
 def combine_datasets(
