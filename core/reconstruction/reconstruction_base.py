@@ -69,14 +69,7 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
             returns an array of booleans indicating correctness per event; otherwise, returns overall accuracy.
         """
         predictions = self.predict_indices(data_dict)
-        predicted_indices = np.argmax(predictions, axis=-2)
-        true_indices = np.argmax(true_labels, axis=-2)
-        if per_event:
-            correct_predictions = np.all(predicted_indices == true_indices, axis=-1)
-        else:
-            correct_predictions = np.all(predicted_indices == true_indices, axis=-1)
-            accuracy = np.mean(correct_predictions)
-        return accuracy
+        return self.compute_accuracy(predictions, true_labels, per_event)
 
     def evaluate_regression(self, data_dict, true_values):
         """
@@ -89,11 +82,39 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
             float: The mean squared error of the model's regression predictions.
         """
         predicted_values = self.reconstruct_neutrinos(data_dict)
-        relative_errors = (predicted_values - true_values) / np.where(
+        return self.compute_regression_mse(predicted_values, true_values)
+    
+    def compute_accuracy(self, pred_values, true_values, per_event=False):
+        predicted_indices = np.argmax(pred_values, axis=-2)
+        true_indices = np.argmax(true_values, axis=-2)
+        if per_event:
+            correct_predictions = np.all(predicted_indices == true_indices, axis=-1)
+            return correct_predictions
+        else:
+            correct_predictions = np.all(predicted_indices == true_indices, axis=-1)
+            accuracy = np.mean(correct_predictions)
+            return accuracy
+
+    def compute_regression_mse(self, pred_values, true_values):
+        relative_errors = (pred_values - true_values) / np.where(
             true_values != 0, true_values, 1
         )
         mse = np.mean(np.square(relative_errors))
         return mse
+
+    def evaluate(self, data_dict):
+        results = {}
+        if "assignment_truth" in data_dict:
+            accuracy = self.evaluate_accuracy(
+                data_dict, data_dict["assignment_truth"], per_event=False
+            )
+            results["accuracy"] = accuracy
+        if self.perform_regression and "neutrino_truth" in data_dict:
+            mse = self.evaluate_regression(
+                data_dict, data_dict["neutrino_truth"]
+            )
+            results["regression_mse"] = mse
+        return results
 
 
 class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
@@ -309,3 +330,21 @@ class MLReconstructorBase(EventReconstructorBase, MLWrapperBase):
             assignment_predictions = self.predict_indices(data, exclusive=True)
             neutrino_reconstruction = self.reconstruct_neutrinos(data)
             return assignment_predictions, neutrino_reconstruction
+
+
+    def evaluate(self, data_dict):
+        assignment_predictions, regression_predictions = self.complete_forward_pass(data_dict)
+        results = {}
+        if "assignment_labels" in data_dict:
+            accuracy = self.compute_accuracy(
+                assignment_predictions, data_dict["assignment_labels"], per_event=False
+            )
+            results["accuracy"] = accuracy
+        if self.perform_regression and "neutrino_truth" in data_dict:
+            mse = self.compute_regression_mse(
+                regression_predictions, data_dict["neutrino_truth"]
+            )
+            results["regression_mse"] = mse
+        return results
+
+

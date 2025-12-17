@@ -251,7 +251,7 @@ def main():
         ax=ax,
     )
 
-    confusion_matrix_path = os.path.join(PLOTS_DIR, "confusion_matrix_lepton.png")
+    confusion_matrix_path = os.path.join(PLOTS_DIR, "confusion_matrix_lepton.pdf")
     plt.savefig(confusion_matrix_path)
     print(f"Confusion matrix saved to {confusion_matrix_path}")
 

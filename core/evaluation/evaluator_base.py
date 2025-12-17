@@ -1,7 +1,7 @@
 """Base classes and utilities for model evaluation."""
 
 import numpy as np
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Callable
 from dataclasses import dataclass
 
 
@@ -105,6 +105,59 @@ class BootstrapCalculator:
 
         return mean_values, lower_bounds, upper_bounds
 
+    @staticmethod
+    def compute_binned_function_bootstrap(
+        binning_mask: np.ndarray,
+        event_weights: np.ndarray,
+        data: Tuple[np.ndarray],
+        function : Callable = np.mean,
+        n_bootstrap: int = 1000,
+        confidence: float = 0.95,
+        statistic: str = "mean",
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Compute binned statistics with bootstrap confidence intervals.
+
+        Args:
+            binning_mask: Boolean mask for binning (n_bins, n_events)
+            event_weights: Event weights (n_events,)
+            data: Data to bin (n_events,)
+            n_bootstrap: Number of bootstrap samples
+            confidence: Confidence level for intervals
+            statistic: Type of statistic ('mean', 'std', 'sum')
+
+        Returns:
+            Tuple of (mean_values, lower_bounds, upper_bounds) arrays
+        """
+        n_samples = len(data[0])
+        for data_i in data:
+            assert len(data_i) == n_samples, "All data arrays must have the same length"
+        n_bins = binning_mask.shape[0]
+        bootstrap_binned_values = np.zeros((n_bootstrap, n_bins))
+
+        for i in range(n_bootstrap):
+            indices = np.random.randint(0, n_samples, size=n_samples)
+            bootstrap_data = tuple(data_i[indices] for data_i in data)
+            bootstrap_weights = event_weights[indices]
+            bootstrap_mask = binning_mask[:, indices]
+
+            binned_values = tuple(BinningUtility.compute_weighted_binned_statistic(
+                bootstrap_mask, bootstrap_data_i, bootstrap_weights, statistic=statistic
+            ) for bootstrap_data_i in bootstrap_data)
+            bootstrap_binned_values[i] = function(*binned_values)
+        mean_values = np.mean(bootstrap_binned_values, axis=0)
+
+        alpha = 1 - confidence
+        lower_percentile = (alpha / 2) * 100
+        upper_percentile = (1 - alpha / 2) * 100
+
+        lower_bounds = np.percentile(bootstrap_binned_values, lower_percentile, axis=0)
+        upper_bounds = np.percentile(bootstrap_binned_values, upper_percentile, axis=0)
+
+        return mean_values, lower_bounds, upper_bounds
+
+
+
 
 class BinningUtility:
     """Utilities for binning data."""
@@ -200,6 +253,8 @@ class BinningUtility:
             raise ValueError(f"Unknown statistic: {statistic}")
 
         return result
+    
+
 
 
 class FeatureExtractor:

@@ -85,7 +85,7 @@ class BaselineAssigner(EventReconstructorBase):
             b_tag_mask = (jet_b_tag >= 2) & jet_mask[:, :, 0]
 
             less_than_2_b_tag_jet_mask = np.sum(b_tag_mask, axis=1) < 2
-            more_than_2_b_tag_jet_mask = np.sum(b_tag_mask, axis=1) >= 2
+            more_than_2_b_tag_jet_mask = np.sum(b_tag_mask, axis=1) > 2
 
             # For more than 2 b-tagged jets, keep only the leading 2 by pt
             if more_than_2_b_tag_jet_mask.any():
@@ -107,10 +107,8 @@ class BaselineAssigner(EventReconstructorBase):
                 leading_jet_pt_indices = np.argmax(jet_pt_masked, axis=1)
                 leading_jet_pt_indices = leading_jet_pt_indices[:, np.newaxis]
 
-                update_mask = less_than_2_b_tag_jet_mask[:, np.newaxis] & leading_jet_pt_indices == np.arange(
-                    self.max_jets
-                )[np.newaxis, :]
-                b_tag_mask |= update_mask
+                update_mask = leading_jet_pt_indices[less_than_2_b_tag_jet_mask] == np.arange(self.max_jets)[np.newaxis, :]
+                b_tag_mask[less_than_2_b_tag_jet_mask] |= update_mask
                 less_than_2_b_tag_jet_mask = np.sum(b_tag_mask, axis=1) < 2
 
                 iteration += 1

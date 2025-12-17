@@ -3,7 +3,8 @@
 import numpy as np
 from typing import Union, Optional, List, Tuple
 import matplotlib.pyplot as plt
-
+import os
+import timeit
 from core.reconstruction import (
     EventReconstructorBase,
     GroundTruthReconstructor,
@@ -86,6 +87,26 @@ class PredictionManager:
         """Get neutrino predictions for a specific reconstructor."""
         return self.predictions[index]["regression"]
 
+class ComputationTimeEvaluator:
+    """Evaluator for measuring computation time of reconstructors."""
+
+    def __init__(
+        self,
+        reconstructors: List[EventReconstructorBase],
+        X_test: dict,
+    ):
+        self.reconstructors = reconstructors
+        self.X_test = X_test
+
+    def evaluate_computation_times(self) -> List[float]:
+        """Evaluate computation times for all reconstructors."""
+        times = []
+        for reconstructor in self.reconstructors:
+            start_time = timeit.default_timer()
+            reconstructor.predict_indices(self.X_test)
+            end_time = timeit.default_timer()
+            times.append(end_time - start_time)
+        return times
 
 class ComplementarityAnalyzer:
     """Analyzes complementarity between reconstructors."""
@@ -1063,21 +1084,21 @@ class ReconstructionEvaluator:
         all_deviations = []
         labels = []
         event_weights = FeatureExtractor.get_event_weights(self.X_test)
-        
+
         # Extract common parameters from kwargs
-        use_relative_deviation = kwargs.pop('use_relative_deviation', True)
-        use_signed_deviation = kwargs.pop('use_signed_deviation', True)
-        combine_tops = kwargs.pop('combine_tops', False)
-        
+        use_relative_deviation = kwargs.pop("use_relative_deviation", True)
+        use_signed_deviation = kwargs.pop("use_signed_deviation", True)
+        combine_tops = kwargs.pop("combine_tops", False)
+
         reco_index = 0
         for reconstructor in self.reconstructors:
-            
+
             # Compute reconstructed and truth values
             reconstructed = self.compute_reconstructed_variable(
                 reco_index, variable_func
             )
             truth = self.compute_true_variable(truth_extractor)
-            
+
             # Compute deviation
             deviation = ResolutionCalculator.compute_deviation(
                 reconstructed,
@@ -1087,17 +1108,17 @@ class ReconstructionEvaluator:
             )
             if combine_tops:
                 deviation = np.concatenate(deviation)
-            
+
             all_deviations.append(deviation)
             labels.append(reconstructor.get_full_reco_name())
             reco_index += 1
-        
+
         # Handle combined tops for event weights
         if combine_tops:
             event_weights_plot = np.concatenate([event_weights, event_weights])
         else:
             event_weights_plot = event_weights
-        
+
         # Plot all deviations together
         DistributionPlotter.plot_feature_distributions(
             all_deviations,
@@ -1107,7 +1128,7 @@ class ReconstructionEvaluator:
             ax=axes,
             **kwargs,
         )
-        
+
         axes.set_title(f"{variable_label} Deviation for all Reconstructors")
 
         return fig, axes
@@ -1159,11 +1180,11 @@ class ReconstructionEvaluator:
                 )
                 fig.append(fig_i)
                 axes.append(ax_i)
-            
+
         reco_index = 0
         for reconstructor in self.reconstructors:
-#            if isinstance(reconstructor, GroundTruthReconstructor):
-#                continue
+            #            if isinstance(reconstructor, GroundTruthReconstructor):
+            #                continue
             ax = axes[reco_index]
             self.plot_reco_vs_truth_distribution(
                 ax,
@@ -1207,8 +1228,8 @@ class ReconstructionEvaluator:
 
     def plot_top_mass_distributions(self, **kwargs):
         """Plot top mass distributions for all reconstructors and truth."""
-        
-        fig, axes =  self._plot_variable_distribution("top_mass", **kwargs)
+
+        fig, axes = self._plot_variable_distribution("top_mass", **kwargs)
         for ax in axes:
             ticks = ax.get_xticks()
             ax.set_xticks(ticks)
@@ -1442,13 +1463,13 @@ class ReconstructionEvaluator:
                     lorentz_vector_from_PtEtaPhiE_array(X["lepton_truth"][:, 0, :4]),
                     lorentz_vector_from_PtEtaPhiE_array(X["lepton_truth"][:, 1, :4]),
                 ),
-                "label": r"$\cos(\theta_{han})$",
+                "label": r"$c_{\text{han}}$",
                 "combine_tops": False,
                 "use_relative_deviation": False,
                 "resolution": {
                     "use_relative_deviation": False,
-                    "ylabel_resolution": r"$\cos(\theta_{han})$ Resolution",
-                    "ylabel_deviation": r"Mean $\cos(\theta_{han})$ Deviation",
+                    "ylabel_resolution": r"$c_{\text{han}}$ Resolution",
+                    "ylabel_deviation": r"Mean $c_{\text{han}}$ Deviation",
                 },
             },
             "c_hel": {
@@ -1463,13 +1484,13 @@ class ReconstructionEvaluator:
                     lorentz_vector_from_PtEtaPhiE_array(X["lepton_truth"][:, 0, :4]),
                     lorentz_vector_from_PtEtaPhiE_array(X["lepton_truth"][:, 1, :4]),
                 ),
-                "label": r"$\cos(\theta_{hel})$",
+                "label": r"$c_{\text{hel}}$",
                 "combine_tops": False,
                 "use_relative_deviation": False,
                 "resolution": {
                     "use_relative_deviation": False,
-                    "ylabel_resolution": r"$\cos(\theta_{hel})$ Resolution",
-                    "ylabel_deviation": r"Mean $\cos(\theta_{hel})$ Deviation",
+                    "ylabel_resolution": r"$c_{\text{hel}}$ Resolution",
+                    "ylabel_deviation": r"Mean $c_{\text{hel}}$ Deviation",
                 },
             },
         }
@@ -1477,3 +1498,200 @@ class ReconstructionEvaluator:
         if variable_key not in configs:
             raise ValueError(f"Unknown variable key: {variable_key}")
         return configs[variable_key]
+
+    def save_accuracy_latex_table(
+        self,
+        n_bootstrap: int = 100,
+        confidence: float = 0.95,
+        caption: str = "Reconstruction Accuracies",
+        label: str = "tab:accuracies",
+        save_dir: Optional[str] = None,
+    ) -> str:
+        """
+        Generate LaTeX table with accuracy and selection accuracy for all reconstructors.
+
+        Args:
+            n_bootstrap: Number of bootstrap samples for confidence intervals
+            confidence: Confidence level for intervals
+            caption: Table caption
+            label: Table label for referencing
+
+        Returns:
+            LaTeX table string
+        """
+        config = PlotConfig(
+            n_bootstrap=n_bootstrap,
+            confidence=confidence,
+        )
+
+        # Collect results
+        results = []
+        for i, reconstructor in enumerate(self.reconstructors):
+            if isinstance(reconstructor, GroundTruthReconstructor):
+                continue
+
+            name = reconstructor.get_assignment_name()
+
+            # Compute accuracy with CI
+            acc_mean, acc_lower, acc_upper = self._bootstrap_accuracy(i, config)
+
+            # Compute selection accuracy with CI
+            sel_acc_mean, sel_acc_lower, sel_acc_upper = (
+                self._bootstrap_selection_accuracy(i, config)
+            )
+
+            results.append(
+                {
+                    "name": name,
+                    "accuracy": (acc_mean, acc_lower, acc_upper),
+                    "selection_accuracy": (sel_acc_mean, sel_acc_lower, sel_acc_upper),
+                }
+            )
+
+        # Generate LaTeX table
+        latex = []
+        latex.append(r"    \begin{tabular}{lcc}")
+        latex.append(r"        \toprule")
+        latex.append(r"        Method & Assignment Accuracy & Selection Accuracy \\")
+        latex.append(r"        \midrule")
+
+        for res in results:
+            name = res["name"]
+            acc_mean, acc_lower, acc_upper = res["accuracy"]
+            sel_mean, sel_lower, sel_upper = res["selection_accuracy"]
+
+            acc_str = (
+                f"${acc_mean:.4f}" +"_{-" +f"{acc_mean - acc_lower:.4f}"+ "}" +"^{+"+f"{acc_upper - acc_mean:.4f}" + "}$"
+            )
+            sel_str = (
+                f"${sel_mean:.4f}" +"_{-" +f"{sel_mean - sel_lower:.4f}"+ "}" +"^{+"+f"{sel_upper - sel_mean:.4f}" + "}$"
+            )
+
+            latex.append(f"        {name} & {acc_str} & {sel_str} \\\\")
+
+        latex.append(r"        \bottomrule")
+        latex.append(r"    \end{tabular}")
+
+        latex_str = "\n".join(latex)
+        file_name = "reconstruction_accuracies_table.tex"
+        if save_dir is not None:
+            file_name = os.path.join(save_dir, file_name)
+        with open(file_name, "w") as f:
+            f.write(latex_str)
+        print(f"LaTeX table saved to {file_name}")
+
+
+    def plot_binned_accuracy_quotients(
+        self,
+        feature_data_type: str,
+        feature_name: str,
+        fancy_feature_label: Optional[str] = None,
+        bins: int = 20,
+        xlims: Optional[Tuple[float, float]] = None,
+        n_bootstrap: int = 100,
+        confidence: float = 0.95,
+    ):
+        """
+        Plot binned quotient of assignment accuracy / selection accuracy vs. a feature.
+
+        The quotient indicates how well the assignment performs relative to just
+        selecting the correct jets (regardless of assignment to leptons).
+
+        Args:
+            feature_data_type: Type of feature data ('jet', 'lepton', 'met', etc.)
+            feature_name: Name of the feature to bin by
+            fancy_feature_label: Optional fancy label for the feature
+            bins: Number of bins
+            xlims: Optional x-axis limits
+            n_bootstrap: Number of bootstrap samples
+            confidence: Confidence level for intervals
+            show_errorbar: Whether to show error bars
+
+        Returns:
+            Tuple of (figure, axis)
+        """
+        config = PlotConfig(
+            confidence=confidence,
+            n_bootstrap=n_bootstrap,
+            show_errorbar=True,
+        )
+
+        # Extract feature data
+        feature_data = FeatureExtractor.extract_feature(
+            self.X_test,
+            self.config.feature_indices,
+            feature_data_type,
+            feature_name,
+        )
+
+        # Create bins
+        bin_edges = BinningUtility.create_bins(feature_data, bins, xlims)
+        binning_mask = BinningUtility.create_binning_mask(feature_data, bin_edges)
+        bin_centers = BinningUtility.compute_bin_centers(bin_edges)
+
+        # Get event weights
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+
+        # Compute binned quotients for each reconstructor
+        print(f"\nComputing binned accuracy quotients for {feature_name}...")
+        binned_quotients = []
+        names = []
+
+        for i, reconstructor in enumerate(self.reconstructors):
+            if isinstance(reconstructor, GroundTruthReconstructor):
+                continue
+
+            # Get per-event accuracies
+            assignment_acc = self.evaluate_accuracy(i, per_event=True)
+            selection_acc = self.evaluate_selection_accuracy(i, per_event=True)
+
+            mean_quotient, lower, upper = BootstrapCalculator.compute_binned_function_bootstrap(
+                binning_mask,
+                event_weights,
+                (assignment_acc, selection_acc),
+                lambda x, y: np.divide(x,y, out=np.zeros_like(x), where=y != 0),
+                config.n_bootstrap,
+                config.confidence,
+                statistic="mean",
+            )
+            binned_quotients.append((mean_quotient, lower, upper))
+
+            names.append(reconstructor.get_assignment_name())
+
+        # Compute bin counts
+        bin_counts = np.sum(
+            event_weights.reshape(1, -1) * binning_mask, axis=1
+        ) / np.sum(event_weights)
+
+        # Plot
+        feature_label = fancy_feature_label or feature_name
+        fig, ax = plt.subplots(figsize=(10, 6))
+        color_map = plt.get_cmap("tab10")
+        fmt_map = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '8']
+
+        for i, (name, (mean, lower, upper)) in enumerate(zip(names, binned_quotients)):
+            ax.errorbar(
+                bin_centers,
+                mean,
+                yerr=[mean - lower, upper - mean],
+                fmt=fmt_map[i % len(fmt_map)],
+                color=color_map(i % 10),
+                label=name,
+                linestyle="None",
+            )
+
+        ax.plot(
+            bin_centers, 0.5 * np.ones_like(bin_centers), linestyle="--", color="black", label="Random Assignment"
+        )
+
+        ax.set_xlabel(feature_label)
+        ax.set_ylabel('Assignment Accuracy / Selection Accuracy')
+        ax.legend()
+        ax.grid(alpha=0.3)
+        ax.set_title(f"Binned Accuracy Quotients vs {feature_label} ({config.confidence*100:.0f}% CI)")
+        AccuracyPlotter._add_count_histogram(
+            ax, bin_centers, bin_counts, bin_edges
+        )
+        plt.tight_layout()
+
+        return fig, ax

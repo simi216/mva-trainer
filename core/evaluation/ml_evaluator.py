@@ -8,11 +8,13 @@ from copy import deepcopy
 from .evaluator_base import (
     BootstrapCalculator,
     AccuracyCalculator,
+    SelectionAccuracyCalculator,
     NeutrinoDeviationCalculator,
 )
 from ..reconstruction import MLReconstructorBase
 from typing import List, Union
 import time
+import os
 
 
 class FeatureImportanceCalculator:
@@ -30,7 +32,6 @@ class FeatureImportanceCalculator:
         self.y_test = y_test
         self.config = reconstructor.config
         self.padding_value = reconstructor.padding_value
-
 
     def compute_permutation_importance(
         self, num_repeats: int = 5, evaluate_regression=False
@@ -143,7 +144,9 @@ class FeatureImportanceCalculator:
                 )
                 assignment_performance = -(
                     AccuracyCalculator.compute_accuracy(
-                        permutated_assignment_pred, self.y_test["assignment_labels"], per_event=False
+                        permutated_assignment_pred,
+                        self.y_test["assignment_labels"],
+                        per_event=False,
                     )
                     - assignment_baseline_performance
                 )
@@ -179,12 +182,8 @@ class MLEvaluator:
         self.reconstructors = (
             reconstructor if isinstance(reconstructor, list) else [reconstructor]
         )
-        self.X_test = (
-            X_test if isinstance(X_test, list) else [X_test]
-        )
-        self.y_test = (
-            y_test if isinstance(y_test, list) else [y_test]
-        )
+        self.X_test = X_test if isinstance(X_test, list) else [X_test]
+        self.y_test = y_test if isinstance(y_test, list) else [y_test]
 
         # Store configuration from first reconstructor (for backward compatibility)
         first_reconstructor = self.reconstructors[0]
@@ -206,7 +205,6 @@ class MLEvaluator:
             )
             for idx, rec in enumerate(self.reconstructors)
         ]
-
 
     def plot_training_history(self, save_path: Optional[str] = None):
         """Plot training and validation loss/accuracy over epochs for all models."""
@@ -236,15 +234,21 @@ class MLEvaluator:
         for idx, reconstructor in enumerate(self.reconstructors):
             history = reconstructor.history
             if not reconstructor.perform_regression:
-                    model_name = reconstructor.get_assignment_name()
+                model_name = reconstructor.get_assignment_name()
             else:
                 model_name = reconstructor.get_full_reco_name()
 
             axes[0].plot(
-                history.history["loss"], label=f"{model_name} (Train)", linestyle="-", color=color_map(idx)
+                history.history["loss"],
+                label=f"{model_name} (Train)",
+                linestyle="-",
+                color=color_map(idx),
             )
             axes[0].plot(
-                history.history["val_loss"], label=f"{model_name} (Val)", linestyle="--", color=color_map(idx)
+                history.history["val_loss"],
+                label=f"{model_name} (Val)",
+                linestyle="--",
+                color=color_map(idx),
             )
 
         axes[0].set_title("Model Loss Comparison")
@@ -257,25 +261,25 @@ class MLEvaluator:
         for idx, reconstructor in enumerate(self.reconstructors):
             history = reconstructor.history
             if not reconstructor.perform_regression:
-                    model_name = reconstructor.get_assignment_name()
+                model_name = reconstructor.get_assignment_name()
             else:
                 model_name = reconstructor.get_full_reco_name()
             axes[1].plot(
                 history.history["accuracy"],
                 label=f"{model_name} (Train)",
                 linestyle="-",
-                color=color_map(idx)
+                color=color_map(idx),
             )
             axes[1].plot(
                 history.history["val_accuracy"],
                 label=f"{model_name} (Val)",
                 linestyle="--",
-                color=color_map(idx)
+                color=color_map(idx),
             )
 
         axes[1].set_title("Model Accuracy Comparison")
         axes[1].set_xlabel("Epoch")
-        axes[1].set_ylabel("Accuracy")
+        axes[1].set_ylabel("Assignment Accuracy")
         axes[1].legend()
         axes[1].grid(True, alpha=0.3)
 
@@ -292,13 +296,13 @@ class MLEvaluator:
                         history.history["regression_loss"],
                         label=f"{model_name} (Train)",
                         linestyle="-",
-                        color=color_map(idx)
+                        color=color_map(idx),
                     )
                     axes[2].plot(
                         history.history["val_regression_loss"],
                         label=f"{model_name} (Val)",
                         linestyle="--",
-                        color=color_map(idx)
+                        color=color_map(idx),
                     )
 
             axes[2].set_title("Regression Loss Comparison")
@@ -320,13 +324,13 @@ class MLEvaluator:
                         history.history["regression_deviation"],
                         label=f"{model_name} (Train)",
                         linestyle="-",
-                        color=color_map(idx)
+                        color=color_map(idx),
                     )
                     axes[3].plot(
                         history.history["val_regression_deviation"],
                         label=f"{model_name} (Val)",
                         linestyle="--",
-                        color=color_map(idx)
+                        color=color_map(idx),
                     )
 
             axes[3].set_title("Relative Regression Deviation Comparison")
@@ -374,7 +378,7 @@ class MLEvaluator:
         self,
         num_repeats: int = 10,
         save_dir: Optional[str] = None,
-        rename_features : Optional[callable] = None,
+        rename_features: Optional[callable] = None,
     ):
         """
         Plot feature importance scores for all models.
@@ -393,7 +397,6 @@ class MLEvaluator:
                 for feature_name in self.feature_indices[feature_type]:
                     new_name = rename_features(feature_name)
                     print(f"  {feature_name} -> {new_name}")
-
 
         for idx, (reconstructor, calc) in enumerate(
             zip(self.reconstructors, self.feature_importance_calcs)
@@ -438,13 +441,13 @@ class MLEvaluator:
                 fig, ax = plt.subplots(figsize=(6, 6))
                 ax.barh(features, scores, color="skyblue")
                 ax.set_xlabel("Importance Score")
-                ax.set_title(f"Feature Importance - {model_name}")
+                #ax.set_title(f"Feature Importance - {model_name}")
                 ax.invert_yaxis()
                 ax.grid(True, alpha=0.3, axis="x")
                 fig.tight_layout()
 
                 if save_dir:
-                    save_path = f"{save_dir}/{model_name}_feature_importance.png"
+                    save_path = f"{save_dir}/{model_name}_feature_importance.pdf"
                     fig.savefig(save_path, dpi=300, bbox_inches="tight")
                     print(f"Saved feature importance plot to {save_path}")
 
@@ -492,7 +495,7 @@ class MLEvaluator:
                 fig.tight_layout()
 
                 if save_dir:
-                    save_path = f"{save_dir}/{model_name}_feature_importance.png"
+                    save_path = f"{save_dir}/{model_name}_feature_importance.pdf"
                     fig.savefig(save_path, dpi=300, bbox_inches="tight")
                     print(f"Saved feature importance plot to {save_path}")
 
@@ -500,13 +503,12 @@ class MLEvaluator:
 
         return results
 
-
     def evaluate_inference_time(
         self,
         num_samples: Optional[int] = None,
         num_warmup: int = 10,
         num_iterations: int = 100,
-        ) -> dict:
+    ) -> dict:
         """
         Evaluate inference time for all models using the same number of samples.
 
@@ -524,19 +526,21 @@ class MLEvaluator:
         if num_samples is None:
             # Use minimum dataset size to ensure all models can be tested equally
             min_samples = min(
-            len(X["jet"]) if "jet" in X else len(next(iter(X.values())))
-            for X in self.X_test
+                len(X["jet"]) if "jet" in X else len(next(iter(X.values())))
+                for X in self.X_test
             )
             num_samples = min_samples
             print(f"Using {num_samples} samples for inference time evaluation")
         else:
             # Verify all datasets have enough samples
             for idx, X in enumerate(self.X_test):
-                dataset_size = len(X["jet"]) if "jet" in X else len(next(iter(X.values())))
+                dataset_size = (
+                    len(X["jet"]) if "jet" in X else len(next(iter(X.values())))
+                )
                 if dataset_size < num_samples:
                     raise ValueError(
-                    f"Dataset {idx} has only {dataset_size} samples, "
-                    f"but {num_samples} were requested"
+                        f"Dataset {idx} has only {dataset_size} samples, "
+                        f"but {num_samples} were requested"
                     )
 
         results = {}
@@ -545,7 +549,7 @@ class MLEvaluator:
             if not reconstructor.perform_regression:
                 model_name = reconstructor.get_assignment_name()
             else:
-                model_name = reconstructor.get_full_reco_name()            
+                model_name = reconstructor.get_full_reco_name()
             print(f"\nEvaluating inference time for {model_name}...")
 
             # Prepare test subset with exactly num_samples
@@ -570,19 +574,19 @@ class MLEvaluator:
             # Calculate statistics
             times = np.array(times)
             results[model_name] = {
-            "mean_time": np.mean(times),
-            "std_time": np.std(times),
-            "median_time": np.median(times),
-            "min_time": np.min(times),
-            "max_time": np.max(times),
-            "num_samples": num_samples,
-            "time_per_sample": np.mean(times) / num_samples,
+                "mean_time": np.mean(times),
+                "std_time": np.std(times),
+                "median_time": np.median(times),
+                "min_time": np.min(times),
+                "max_time": np.max(times),
+                "num_samples": num_samples,
+                "time_per_sample": np.mean(times) / num_samples,
             }
 
             print(f"  Mean time: {results[model_name]['mean_time']*1000:.2f} ms")
             print(f"  Std time: {results[model_name]['std_time']*1000:.2f} ms")
             print(
-            f"  Time per sample: {results[model_name]['time_per_sample']*1000:.4f} ms"
+                f"  Time per sample: {results[model_name]['time_per_sample']*1000:.4f} ms"
             )
 
         return results
@@ -624,7 +628,9 @@ class MLEvaluator:
         # Plot 1: Total inference time
         ax1.bar(model_names, mean_times, yerr=std_times, capsize=5, color="steelblue")
         ax1.set_ylabel("Time (ms)")
-        ax1.set_title(f"Total Inference Time ({results[model_names[0]]['num_samples']} samples)")
+        ax1.set_title(
+            f"Total Inference Time ({results[model_names[0]]['num_samples']} samples)"
+        )
         ax1.grid(True, alpha=0.3, axis="y")
         ax1.tick_params(axis="x", rotation=45)
 
@@ -642,7 +648,7 @@ class MLEvaluator:
             print(f"\nInference time comparison plot saved to {save_path}")
 
         return fig, (ax1, ax2)
-    
+
     def evaluate_model_parameters(self) -> dict:
         """
         Evaluate the number of parameters for all models.
@@ -656,22 +662,24 @@ class MLEvaluator:
             if not reconstructor.perform_regression:
                 model_name = reconstructor.get_assignment_name()
             else:
-                model_name = reconstructor.get_full_reco_name()            # Get total and trainable parameters
+                model_name = (
+                    reconstructor.get_full_reco_name()
+                )  # Get total and trainable parameters
             total_params = reconstructor.model.count_params()
-            
+
             # Count trainable parameters
             trainable_params = sum(
                 np.prod(w.shape) for w in reconstructor.model.trainable_weights
             )
-            
+
             non_trainable_params = total_params - trainable_params
-            
+
             results[model_name] = {
                 "total_params": total_params,
                 "trainable_params": trainable_params,
                 "non_trainable_params": non_trainable_params,
             }
-            
+
             print(f"\n{model_name}:")
             print(f"  Total parameters: {total_params:,}")
             print(f"  Trainable parameters: {trainable_params:,}")
@@ -737,3 +745,104 @@ class MLEvaluator:
             print(f"\nModel parameters comparison plot saved to {save_path}")
 
         return fig, ax
+
+    def save_accuracy_latex_table(
+        self,
+        n_bootstrap: int = 100,
+        confidence: float = 0.95,
+        caption: str = "Reconstruction Accuracies",
+        label: str = "tab:accuracies",
+        save_dir: Optional[str] = None,
+    ) -> str:
+        """
+        Save reconstruction accuracies as a LaTeX table.
+
+        Args:
+            n_bootstrap: Number of bootstrap samples for confidence intervals
+            confidence: Confidence level for intervals
+            caption: Table caption
+            label: Table label
+            save_dir: Directory to save the LaTeX file (optional)
+        Returns:
+            LaTeX table as a string
+        """
+        results = []
+        for idx, reconstructor in enumerate(self.reconstructors):
+            if not reconstructor.perform_regression:
+                model_name = reconstructor.get_assignment_name()
+            else:
+                model_name = reconstructor.get_full_reco_name()  # Get predictions
+            assignment_pred, _ = reconstructor.complete_forward_pass(self.X_test[idx])
+
+            # Compute accuracy with bootstrap
+            acc_mean, acc_lower, acc_upper = BootstrapCalculator.compute_bootstrap_ci(
+                data=AccuracyCalculator.compute_accuracy(
+                    true_labels=self.y_test[idx]["assignment_labels"],
+                    predictions=assignment_pred,
+                    per_event=True,
+                ),
+                n_bootstrap=n_bootstrap,
+                confidence=confidence,
+            )
+            sel_acc_mean, sel_acc_lower, sel_acc_upper = (
+                BootstrapCalculator.compute_bootstrap_ci(
+                    data=SelectionAccuracyCalculator.compute_selection_accuracy(
+                        true_labels=self.y_test[idx]["assignment_labels"],
+                        predictions=assignment_pred,
+                        per_event=True,
+                    ),
+                    n_bootstrap=n_bootstrap,
+                    confidence=confidence,
+                )
+            )
+            results.append(
+                {
+                    "name": model_name,
+                    "accuracy": (acc_mean, acc_lower, acc_upper),
+                    "selection_accuracy": (sel_acc_mean, sel_acc_lower, sel_acc_upper),
+                }
+            )
+
+        # Generate LaTeX table
+        latex = []
+        latex.append(r"    \begin{tabular}{lcc}")
+        latex.append(r"        \toprule")
+        latex.append(r"        Method & Assignment Accuracy & Selection Accuracy \\")
+        latex.append(r"        \midrule")
+
+        for res in results:
+            name = res["name"]
+            acc_mean, acc_lower, acc_upper = res["accuracy"]
+            sel_mean, sel_lower, sel_upper = res["selection_accuracy"]
+
+            acc_str = (
+                f"${acc_mean:.4f}"
+                + "_{-"
+                + f"{acc_mean - acc_lower:.4f}"
+                + "}"
+                + "^{+"
+                + f"{acc_upper - acc_mean:.4f}"
+                + "}$"
+            )
+            sel_str = (
+                f"${sel_mean:.4f}"
+                + "_{-"
+                + f"{sel_mean - sel_lower:.4f}"
+                + "}"
+                + "^{+"
+                + f"{sel_upper - sel_mean:.4f}"
+                + "}$"
+            )
+
+            latex.append(f"        {name} & {acc_str} & {sel_str} \\\\")
+
+        latex.append(r"        \bottomrule")
+        latex.append(r"    \end{tabular}")
+
+        latex_str = "\n".join(latex)
+        file_name = "reconstruction_accuracies_table.tex"
+        if save_dir is not None:
+            file_name = os.path.join(save_dir, file_name)
+        with open(file_name, "w") as f:
+            f.write(latex_str)
+        print(f"LaTeX table saved to {file_name}")

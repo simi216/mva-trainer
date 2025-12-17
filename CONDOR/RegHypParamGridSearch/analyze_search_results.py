@@ -149,7 +149,7 @@ def plot_grid_search_results(df, output_dir):
     plt.ylabel(layer_label)
     plt.xlabel("Hidden Dimension")
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "grid_search_loss_heatmap.png"), dpi=150)
+    plt.savefig(os.path.join(output_dir, "grid_search_loss_heatmap.pdf"), dpi=150)
     plt.close()
 
     # 2. Heatmap of validation accuracy (if available)
@@ -167,7 +167,7 @@ def plot_grid_search_results(df, output_dir):
         plt.xlabel("Hidden Dimension")
         plt.tight_layout()
         plt.savefig(
-            os.path.join(output_dir, "grid_search_accuracy_heatmap.png"), dpi=150
+            os.path.join(output_dir, "grid_search_accuracy_heatmap.pdf"), dpi=150
         )
         plt.close()
 
@@ -186,7 +186,7 @@ def plot_grid_search_results(df, output_dir):
         plt.xlabel("Hidden Dimension")
         plt.tight_layout()
         plt.savefig(
-            os.path.join(output_dir, "grid_search_regression_error_heatmap.png"), dpi=150
+            os.path.join(output_dir, "grid_search_regression_error_heatmap.pdf"), dpi=150
         )
         plt.close()
 
@@ -205,7 +205,7 @@ def plot_grid_search_results(df, output_dir):
         plt.xlabel("Hidden Dimension")
         plt.tight_layout()
         plt.savefig(
-            os.path.join(output_dir, "grid_search_relative_deviation_heatmap.png"), dpi=150
+            os.path.join(output_dir, "grid_search_relative_deviation_heatmap.pdf"), dpi=150
         )
         plt.close()
 
@@ -223,7 +223,7 @@ def plot_grid_search_results(df, output_dir):
         plt.ylabel(layer_label)
         plt.xlabel("Hidden Dimension")
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, "grid_search_params_heatmap.png"), dpi=150)
+        plt.savefig(os.path.join(output_dir, "grid_search_params_heatmap.pdf"), dpi=150)
         plt.close()
 
     # 4. Bar plot of top models
@@ -261,7 +261,7 @@ def plot_grid_search_results(df, output_dir):
     ax2.invert_yaxis()
 
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "grid_search_top_models.png"), dpi=150)
+    plt.savefig(os.path.join(output_dir, "grid_search_top_models.pdf"), dpi=150)
     plt.close()
 
     # 5. Scatter plot: hidden_dim vs num_layers colored by loss
@@ -281,7 +281,7 @@ def plot_grid_search_results(df, output_dir):
     plt.title("Grid Search Results: Loss Landscape")
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "grid_search_scatter.png"), dpi=150)
+    plt.savefig(os.path.join(output_dir, "grid_search_scatter.pdf"), dpi=150)
     plt.close()
 
     # 6. Efficiency plot: Loss vs Parameters
@@ -350,7 +350,7 @@ def plot_grid_search_results(df, output_dir):
             plt.colorbar(scatter3, ax=axes[plot_idx], label="Hidden Dimension")
 
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, "grid_search_efficiency.png"), dpi=150)
+        plt.savefig(os.path.join(output_dir, "grid_search_efficiency.pdf"), dpi=150)
         plt.close()
 
 

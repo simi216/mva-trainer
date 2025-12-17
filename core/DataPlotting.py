@@ -96,7 +96,7 @@ class DataPlotter:
         ax.set_yticklabels(feature_names)
         ax.set_title("Feature Correlation Matrix", pad=20)
         fig.tight_layout()
-        fig.savefig(os.path.join(self.plots_dir, "feature_correlation_matrix.png"))
+        fig.savefig(os.path.join(self.plots_dir, "feature_correlation_matrix.pdf"))
         return fig, ax
 
     def register_data_cut(self, feature_type: str, feature_name: str, cut_function):

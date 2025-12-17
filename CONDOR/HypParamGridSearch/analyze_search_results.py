@@ -6,6 +6,11 @@ import seaborn as sns
 import re
 from glob import glob
 import argparse
+import sys
+import yaml
+
+sys.path.append("../../")
+import core  # Assuming core is a module in the project
 
 
 def parse_model_name(model_name):
@@ -16,9 +21,38 @@ def parse_model_name(model_name):
         return {
             "hidden_dim": int(match.group(1)),
             "num_layers": int(match.group(2)),
-            "num_heads": int(match.group(3)), 
+            "num_heads": int(match.group(3)),
         }
     return None
+
+
+def load_and_evaluate_model(model_dir, validation_data, data_config):
+    """Load a trained model and evaluate its performance."""
+    model = core.reconstruction.MLReconstructorBase(data_config, name="model")
+    model.load_model(os.path.join(model_dir, "model.keras"))
+    results = model.evaluate(validation_data)
+    return results
+
+
+def evaluate_all_models(models_dir, validation_data, data_config, model_type):
+    """Evaluate all models in the specified directory."""
+    evaluation_results = []
+    model_dirs = glob(os.path.join(models_dir, f"{model_type}_*"))
+
+    for model_dir in model_dirs:
+        if "HLF" in model_dir and "HLF" not in model_type:
+            continue  # Skip HLF models if not specified
+        model_name = os.path.basename(model_dir)
+        print(f"Evaluating model: {model_name}")
+        results = load_and_evaluate_model(model_dir, validation_data, data_config)
+        if results is not None:
+            hyperparams = parse_model_name(model_name)
+            if hyperparams is not None:
+                results.update(hyperparams)
+                results["model_name"] = model_name
+                evaluation_results.append(results)
+
+    return pd.DataFrame(evaluation_results)
 
 
 def collect_results(models_dir, model_type="Raw_Transformer_Assignment"):
@@ -26,7 +60,6 @@ def collect_results(models_dir, model_type="Raw_Transformer_Assignment"):
     results = []
     # Find all model directories
     model_dirs = glob(os.path.join(models_dir, f"{model_type}_*"))
-
 
     print(f"Looking for {model_type} models in {models_dir}...")
     for model_dir in model_dirs:
@@ -96,40 +129,40 @@ def plot_grid_search_results(df, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
     # 1. Heatmap of validation loss
-    plt.figure(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(10, 8))
     pivot_loss = df.pivot_table(
         values="best_val_loss", index="num_layers", columns="hidden_dim", aggfunc="mean"
     )
     sns.heatmap(pivot_loss, annot=True, fmt=".4f", cmap="viridis_r")
-    plt.title("Best Validation Loss by Hyperparameters")
-    plt.ylabel("Number of Layers")
-    plt.xlabel("Hidden Dimension")
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "grid_search_loss_heatmap.png"), dpi=150)
+    ax.set_title("Best Validation Loss by Hyperparameters")
+    ax.set_ylabel("Transformer Stack Size")
+    ax.set_xlabel("Embedding Dimension")
+    fig.tight_layout()
+    fig.savefig(os.path.join(output_dir, "grid_search_loss_heatmap.pdf"), dpi=150)
     plt.close()
 
     # 2. Heatmap of validation accuracy (if available)
-    if df["best_val_acc"].notna().any():
-        plt.figure(figsize=(10, 8))
+    if df["accuracy"].notna().any():
+        fig, ax = plt.subplots(figsize=(10, 8))
         pivot_acc = df.pivot_table(
-            values="best_val_acc",
+            values="accuracy",
             index="num_layers",
             columns="hidden_dim",
             aggfunc="mean",
         )
         sns.heatmap(pivot_acc, annot=True, fmt=".4f", cmap="viridis")
-        plt.title("Best Validation Accuracy by Hyperparameters")
-        plt.ylabel("Number of Layers")
-        plt.xlabel("Hidden Dimension")
-        plt.tight_layout()
-        plt.savefig(
-            os.path.join(output_dir, "grid_search_accuracy_heatmap.png"), dpi=150
+        ax.set_title("Best Validation Accuracy by Hyperparameters")
+        ax.set_ylabel("Transformer Stack Size")
+        ax.set_xlabel("Embedding Dimension")
+        fig.tight_layout()
+        fig.savefig(
+            os.path.join(output_dir, "grid_search_accuracy_heatmap.pdf"), dpi=150
         )
         plt.close()
 
     # 3. Heatmap of trainable parameters (if available)
     if df["trainable_params"].notna().any():
-        plt.figure(figsize=(10, 8))
+        fig, ax = plt.subplots(figsize=(10, 8))
         pivot_params = df.pivot_table(
             values="trainable_params",
             index="num_layers",
@@ -137,26 +170,24 @@ def plot_grid_search_results(df, output_dir):
             aggfunc="mean",
         )
         sns.heatmap(pivot_params, annot=True, fmt=".0f", cmap="YlOrRd")
-        plt.title("Trainable Parameters by Hyperparameters")
-        plt.ylabel("Number of Layers")
-        plt.xlabel("Hidden Dimension")
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, "grid_search_params_heatmap.png"), dpi=150)
+        ax.set_title("Trainable Parameters by Hyperparameters")
+        ax.set_ylabel("Transformer Stack Size")
+        ax.set_xlabel("Embedding Dimension")
+        fig.tight_layout()
+        fig.savefig(os.path.join(output_dir, "grid_search_params_heatmap.pdf"), dpi=150)
         plt.close()
-
 
     # 6. Efficiency plot: Loss vs Parameters
     if df["trainable_params"].notna().any():
-        plt.figure(figsize=(12, 6))
 
         # Create two subplots
-        fig, ax2 = plt.subplots(1, figsize=(16, 6))
+        fig, ax2 = plt.subplots(1, figsize=(8, 6))
 
         # Plot 2: Accuracy vs Parameters (if available)
-        if df["best_val_acc"].notna().any():
+        if df["accuracy"].notna().any():
             scatter2 = ax2.scatter(
                 df["trainable_params"] / 1e6,
-                df["best_val_acc"],
+                df["accuracy"],
                 c=df["hidden_dim"],
                 s=100,
                 cmap="viridis",
@@ -167,10 +198,10 @@ def plot_grid_search_results(df, output_dir):
             ax2.set_ylabel("Best Validation Accuracy")
             ax2.set_title("Model Efficiency: Accuracy vs Model Size")
             ax2.grid(True, alpha=0.3)
-            plt.colorbar(scatter2, ax=ax2, label="Hidden Dimension")
+            fig.colorbar(scatter2, ax=ax2, label="Embedding Dimension")
 
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, "grid_search_efficiency.png"), dpi=150)
+        fig.tight_layout()
+        fig.savefig(os.path.join(output_dir, "grid_search_efficiency.pdf"), dpi=150)
         plt.close()
 
 
@@ -197,11 +228,13 @@ def main():
     args = parse_args()
     model_type = args.model_type
     root_dir = args.root_dir
+    plt.rcParams.update({"font.size": 18})
 
     # Configuration
     ROOT_DIR = root_dir
     MODELS_DIR = ROOT_DIR
     OUTPUT_DIR = os.path.join(ROOT_DIR, "plots", "grid_search_analysis", model_type)
+    CONFIG_DIR = os.path.join(ROOT_DIR, "../config")
 
     print(f"Collecting results from grid search (directory {ROOT_DIR})...")
     results_df = collect_results(MODELS_DIR, model_type=model_type)
@@ -217,6 +250,38 @@ def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     results_df.to_csv(csv_path, index=False)
     print(f"Results saved to {csv_path}")
+
+    # Load and evaluate models on validation data
+    if "HLF" in model_type:
+        data_config_file = os.path.join(CONFIG_DIR, "workspace_config_HLF.yaml")
+    else:
+        data_config_file = os.path.join(CONFIG_DIR, "workspace_config.yaml")
+
+    data_config = core.get_load_config_from_yaml(data_config_file)
+    data_loader = core.DataPreprocessor(data_config)
+
+    with open(data_config_file, "r") as f:
+        config_dict = yaml.safe_load(f)
+
+    data_config = data_loader.load_from_npz(
+        config_dict["data_path"]["nominal"], max_events=2_000_000
+    )
+
+    validation_data, _ = data_loader.get_data()
+
+    print("\nEvaluating all models on validation data...")
+    eval_results_df = evaluate_all_models(
+        MODELS_DIR, validation_data, data_config=data_config, model_type=model_type
+    )
+
+    results_df.insert(
+        len(results_df.columns),
+        "accuracy",
+        eval_results_df.set_index("model_name")
+        .reindex(results_df["model_name"])["accuracy"]
+        .values,
+    )
+    print(results_df)
 
     # Print summary statistics
     print("\n" + "=" * 60)
@@ -246,35 +311,6 @@ def main():
     # Only include columns that exist and have data
     display_cols = [col for col in display_cols if col in results_df.columns]
     print(results_df.nsmallest(5, "best_val_loss")[display_cols].to_string(index=False))
-
-    # Print parameter efficiency analysis
-    if results_df["trainable_params"].notna().any():
-        print("\n" + "=" * 60)
-        print("MODEL EFFICIENCY ANALYSIS")
-        print("=" * 60)
-        print("\nSmallest model:")
-        smallest = results_df.loc[results_df["trainable_params"].idxmin()]
-        print(f"  Config: h{smallest['hidden_dim']}_l{smallest['num_layers']}")
-        print(f"  Parameters: {smallest['trainable_params']:,}")
-        print(f"  Val loss: {smallest['best_val_loss']:.6f}")
-
-        print("\nLargest model:")
-        largest = results_df.loc[results_df["trainable_params"].idxmax()]
-        print(f"  Config: h{largest['hidden_dim']}_l{largest['num_layers']}")
-        print(f"  Parameters: {largest['trainable_params']:,}")
-        print(f"  Val loss: {largest['best_val_loss']:.6f}")
-
-        print("\nBest efficiency (lowest loss per million parameters):")
-        results_df["loss_per_mparam"] = results_df["best_val_loss"] / (
-            results_df["trainable_params"] / 1e6
-        )
-        most_efficient = results_df.loc[results_df["loss_per_mparam"].idxmin()]
-        print(
-            f"  Config: h{most_efficient['hidden_dim']}_l{most_efficient['num_layers']}"
-        )
-        print(f"  Parameters: {most_efficient['trainable_params']:,}")
-        print(f"  Val loss: {most_efficient['best_val_loss']:.6f}")
-        print(f"  Efficiency: {most_efficient['loss_per_mparam']:.6f} loss/Mparam")
 
     # Create visualizations
     print("\nCreating visualizations...")

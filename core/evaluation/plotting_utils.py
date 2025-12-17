@@ -54,9 +54,9 @@ class AccuracyPlotter:
         )
         ax.set_xticks(x_pos)
         ax.set_xticklabels(names, rotation=45, ha="right")
-        ax.set_ylabel("Accuracy")
+        ax.set_ylabel("Assignment Accuracy")
         ax.set_title(
-            f"Accuracy of Jet Reconstructors ({config.confidence*100:.0f}% CI)"
+            f"Assignment Accuracy of Jet Reconstructors ({config.confidence*100:.0f}% CI)"
         )
         ax.set_ylim(0, 1)
         ax.grid(axis="y", alpha=config.alpha)
@@ -117,7 +117,7 @@ class AccuracyPlotter:
 
         # Configure main axes
         ax.set_xlabel(feature_label)
-        ax.set_ylabel("Accuracy")
+        ax.set_ylabel("Assignment accuracy")
         ax.set_ylim(0, 1)
         ax.set_xlim(bins[0], bins[-1])
         ax.grid(alpha=config.alpha)
@@ -127,7 +127,7 @@ class AccuracyPlotter:
         AccuracyPlotter._add_count_histogram(ax, bin_centers, bin_counts, bins)
 
         # Set title
-        title = f"Accuracy per Bin vs {feature_label}"
+        title = f"Assignment accuracy per Bin vs {feature_label}"
         if config.show_errorbar:
             title += f" ({config.confidence*100:.0f}% CI)"
         ax.set_title(title)
