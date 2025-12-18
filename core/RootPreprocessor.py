@@ -26,7 +26,6 @@ class PreprocessorConfig:
     """Configuration for ROOT file preprocessing."""
 
     # Input/Output
-    input_path: str
     tree_name: str = "reco"
 
     # Processing options
@@ -49,7 +48,8 @@ class DataSampleConfig:
     """Configuration for data sample preprocessing."""
     
     preprocessor_config: PreprocessorConfig
-    output_path: str
+    name: str
+    output_dir: str
     input_dir: str
     max_events: Optional[int] = None
     k_fold: Optional[int] = None  # For cross-validation splits
@@ -75,13 +75,13 @@ class RootPreprocessor:
         self.n_events_processed = 0
         self.n_events_passed = 0
 
-    def process(self):
+    def process(self, input_path: str):
         """Main processing method."""
         if self.config.verbose:
-            print(f"Processing ROOT file: {self.config.input_path}")
+            print(f"Processing ROOT file: {input_path}")
 
         # Load data
-        with uproot.open(self.config.input_path) as file:
+        with uproot.open(input_path) as file:
             tree = file[self.config.tree_name]
             events = tree.arrays(library="ak")
 
@@ -100,8 +100,7 @@ class RootPreprocessor:
 
         # Process events
         self.processed_data = self._process_events(events)
-
-        print(f"Processing complete.")
+        return self.processed_data
 
     def _preselection(self, events: ak.Array) -> np.ndarray:
         """
@@ -923,7 +922,6 @@ def preprocess_root_file(
 
 def preprocess_root_directory(
     config: DataSampleConfig,
-    verbose: bool = True,
 ):
     """
     Process all ROOT files in a directory.
@@ -941,26 +939,22 @@ def preprocess_root_directory(
     """
     data_collected = []
     input_dir = config.input_dir
-    output_file = os.path.join(config.output_dir, "data.npz")
+    output_file = os.path.join(config.output_dir, config.name + ".npz")
     max_events = config.max_events
 
     num_files = len(os.listdir(input_dir))
     print(f"Found {num_files} files in {input_dir}.\nStarting processing...\n\n")
     num_total_events = 0
+    preprocessor = RootPreprocessor(config.preprocessor_config)
     for file_index,filename in enumerate(os.listdir(input_dir)):
         print(f"Processing file {file_index + 1} of {num_files}...\n")
         if filename.endswith(".root"):
             input_path = os.path.join(input_dir, filename)
 
-            if verbose:
-                print(f"Processing file: {input_path}")
-
-                preprocessor = RootPreprocessor(config.preprocessor_config)
-                preprocessor.process()
-                data_collected.append(preprocessor.get_processed_data())
-                num_events = preprocessor.get_num_events()
-                num_total_events += num_events
-                print(f"Processed {num_events} events from {filename}. Total events so far: {num_total_events}\n\n")
+            data_collected.append(preprocessor.process(input_path))
+            num_events = preprocessor.get_num_events()
+            num_total_events += num_events
+            print(f"Processed {num_events} events from {filename}. Total events so far: {num_total_events}\n\n")
         if max_events is not None and num_total_events >= max_events:
             print(f"Reached maximum number of events: {max_events}. Stopping processing.")
             break
@@ -975,7 +969,7 @@ def preprocess_root_directory(
                 raise KeyError(f"Key '{key}' not found in one of the data dictionaries.")
         merged_data[key] = np.concatenate([data[key] for data in data_collected], axis=0)
 
+    print("Saving merged data to npz file...")
     np.savez_compressed(output_file, **merged_data)
-    if verbose:
-        print(f"Merged data saved to {output_file}")
+    print(f"Merged data saved to {output_file}")
 
