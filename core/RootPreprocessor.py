@@ -44,6 +44,16 @@ class PreprocessorConfig:
 
     padding_value: float = -999.0  # Padding value for missing data
 
+@dataclass
+class DataSampleConfig:
+    """Configuration for data sample preprocessing."""
+    
+    preprocessor_config: PreprocessorConfig
+    output_path: str
+    input_dir: str
+    max_events: Optional[int] = None
+    k_fold: Optional[int] = None  # For cross-validation splits
+
 
 class RootPreprocessor:
     """
@@ -440,12 +450,12 @@ class RootPreprocessor:
         n_jets = ak.to_numpy(n_jets).astype(np.int32)
 
         return {
-            "ordered_jet_pt": jet_pt_np,
-            "ordered_jet_eta": jet_eta_np,
-            "ordered_jet_phi": jet_phi_np,
-            "ordered_jet_e": jet_e_np,
-            "ordered_jet_b_tag": jet_btag_np,
-            "ordered_event_jet_truth_idx": event_jet_truth_idx,
+            "jet_pt": jet_pt_np,
+            "jet_eta": jet_eta_np,
+            "jet_phi": jet_phi_np,
+            "jet_e": jet_e_np,
+            "jet_b_tag": jet_btag_np,
+            "event_jet_truth_idx": event_jet_truth_idx,
             "N_jets": n_jets,
         }
 
@@ -498,7 +508,7 @@ class RootPreprocessor:
             Dictionary of derived features
         """
         n_events = len(events)
-        max_jets = jets["ordered_jet_pt"].shape[1]
+        max_jets = jets["jet_pt"].shape[1]
 
         # Lepton 4-vectors (vectorized)
         l1_pt = leptons["lep_pt"][:, 0:1]  # Shape (n_events, 1)
@@ -526,10 +536,10 @@ class RootPreprocessor:
             )
 
         # Jet 4-vectors
-        j_pt = jets["ordered_jet_pt"]  # Shape (n_events, max_jets)
-        j_eta = jets["ordered_jet_eta"]
-        j_phi = jets["ordered_jet_phi"]
-        j_e = jets["ordered_jet_e"]
+        j_pt = jets["jet_pt"]  # Shape (n_events, max_jets)
+        j_eta = jets["jet_eta"]
+        j_phi = jets["jet_phi"]
+        j_e = jets["jet_e"]
 
         # Convert to px, py, pz with overflow protection
         with np.errstate(over="ignore", invalid="ignore"):
@@ -597,8 +607,8 @@ class RootPreprocessor:
         l2_e   = leptons["lep_e"][:, 1]
 
         # --- select 2 b-jets or fallback leading jets ---
-        btag = jets["ordered_jet_b_tag"]
-        jet_pt = jets["ordered_jet_pt"]
+        btag = jets["jet_b_tag"]
+        jet_pt = jets["jet_pt"]
 
 
         # Score = large bonus if b-tagged + pT 
@@ -613,15 +623,15 @@ class RootPreprocessor:
         b1_idx, b2_idx = bjet_indices[:,0], bjet_indices[:,1]
 
         # --- extract jet 4-vectors ---
-        b1_pt  = jets["ordered_jet_pt"][rows, b1_idx]
-        b1_eta = jets["ordered_jet_eta"][rows, b1_idx]
-        b1_phi = jets["ordered_jet_phi"][rows, b1_idx]
-        b1_e   = jets["ordered_jet_e"][rows, b1_idx]
+        b1_pt  = jets["jet_pt"][rows, b1_idx]
+        b1_eta = jets["jet_eta"][rows, b1_idx]
+        b1_phi = jets["jet_phi"][rows, b1_idx]
+        b1_e   = jets["jet_e"][rows, b1_idx]
 
-        b2_pt  = jets["ordered_jet_pt"][rows, b2_idx]
-        b2_eta = jets["ordered_jet_eta"][rows, b2_idx]
-        b2_phi = jets["ordered_jet_phi"][rows, b2_idx]
-        b2_e   = jets["ordered_jet_e"][rows, b2_idx]
+        b2_pt  = jets["jet_pt"][rows, b2_idx]
+        b2_eta = jets["jet_eta"][rows, b2_idx]
+        b2_phi = jets["jet_phi"][rows, b2_idx]
+        b2_e   = jets["jet_e"][rows, b2_idx]
 
         # --- compute invariant mass ---
         b1_4 = lorentz_vector_array_from_pt_eta_phi_e(b1_pt, b1_eta, b1_phi, b1_e)
@@ -653,7 +663,6 @@ class RootPreprocessor:
         Returns:
             Dictionary of truth features
         """
-        n_events = len(events)
 
         # Extract truth top/anti-top 4-vectors
         truth_top_pt = ak.to_numpy(events.Ttbar_MC_t_afterFSR_pt)
@@ -774,7 +783,6 @@ class RootPreprocessor:
             "truth_tbar_lepton_eta": lep_tbar_eta,
             "truth_tbar_lepton_phi": lep_tbar_phi,
             "truth_tbar_lepton_e": lep_tbar_e,
-            
         }
 
     def _extract_nuflow_results(self, events: ak.Array) -> Dict[str, np.ndarray]:
@@ -859,6 +867,13 @@ class RootPreprocessor:
             Dictionary of processed features
         """
         return self.processed_data
+    
+    def get_num_events(self) -> int:
+        """Get the number of processed events."""
+        if self.processed_data:
+            first_key = next(iter(self.processed_data))
+            return len(self.processed_data[first_key])
+        return 0
 
 
 def preprocess_root_file(
@@ -907,15 +922,8 @@ def preprocess_root_file(
     return preprocessor.get_processed_data()
 
 def preprocess_root_directory(
-    input_dir: str,
-    output_file: str,
-    tree_name: str = "reco",
-    save_nu_flows: bool = True,
-    save_initial_parton_info: bool = True,
+    config: DataSampleConfig,
     verbose: bool = True,
-    max_jets: int = 10,
-    max_events: Optional[int] = None,
-    lepton_parton_match_format: str = "old",
 ):
     """
     Process all ROOT files in a directory.
@@ -932,6 +940,9 @@ def preprocess_root_directory(
         max_events: Maximum number of events to process (None for all)
     """
     data_collected = []
+    input_dir = config.input_dir
+    output_file = os.path.join(config.output_dir, "data.npz")
+    max_events = config.max_events
 
     num_files = len(os.listdir(input_dir))
     print(f"Found {num_files} files in {input_dir}.\nStarting processing...\n\n")
@@ -944,20 +955,10 @@ def preprocess_root_directory(
             if verbose:
                 print(f"Processing file: {input_path}")
 
-                config = PreprocessorConfig(
-                    input_path=input_path,
-                    tree_name=tree_name,
-                    save_nu_flows=save_nu_flows,
-                    save_initial_parton_info=save_initial_parton_info,
-                    verbose=verbose,
-                    max_saved_jets=max_jets,
-                    lepton_parton_match_format=lepton_parton_match_format,
-                )
-
-                preprocessor = RootPreprocessor(config)
+                preprocessor = RootPreprocessor(config.preprocessor_config)
                 preprocessor.process()
                 data_collected.append(preprocessor.get_processed_data())
-                num_events = len(preprocessor.get_processed_data()["lep_pt"])
+                num_events = preprocessor.get_num_events()
                 num_total_events += num_events
                 print(f"Processed {num_events} events from {filename}. Total events so far: {num_total_events}\n\n")
         if max_events is not None and num_total_events >= max_events:

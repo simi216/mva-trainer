@@ -16,10 +16,10 @@ class FeatureConcatRNN(FFMLRecoBase):
             print("FeatureConcatRNN is designed for classification tasks; regression targets will be ignored.")
         super().__init__(config, assignment_name=name, perform_regression=False)
 
-    def build_model(self, hidden_dim, num_layers, dropout_rate, recurrent_type="lstm",input_as_four_vector=True):
+    def build_model(self, hidden_dim, num_layers, dropout_rate, recurrent_type="lstm"):
 
         # Input layers
-        jet_inputs, lep_inputs, met_inputs, jet_mask = self._prepare_inputs(input_as_four_vector=input_as_four_vector)
+        jet_inputs, lep_inputs, met_inputs, jet_mask = self._prepare_inputs()
 
         flatted_met_inputs = keras.layers.Flatten()(met_inputs)
         flatted_lepton_inputs = keras.layers.Flatten()(lep_inputs)

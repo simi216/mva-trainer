@@ -22,5 +22,6 @@ bin/**
 preprocessing/obj
 reco_tree.txt
 models/
+legacy_models/
 .DS_Store
 **.npz

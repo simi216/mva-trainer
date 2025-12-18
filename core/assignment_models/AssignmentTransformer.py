@@ -10,7 +10,6 @@ from core.components import (
     MLP,
     TemporalSoftmax,
     JetLeptonAssignment,
-    ComputeHighLevelFeatures,
 )
 
 from core import DataConfig
@@ -27,7 +26,7 @@ class CrossAttentionModel(FFMLRecoBase):
         num_layers,
         num_heads=8,
         dropout_rate=0.1,
-        input_as_four_vector=True,
+        log_variables=False,
     ):
         """
         Builds the Assignment Transformer model.
@@ -40,14 +39,12 @@ class CrossAttentionModel(FFMLRecoBase):
             keras.Model: The constructed Keras model.
         """
         # Input layers
-        normed_inputs, masks = self._prepare_inputs(
-            input_as_four_vector=True)
+        normed_inputs, masks = self._prepare_inputs(log_variables=log_variables)
 
         normed_jet_inputs = normed_inputs["jet_inputs"]
         normed_lep_inputs = normed_inputs["lepton_inputs"]
         normed_met_inputs = normed_inputs["met_inputs"]
         jet_mask = masks["jet_mask"]
-
 
         flatted_met_inputs = keras.layers.Flatten()(normed_met_inputs)
 
@@ -84,7 +81,7 @@ class CrossAttentionModel(FFMLRecoBase):
         # Transformer layers
         jet_self_attn = jet_embedding
         num_encoder_layers = num_layers // 2
-        num_decoder_layers = num_layers - num_encoder_layers
+        num_decoder_layers = num_layers // 2
 
         for i in range(num_encoder_layers):
             jet_self_attn = SelfAttentionBlock(
@@ -93,9 +90,16 @@ class CrossAttentionModel(FFMLRecoBase):
                 dropout_rate=dropout_rate,
                 name=f"jets_self_attention_{i}",
             )(jet_self_attn, mask=jet_mask)
+            lep_self_attn = SelfAttentionBlock(
+                num_heads=num_heads,
+                key_dim=hidden_dim,
+                dropout_rate=dropout_rate,
+                name=f"leps_self_attention_{i}",
+            )(lep_embedding)
 
-        leptons_attent_jets = lep_embedding
+        leptons_attent_jets = lep_self_attn
         jets_attent_leptons = jet_self_attn
+
         for i in range(num_decoder_layers):
             leptons_attent_jets = MultiHeadAttentionBlock(
                 num_heads=num_heads,
@@ -118,6 +122,20 @@ class CrossAttentionModel(FFMLRecoBase):
                 key_mask=None,
                 query_mask=jet_mask,
             )
+
+        for i in range(num_decoder_layers):
+            leptons_attent_jets = SelfAttentionBlock(
+                num_heads=num_heads,
+                key_dim=hidden_dim,
+                dropout_rate=dropout_rate if i < num_decoder_layers - 1 else 0.0,
+                name=f"leps_self_attention_{i}",
+            )(leptons_attent_jets)
+            jets_attent_leptons = SelfAttentionBlock(
+                num_heads=num_heads,
+                key_dim=hidden_dim,
+                dropout_rate=dropout_rate if i < num_decoder_layers - 1 else 0.0,
+                name=f"jets_self_attention_2_{i}",
+            )(jets_attent_leptons, mask=jet_mask)
 
         # Output layers
         jet_assignment_probs = JetLeptonAssignment(name="assignment", dim=hidden_dim)(
@@ -145,8 +163,9 @@ class FeatureConcatTransformer(FFMLRecoBase):
         num_layers,
         dropout_rate,
         num_heads=8,
-        compute_HLF=False,
-        use_global_event_features = False,
+        compute_HLF=True,
+        use_global_event_features=False,
+        log_variables=False,
     ):
         """
         Builds the Assignment Transformer model.
@@ -160,10 +179,10 @@ class FeatureConcatTransformer(FFMLRecoBase):
         """
         # Input layers
         normed_inputs, masks = self._prepare_inputs(
-            input_as_four_vector=True,
             compute_HLF=compute_HLF,
-            log_variables=False,
-            use_global_event_features=use_global_event_features)
+            log_variables=log_variables,
+            use_global_event_features=use_global_event_features,
+        )
         normed_jet_inputs = normed_inputs["jet_inputs"]
         normed_lep_inputs = normed_inputs["lepton_inputs"]
         normed_met_inputs = normed_inputs["met_inputs"]
@@ -171,14 +190,18 @@ class FeatureConcatTransformer(FFMLRecoBase):
 
         if compute_HLF:
             normed_HLF_inputs = normed_inputs["hlf_inputs"]
-            flat_normed_HLF_inputs = keras.layers.Reshape((self.max_jets,-1))(normed_HLF_inputs)
+            flat_normed_HLF_inputs = keras.layers.Reshape((self.max_jets, -1))(
+                normed_HLF_inputs
+            )
             normed_jet_inputs = keras.layers.Concatenate(axis=-1)(
                 [normed_jet_inputs, flat_normed_HLF_inputs]
             )
 
         if self.config.has_global_event_features:
             normed_global_event_inputs = normed_inputs["global_event_inputs"]
-            flatted_global_event_inputs = keras.layers.Flatten()(normed_global_event_inputs)
+            flatted_global_event_inputs = keras.layers.Flatten()(
+                normed_global_event_inputs
+            )
             # Add global event features to jets
             global_event_repeated_jets = keras.layers.RepeatVector(self.max_jets)(
                 flatted_global_event_inputs
@@ -187,11 +210,8 @@ class FeatureConcatTransformer(FFMLRecoBase):
                 [normed_jet_inputs, global_event_repeated_jets]
             )
 
-
         flatted_met_inputs = keras.layers.Flatten()(normed_met_inputs)
         flatted_lepton_inputs = keras.layers.Flatten()(normed_lep_inputs)
-
-
 
         # Concat met and lepton features to each jet
         met_repeated_jets = keras.layers.RepeatVector(self.max_jets)(flatted_met_inputs)

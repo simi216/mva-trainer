@@ -31,12 +31,6 @@ def parse_args():
         default="FeatureConcatTransformer",
         help="Model architecture to use (default: FeatureConcatTransformer)",
     )
-    parser.add_argument(
-        "--use_HLF",
-        action="store_true",
-        help="Whether to use high-level features in the model",
-    )
-
     # Optional hyperparameters with defaults
     parser.add_argument(
         "--dropout_rate", type=float, default=0.1, help="Dropout rate (default: 0.1)"
@@ -117,7 +111,7 @@ def main():
 
     # Load data configuration
     config_dir = os.path.join(args.root_dir, "config")
-    CONFIG_PATH = os.path.join(config_dir, "workspace_config.yaml") if not args.use_HLF else os.path.join(config_dir, "workspace_config_HLF.yaml")
+    CONFIG_PATH = os.path.join(config_dir, "workspace_config.yaml")
 
     if not os.path.exists(CONFIG_PATH):
         raise FileNotFoundError(f"Data configuration file not found: {CONFIG_PATH}")
@@ -126,8 +120,6 @@ def main():
     # Create model name with hyperparameters
     MODEL_NAME = (
         f"{args.architecture}_d{args.hidden_dim}_l{args.num_layers}_h{args.num_heads}"
-    ) if not args.use_HLF else (
-        f"{args.architecture}_HLF_d{args.hidden_dim}_l{args.num_layers}_h{args.num_heads}"
     )
 
     # Setup directories
@@ -170,7 +162,7 @@ def main():
             num_layers=args.num_layers,
             num_heads=args.num_heads,
             dropout_rate=args.dropout_rate,
-            input_as_four_vector=True,
+            log_variables=True,
         )
     elif args.architecture == "FeatureConcatRNN":
         Model = Models.FeatureConcatRNN(config, name="RNN")
@@ -178,7 +170,6 @@ def main():
             hidden_dim=args.hidden_dim,
             num_layers=args.num_layers,
             dropout_rate=args.dropout_rate,
-            input_as_four_vector=True,
         )
     elif args.architecture == "CrossAttentionTransformer":
         Model = Models.CrossAttentionModel(config, name="RNN")
@@ -187,7 +178,6 @@ def main():
             num_layers=args.num_layers,
             num_heads=args.num_heads,
             dropout_rate=args.dropout_rate,
-            input_as_four_vector=True,
         )
     else:
         raise ValueError(f"Unknown architecture: {args.architecture}")

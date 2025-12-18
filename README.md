@@ -21,7 +21,7 @@ This repository contains a standalone analysis framework for training and evalua
 
 ## Feature Overview
 
-- **Preprocessing**: The preprocessing is now done entirely in **pure Python**, replacing the previous C++ implementation. The preprocessing pipeline is defined in `core/RootPreprocessor.py` and can output to either ROOT or NPZ format for fast I/O. See [Preprocessing](#preprocessing) for details.
+- **Preprocessing**: The preprocessing pipeline is defined in `core/RootPreprocessor.py` and can output to either ROOT or NPZ format for fast I/O. See [Preprocessing](#preprocessing) for details.
 - **Data Loading**: The data loading and preprocessing is done using the `DataPreprocessor` class, which is defined in the `core/DataLoader.py` file. This class is used to load the data from preprocessed files and arrange it in a format that can be used for training and evaluation.
 - **Reconstruction Models**: The reconstruction models are defined in the `core/reconstruction` directory. The base class for all reconstruction models is the `BaseReconstructor` class, which is defined in the `core/reconstruction/Reconstruction.py` file. Machine learning-based reconstruction models are to be implemented by inheriting from the `FFMLRecoBase` class, while baseline reconstruction models are to be implemented by inheriting from the `BaselineReconstructor` class.
 - **Model Training**: The training of the models is handled by the `FFMLRecoBase` class which provides methods for training and evaluating machine learning-based reconstruction models.
@@ -30,23 +30,9 @@ This repository contains a standalone analysis framework for training and evalua
 - **Condor Integration**: The framework includes integration with the Condor job scheduler for distributed training and evaluation. The Condor scripts are located in the `CONDOR` directory.
 
 ## Preprocessing
-The preprocessing is now implemented in **pure Python** (no C++ compilation required!) and is defined in `core/RootPreprocessor.py`. The Python implementation provides all functionality of the previous C++ preprocessor plus additional features like NPZ output format for faster I/O.
+The preprocessing is now implemented in **pure Python**  and is defined in `core/RootPreprocessor.py`. The Python implementation provides all functionality of the previous C++ preprocessor plus additional features like NPZ output format for faster I/O.
 
 ### Quick Start
-
-```bash
-# Preprocess to ROOT format (compatible with existing workflows)
-python scripts/preprocess_root.py input.root output.root --tree reco
-
-# Preprocess to NPZ format (recommended for ML workflows - 10-100x faster I/O)
-python scripts/preprocess_root.py input.root output.npz --format npz
-
-# Include NuFlow results
-python scripts/preprocess_root.py input.root output.npz --format npz --nu-flows
-
-# Include initial parton information
-python scripts/preprocess_root.py input.root output.root --initial-parton-info
-```
 
 ### Features
 
@@ -79,16 +65,6 @@ preprocessor.load_from_npz("preprocessed_data.npz")
 
 For detailed preprocessing documentation, see [`scripts/README_PREPROCESSING.md`](scripts/README_PREPROCESSING.md).
 
-### Advantages Over C++ Implementation
-
-- ✅ **No compilation required** - works immediately
-- ✅ **Easier to modify** - pure Python code
-- ✅ **Better integration** - seamless Python ML pipeline
-- ✅ **NPZ format support** - 10-100x faster I/O
-- ✅ **Better error handling** - informative error messages
-- ✅ **Cross-platform** - works anywhere Python runs
-
-**Note**: The `preprocessing/` directory with C++ code is kept for reference but is no longer required for the workflow.
 
 ## Data Loading
 The `DataPreprocessor` class (in `core/DataLoader.py`) handles loading preprocessed data for training and evaluation. It requires a `LoadConfig` that specifies which features to load from NPZ files and how to interpret them. The DataLoader automatically detects whether data is in flat format (from RootPreprocessor) or structured format and handles the conversion transparently.
@@ -105,7 +81,7 @@ load_config = LoadConfig(
     lepton_features=['pt', 'eta', 'phi', 'e'],
     met_features=[],
     non_training_features=['truth_ttbar_mass', 'truth_top_mass'],
-    jet_truth_label='ordered_event_jet_truth_idx',
+    jet_truth_label='event_jet_truth_idx',
     lepton_truth_label='event_lepton_truth_idx',
     max_jets=10,
     NUM_LEPTONS=2,
@@ -136,7 +112,7 @@ X_train, y_train, X_test, y_test = data_loader.split_data(test_size=0.2)
 
 The DataLoader automatically handles two input formats:
 
-1. **Flat format** (from RootPreprocessor): Keys like `lep_pt`, `ordered_jet_eta`
+1. **Flat format** (from RootPreprocessor): Keys like `lep_pt`, `jet_eta`
    - Automatically groups by particle type based on LoadConfig feature names
    - Builds truth labels from configured truth label keys
    - Constructs regression targets from configured momentum features
@@ -167,7 +143,7 @@ from core.Configs import LoadConfig
 load_config = LoadConfig(
     jet_features=['pt', 'eta', 'phi', 'e', 'b'],
     lepton_features=['pt', 'eta', 'phi', 'e'],
-    jet_truth_label='ordered_event_jet_truth_idx',
+    jet_truth_label='event_jet_truth_idx',
     lepton_truth_label='event_lepton_truth_idx',
     max_jets=10,
     NUM_LEPTONS=2,
@@ -237,8 +213,6 @@ Note: So far, only models providing assignments as output can be exported to ONN
 ### Hyperparameter Grid Search
 The framework includes integration with the Condor job scheduler for distributed training and evaluation. The Condor scripts are located in the `CONDOR` directory. The `HypParamGridSearch` subdirectory contains scripts for performing hyperparameter grid search using Condor. The `run_training.sh` script is used to run the training of the models using Condor. The `train_hyperparameter.py` script is used to train the models with specified hyperparameters.
 
-### Distributed PreProcessing
-The `Preprocessing` subdirectory contains scripts for performing distributed preprocessing using Condor. The `run_preprocessing.sh` script is used to run the preprocessing of the data using Condor. The `submitPreProcessing.sh` script is used to submit the preprocessing jobs to Condor. Provide the `input_file` argument to the script to specify the input file for preprocessing.
 
 
 

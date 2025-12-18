@@ -312,10 +312,10 @@ class ChiSquareAssigner(BaselineAssigner):
         )
 
         jet_four_vectors = self.get_four_vector(
-            jets[:, :, self.feature_index_dict["jet"]["ordered_jet_pt"]],
-            jets[:, :, self.feature_index_dict["jet"]["ordered_jet_eta"]],
-            jets[:, :, self.feature_index_dict["jet"]["ordered_jet_phi"]],
-            jets[:, :, self.feature_index_dict["jet"]["ordered_jet_e"]],
+            jets[:, :, self.feature_index_dict["jet"]["jet_pt"]],
+            jets[:, :, self.feature_index_dict["jet"]["jet_eta"]],
+            jets[:, :, self.feature_index_dict["jet"]["jet_phi"]],
+            jets[:, :, self.feature_index_dict["jet"]["jet_e"]],
         )
 
         nu_four_vector, anu_four_vector = self.construct_neutrino_four_vectors(

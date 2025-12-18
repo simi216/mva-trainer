@@ -46,6 +46,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 that provides preprocessed data and metadata required for model initialization.
         """
         self.model: KerasModelWrapper = None
+        self.trainable_model: KerasModelWrapper = None
         self.history = None
         self.sample_weights = None
         self.class_weights = None
@@ -142,7 +143,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 X_train["global_event_inputs"] = global_event_data
         return X_train, y_train, sample_weights
 
-    def _prepare_inputs(self, input_as_four_vector, log_variables=True, compute_HLF=False, use_global_event_features=False):
+    def _prepare_inputs(self, log_variables=True, compute_HLF=False, use_global_event_features=False):
         jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
         lep_inputs = keras.Input(
             shape=(self.NUM_LEPTONS, self.n_leptons), name="lep_inputs"
@@ -159,24 +160,19 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         jet_mask = GenerateMask(padding_value=-999, name="jet_mask")(jet_inputs)
 
         # Transform inputs
-        if input_as_four_vector:
-            transformed_jet_inputs = InputPtEtaPhiELayer(
-                name="jet_input_transform",
-                log_variables=log_variables,
-                padding_value=self.padding_value,
-            )(jet_inputs)
-            transformed_lep_inputs = InputPtEtaPhiELayer(
-                name="lep_input_transform",
-                log_variables=log_variables,
-                padding_value=self.padding_value,
-            )(lep_inputs)
-            transformed_met_inputs = InputMetPhiLayer(name="met_input_transform")(
-                met_inputs
-            )
-        else:
-            transformed_jet_inputs = jet_inputs
-            transformed_lep_inputs = lep_inputs
-            transformed_met_inputs = met_inputs
+        transformed_jet_inputs = InputPtEtaPhiELayer(
+            name="jet_input_transform",
+            log_variables=log_variables,
+            padding_value=self.padding_value,
+        )(jet_inputs)
+        transformed_lep_inputs = InputPtEtaPhiELayer(
+            name="lep_input_transform",
+            log_variables=log_variables,
+            padding_value=self.padding_value,
+        )(lep_inputs)
+        transformed_met_inputs = InputMetPhiLayer(name="met_input_transform")(
+            met_inputs
+        )
 
         if compute_HLF:
             high_level_features = ComputeHighLevelFeatures(
@@ -259,8 +255,33 @@ class MLWrapperBase(BaseUtilityModel, ABC):
         if self.history is not None:
             print("Warning: Overwriting existing training history.")
 
+        if self.trainable_model is None:
+            self.trainable_model = self.model
+
+        if self.perform_regression:
+            if "normalized_regression" not in self.trainable_model.output_names:
+                raise ValueError(
+                    "Model was not built with regression output, but regression training requested."
+                )
+            elif "regression" not in y_train:
+                raise ValueError(
+                    "Regression training requested, but regression targets not found in y_train."
+                )
+            regression_scale_std = np.std(y_train["regression"], axis=0)
+            y_train["normalized_regression"] = y_train.pop("regression") / regression_scale_std
+
+            normalized_outputs = self.trainable_model.get_layer("normalized_regression").output
+
+            denormalized_outputs = keras.layers.Rescaling(
+                regression_scale_std, name="regression"
+            )(normalized_outputs)
+            self.model = keras.Model(
+                inputs=self.trainable_model.inputs,
+                outputs={"assignment" : self.trainable_model.get_layer("assignment").output, "regression": denormalized_outputs},
+            )
+
         if self.history is None:
-            self.history = self.model.fit(
+            self.history = self.trainable_model.fit(
                 X_train,
                 y_train,
                 sample_weight=sample_weights,
@@ -272,7 +293,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 **kwargs,
             )
         else:
-            append_history = self.model.fit(
+            append_history = self.trainable_model.fit(
                 X_train,
                 y_train,
                 sample_weight=sample_weights,
@@ -444,6 +465,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 layer.adapt(transformed_data)
                 del submodel
                 print("Adapted normalization layer: ", layer.name)
+
 
     def export_to_onnx(self, onnx_file_path="model.onnx"):
         """

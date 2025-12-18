@@ -4,6 +4,7 @@ import numpy as np
 from abc import ABC, abstractmethod
 from core.DataLoader import DataConfig
 from core.base_classes import BaseUtilityModel, MLWrapperBase, KerasModelWrapper
+from core.components import OutputUpScaleLayer
 
 
 class EventReconstructorBase(BaseUtilityModel, ABC):
@@ -15,7 +16,11 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
         perform_regression=True,
         use_nu_flows=True,
     ):
-        super().__init__(config=config, assignment_name=assignment_name, full_reco_name=full_reco_name)
+        super().__init__(
+            config=config,
+            assignment_name=assignment_name,
+            full_reco_name=full_reco_name,
+        )
         self.max_jets = config.max_jets
         self.NUM_LEPTONS = config.NUM_LEPTONS
         if perform_regression and not config.has_neutrino_truth:
@@ -83,7 +88,7 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
         """
         predicted_values = self.reconstruct_neutrinos(data_dict)
         return self.compute_regression_mse(predicted_values, true_values)
-    
+
     def compute_accuracy(self, pred_values, true_values, per_event=False):
         predicted_indices = np.argmax(pred_values, axis=-2)
         true_indices = np.argmax(true_values, axis=-2)
@@ -110,9 +115,7 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
             )
             results["accuracy"] = accuracy
         if self.perform_regression and "neutrino_truth" in data_dict:
-            mse = self.evaluate_regression(
-                data_dict, data_dict["neutrino_truth"]
-            )
+            mse = self.evaluate_regression(data_dict, data_dict["neutrino_truth"])
             results["regression_mse"] = mse
         return results
 
@@ -128,7 +131,11 @@ class FFMLRecoBase(EventReconstructorBase, MLWrapperBase):
         super().__init__(
             config=config,
             assignment_name=name,
-            full_reco_name= name if perform_regression else name + (r" + $\nu^2$-Flows" if use_nu_flows else r" + True $\nu$"),
+            full_reco_name=(
+                name
+                if perform_regression
+                else name + (r" + $\nu^2$-Flows" if use_nu_flows else r" + True $\nu$")
+            ),
             perform_regression=perform_regression,
             use_nu_flows=use_nu_flows,
         )
@@ -136,7 +143,6 @@ class FFMLRecoBase(EventReconstructorBase, MLWrapperBase):
     def _build_model_base(self, jet_assignment_probs, regression_output=None, **kwargs):
         jet_assignment_probs.name = "assignment"
         if self.config.has_neutrino_truth and regression_output is not None:
-            regression_output.name = "regression"
             self.model = KerasModelWrapper(
                 inputs=[
                     self.inputs["jet_inputs"],
@@ -145,7 +151,7 @@ class FFMLRecoBase(EventReconstructorBase, MLWrapperBase):
                 ],
                 outputs={
                     "assignment": jet_assignment_probs,
-                    "regression": regression_output,
+                    "normalized_regression": regression_output,
                 },
                 **kwargs,
             )
@@ -331,9 +337,10 @@ class FFMLRecoBase(EventReconstructorBase, MLWrapperBase):
             neutrino_reconstruction = self.reconstruct_neutrinos(data)
             return assignment_predictions, neutrino_reconstruction
 
-
     def evaluate(self, data_dict):
-        assignment_predictions, regression_predictions = self.complete_forward_pass(data_dict)
+        assignment_predictions, regression_predictions = self.complete_forward_pass(
+            data_dict
+        )
         results = {}
         if "assignment_labels" in data_dict:
             accuracy = self.compute_accuracy(
@@ -346,5 +353,3 @@ class FFMLRecoBase(EventReconstructorBase, MLWrapperBase):
             )
             results["regression_mse"] = mse
         return results
-
-
