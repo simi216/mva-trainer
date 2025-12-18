@@ -121,7 +121,6 @@ class FeatureConcatTransformer(FFMLRecoBase):
             - self.NUM_LEPTONS,
             num_layers=3,
             dropout_rate=dropout_rate,
-            activation="relu",
             name="projected_jet_transformed",
         )(jets_transformed)
 

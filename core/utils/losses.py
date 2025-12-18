@@ -205,7 +205,7 @@ class MagnitudeDirectionLoss(keras.losses.Loss):
         r_pred = tf.norm(y_pred, axis=-1)  # (B,2)
 
         mag_diff = r_true - r_pred
-        mag_loss = tf.square(mag_diff) / (tf.square(r_true) + self.alpha**2 + eps)
+        mag_loss = tf.math.log(1.0 + tf.square(mag_diff) / (tf.square(r_true) + self.alpha**2 + eps))  # (B,2)
 
         # --- directions ---
         # normalize

@@ -275,7 +275,7 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             denormalized_outputs = keras.layers.Rescaling(
                 regression_scale_std, name="regression"
             )(normalized_outputs)
-            self.model = keras.Model(
+            self.model = KerasModelWrapper(
                 inputs=self.trainable_model.inputs,
                 outputs={"assignment" : self.trainable_model.get_layer("assignment").output, "regression": denormalized_outputs},
             )

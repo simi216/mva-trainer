@@ -143,6 +143,7 @@ class FFMLRecoBase(EventReconstructorBase, MLWrapperBase):
     def _build_model_base(self, jet_assignment_probs, regression_output=None, **kwargs):
         jet_assignment_probs.name = "assignment"
         if self.config.has_neutrino_truth and regression_output is not None:
+            regression_output._name = "normalized_regression"
             self.model = KerasModelWrapper(
                 inputs=[
                     self.inputs["jet_inputs"],
