@@ -29,8 +29,8 @@ class PreprocessorConfig:
     tree_name: str = "reco"
 
     # Processing options
-    save_nu_flows: bool = False
-    save_initial_parton_info: bool = False
+    save_nu_flows: bool = True
+    save_initial_parton_info: bool = True
     verbose: bool = True
     save_mc_truth: bool = True
 
