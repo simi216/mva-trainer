@@ -12,16 +12,11 @@ Configuration:
 - DataConfig: Describes loaded data structure (passed to ML models)
 """
 
-import uproot
-import awkward as ak
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 from typing import Optional, Dict, List, Tuple, Union
 
-from .Configs import LoadConfig, DataConfig, get_load_config_from_yaml
-
+from .Configs import LoadConfig, DataConfig
 
 
 class LabelBuilder:
@@ -141,57 +136,158 @@ class DataPreprocessor:
         self.cut_dict = {}
         self.data_normalisation_factors = {}
 
+    # -------------------------------------------------------------------------
+    # Data Loading Helpers
+    # -------------------------------------------------------------------------
 
+    def _load_feature_array(
+        self, 
+        loaded: Dict, 
+        feature_keys: List[str], 
+        target_shape: Optional[Tuple[int, ...]] = None,
+        max_objects: Optional[int] = None
+    ) -> np.ndarray:
+        """Helper to load and transpose feature arrays from npz.
+        
+        Args:
+            loaded: Loaded npz file data
+            feature_keys: List of keys to extract from npz
+            target_shape: Shape to reshape into (if needed)
+            max_objects: Maximum number of objects to keep (for jets/leptons)
+            
+        Returns:
+            Transposed and reshaped feature array
+        """
+        arrays = [loaded[key] for key in feature_keys]
+        result = np.array(arrays).transpose(1, 2, 0) if len(arrays[0].shape) > 1 else np.array(arrays).transpose(1, 0)
+        
+        if max_objects is not None and len(result.shape) > 2:
+            result = result[:, :max_objects, :]
+        
+        if target_shape is not None:
+            result = result.reshape(target_shape)
+            
+        return result
+
+    def _create_xy_dict(self, feature_data: Dict) -> Tuple[Dict, Dict]:
+        """Helper to create X and y dictionaries from feature data.
+        
+        Args:
+            feature_data: Dictionary of feature arrays
+            
+        Returns:
+            X and y dictionaries
+        """
+        X = {k: v for k, v in feature_data.items() if v is not None}
+        y = {
+            "assignment_labels": X["assignment_labels"],
+            "neutrino_truth": X.get("neutrino_truth", None),
+        }
+        return X, y
+
+    def _apply_mask_to_features(self, mask: np.ndarray) -> None:
+        """Apply a boolean mask to all feature data.
+        
+        Args:
+            mask: Boolean array to filter events
+        """
+        for key in self.feature_data:
+            if self.feature_data[key] is not None:
+                self.feature_data[key] = self.feature_data[key][mask]
 
     # -------------------------------------------------------------------------
     # Data Loading
     # -------------------------------------------------------------------------
     def load_from_npz(
-        self, npz_path: str, max_events: Optional[int] = None
+        self, npz_path: str, max_events: Optional[int] = None, event_numbers=None
     ) -> DataConfig:
-        """
-        Load preprocessed data from NPZ file.
+        """Load preprocessed data from NPZ file.
 
         Args:
             npz_path: Path to NPZ file
+            max_events: Maximum number of events to load
+            event_numbers: Filter by 'even', 'odd','all', or None
         """
         loaded = np.load(npz_path)
 
-        if max_events is not None:
-            loaded_array = {}
-            for key in loaded.files:
-                loaded_array[key] = loaded[key][:max_events]
-            loaded = loaded_array
+        # Apply event number filtering if requested
+        mask = self._get_event_filter_mask(loaded, event_numbers)
+        loaded_data = self._filter_loaded_data(loaded, mask, max_events)
 
-        if loaded is None:
-            raise ValueError(f"Could not read file {npz_path}")
-
+        # Initialize feature data storage
         self.feature_data = {}
 
+        # Load core features
+        self._load_core_features(loaded_data)
+        
+        # Load optional features
+        self._load_optional_features(loaded_data)
+        
+        # Load truth features
+        self._load_truth_features(loaded_data)
+
+        # Build labels and apply reconstruction mask
+        self._build_and_apply_labels(loaded_data)
+        
+        # Remove NaN events from NuFlows if present
+        self._filter_nuflows_nans()
+
+        self.data_length = len(self.feature_data["assignment_labels"])
+
+        # Create DataConfig for downstream use
+        self.data_config = self.load_config.to_data_config()
+        return self.data_config
+
+    def _get_event_filter_mask(self, loaded: Dict, event_numbers: Optional[str]) -> np.ndarray:
+        """Get mask for filtering events by event number parity."""
+        if event_numbers is not None and self.load_config.mc_event_number is not None:
+            event_number_array = loaded[self.load_config.mc_event_number]
+            if event_numbers == "even":
+                return (event_number_array % 2) == 0
+            elif event_numbers == "odd":
+                return (event_number_array % 2) == 1
+            elif event_numbers == "all":
+                return np.ones(len(event_number_array), dtype=bool)
+            else:
+                raise ValueError("event_numbers must be 'even', 'odd', or None")
+        return np.ones(len(loaded[list(loaded.files)[0]]), dtype=bool)
+
+    def _filter_loaded_data(self, loaded: Dict, mask: np.ndarray, max_events: Optional[int]) -> Dict:
+        """Apply mask and max_events limit to loaded data."""
+        if max_events is not None:
+            result = {}
+            for key in loaded.files:
+                result[key] = loaded[key][mask][:max_events]
+            return result
+        return loaded
+
+    def _load_core_features(self, loaded: Dict) -> None:
+        """Load core jet and lepton features."""
         if self.load_config.jet_features:
-            self.feature_data["jet"] = np.array(
-                [loaded[jet_key] for jet_key in self.load_config.jet_features]
-            ).transpose(1, 2, 0)[:, : self.load_config.max_jets, :]
+            self.feature_data["jet"] = self._load_feature_array(
+                loaded, self.load_config.jet_features, max_objects=self.load_config.max_jets
+            )
 
         if self.load_config.lepton_features:
-            self.feature_data["lepton"] = np.array(
-                [loaded[lep_key] for lep_key in self.load_config.lepton_features]
-            ).transpose(1, 2, 0)
+            self.feature_data["lepton"] = self._load_feature_array(
+                loaded, self.load_config.lepton_features
+            )
 
+    def _load_optional_features(self, loaded: Dict) -> None:
+        """Load optional features (MET, global, non-training, weights)."""
         if self.load_config.global_event_features:
-            self.feature_data["global_event"] = np.array(
-                [loaded[ge_key] for ge_key in self.load_config.global_event_features]
-            ).transpose(1, 0)
+            self.feature_data["global_event"] = self._load_feature_array(
+                loaded, self.load_config.global_event_features
+            )
 
         if self.load_config.met_features:
-            self.feature_data["met"] = np.array(
-                [loaded[met_key] for met_key in self.load_config.met_features]
-            ).transpose(1, 0)[:, np.newaxis, :]
+            met_data = self._load_feature_array(loaded, self.load_config.met_features)
+            self.feature_data["met"] = met_data[:, np.newaxis, :]
 
         if self.load_config.non_training_features:
-            self.feature_data["non_training"] = np.array(
-                [loaded[nt_key] for nt_key in self.load_config.non_training_features]
-            ).transpose(1, 0)
+            self.feature_data["non_training"] = self._load_feature_array(
+                loaded, self.load_config.non_training_features
+            )
 
         if self.load_config.event_weight:
             self.feature_data["event_weight"] = loaded[self.load_config.event_weight]
@@ -199,73 +295,52 @@ class DataPreprocessor:
         if self.load_config.mc_event_number:
             self.feature_data["event_number"] = loaded[self.load_config.mc_event_number]
 
-        if (
-            self.load_config.neutrino_momentum_features
-            and self.load_config.antineutrino_momentum_features
-        ):
-            data_length = len(loaded[self.load_config.neutrino_momentum_features[0]])
-            self.feature_data["neutrino_truth"] = (
-                np.array(
-                    [
-                        loaded[nu_key]
-                        for nu_key in self.load_config.neutrino_momentum_features
-                        + self.load_config.antineutrino_momentum_features
-                    ]
-                )
-                .transpose(1, 0)
-                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
+    def _load_truth_features(self, loaded: Dict) -> None:
+        """Load truth features for neutrinos, tops, and leptons."""
+        # Neutrino momentum truth
+        if (self.load_config.neutrino_momentum_features and 
+            self.load_config.antineutrino_momentum_features):
+            combined_keys = (self.load_config.neutrino_momentum_features + 
+                           self.load_config.antineutrino_momentum_features)
+            data_length = len(loaded[combined_keys[0]])
+            target_shape = (data_length, self.load_config.NUM_LEPTONS, -1)
+            self.feature_data["neutrino_truth"] = self._load_feature_array(
+                loaded, combined_keys, target_shape=target_shape
             )
 
-        if (
-            self.load_config.nu_flows_neutrino_momentum_features
-            and self.load_config.nu_flows_antineutrino_momentum_features
-        ):
-            data_length = len(
-                loaded[self.load_config.nu_flows_neutrino_momentum_features[0]]
+        # NuFlows neutrino truth
+        if (self.load_config.nu_flows_neutrino_momentum_features and 
+            self.load_config.nu_flows_antineutrino_momentum_features):
+            combined_keys = (self.load_config.nu_flows_neutrino_momentum_features + 
+                           self.load_config.nu_flows_antineutrino_momentum_features)
+            data_length = len(loaded[combined_keys[0]])
+            target_shape = (data_length, self.load_config.NUM_LEPTONS, -1)
+            self.feature_data["nu_flows_neutrino_truth"] = self._load_feature_array(
+                loaded, combined_keys, target_shape=target_shape
             )
-            self.feature_data["nu_flows_neutrino_truth"] = (
-                np.array(
-                    [
-                        loaded[nu_key]
-                        for nu_key in self.load_config.nu_flows_neutrino_momentum_features
-                        + self.load_config.nu_flows_antineutrino_momentum_features
-                    ]
-                )
-                .transpose(1, 0)
-                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
-            )
+
+        # Top truth
         if self.load_config.top_truth_features and self.load_config.tbar_truth_features:
-            data_length = len(loaded[self.load_config.top_truth_features[0]])
-            self.feature_data["top_truth"] = (
-                np.array(
-                    [
-                        loaded[top_key]
-                        for top_key in self.load_config.top_truth_features
-                        + self.load_config.tbar_truth_features
-                    ]
-                )
-                .transpose(1, 0)
-                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
+            combined_keys = self.load_config.top_truth_features + self.load_config.tbar_truth_features
+            data_length = len(loaded[combined_keys[0]])
+            target_shape = (data_length, self.load_config.NUM_LEPTONS, -1)
+            self.feature_data["top_truth"] = self._load_feature_array(
+                loaded, combined_keys, target_shape=target_shape
             )
 
-        if (
-            self.load_config.top_lepton_truth_features
-            and self.load_config.tbar_lepton_truth_features
-        ):
-            data_length = len(loaded[self.load_config.top_lepton_truth_features[0]])
-            self.feature_data["lepton_truth"] = (
-                np.array(
-                    [
-                        loaded[lep_key]
-                        for lep_key in self.load_config.top_lepton_truth_features
-                        + self.load_config.tbar_lepton_truth_features
-                    ]
-                )
-                .transpose(1, 0)
-                .reshape(data_length, self.load_config.NUM_LEPTONS, -1)
+        # Lepton truth
+        if (self.load_config.top_lepton_truth_features and 
+            self.load_config.tbar_lepton_truth_features):
+            combined_keys = (self.load_config.top_lepton_truth_features + 
+                           self.load_config.tbar_lepton_truth_features)
+            data_length = len(loaded[combined_keys[0]])
+            target_shape = (data_length, self.load_config.NUM_LEPTONS, -1)
+            self.feature_data["lepton_truth"] = self._load_feature_array(
+                loaded, combined_keys, target_shape=target_shape
             )
 
-        # Build labels and apply reconstruction mask
+    def _build_and_apply_labels(self, loaded: Dict) -> None:
+        """Build labels and apply reconstruction mask."""
         label_builder = LabelBuilder(
             self.load_config,
             (
@@ -276,29 +351,16 @@ class DataPreprocessor:
         assignment_labels, reco_mask = label_builder.build_labels()
 
         # Apply reconstruction mask to all features
-        for key in self.feature_data:
-            if self.feature_data[key] is not None:
-                self.feature_data[key] = self.feature_data[key][reco_mask]
-
+        self._apply_mask_to_features(reco_mask)
         self.feature_data["assignment_labels"] = assignment_labels
 
-        # Remove events with NaNs in NuFlows targets if present
+    def _filter_nuflows_nans(self) -> None:
+        """Remove events with NaNs in NuFlows targets if present."""
         if "nu_flows_neutrino_truth" in self.feature_data:
             nu_flows_nan_mask = ~np.isnan(
                 self.feature_data["nu_flows_neutrino_truth"]
             ).any(axis=(1, 2))
-            for key in self.feature_data:
-                if self.feature_data[key] is not None:
-                    self.feature_data[key] = self.feature_data[key][nu_flows_nan_mask]
-
-        self.data_length = len(self.feature_data["assignment_labels"])
-
-        # Create DataConfig for downstream use
-        self.data_config = self.load_config.to_data_config()
-        return self.data_config
-
-
-
+            self._apply_mask_to_features(nu_flows_nan_mask)
 
     def get_data_config(self) -> DataConfig:
         """
@@ -474,34 +536,21 @@ class DataPreprocessor:
 
         from sklearn.model_selection import train_test_split
 
-        X_train, X_test, y_train, y_test = {}, {}, None, None
+        X_train, X_test = {}, {}
 
         for key, data in self.feature_data.items():
             if data is not None:
                 X_train[key], X_test[key] = train_test_split(
                     data, test_size=test_size, random_state=random_state
                 )
-        y_train = {
-            "assignment_labels": X_train["assignment_labels"],
-            "neutrino_truth": X_train.get("neutrino_truth", None),
-        }
-        y_test = {
-            "assignment_labels": X_test["assignment_labels"],
-            "neutrino_truth": X_test.get("neutrino_truth", None),
-        }
+        
+        _, y_train = self._create_xy_dict(X_train)
+        _, y_test = self._create_xy_dict(X_test)
 
         return X_train, y_train, X_test, y_test
 
     def get_data(self):
-        X, Y = {}, {}
-        for key, data in self.feature_data.items():
-            if data is not None:
-                X[key] = data
-        Y = {
-            "assignment_labels": X["assignment_labels"],
-            "neutrino_truth": X.get("neutrino_truth", None),
-        }
-        return X, Y
+        return self._create_xy_dict(self.feature_data)
 
     def create_k_folds(
         self, n_folds: int = 5, n_splits: int = 1, random_state: int = 42
@@ -557,22 +606,12 @@ class DataPreprocessor:
                 X_train = {
                     k: self.feature_data[k][train_indices] for k in self.feature_data
                 }
-                y_train = {
-                    "assignment_labels": X_train["assignment_labels"],
-                    "neutrino_truth": X_train.get("neutrino_truth", None),
-                }
-                y_test = {
-                    "assignment_labels": self.feature_data["assignment_labels"][
-                        test_indices
-                    ],
-                    "neutrino_truth": self.feature_data.get("neutrino_truth", None)[
-                        test_indices
-                    ],
-                }
-
                 X_test = {
                     k: self.feature_data[k][test_indices] for k in self.feature_data
                 }
+                
+                _, y_train = self._create_xy_dict(X_train)
+                _, y_test = self._create_xy_dict(X_test)
 
                 folds.append((X_train, y_train, X_test, y_test))
 
@@ -580,7 +619,7 @@ class DataPreprocessor:
 
     def split_even_odd(
         self,
-    ) -> Tuple[Dict[str, np.ndarray], np.ndarray, Dict[str, np.ndarray], np.ndarray]:
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, np.ndarray]]:
         """
         Split data into even and odd event number sets.
 
@@ -598,47 +637,29 @@ class DataPreprocessor:
         odd_mask = ~even_mask
 
         X_even = {k: v[even_mask] for k, v in self.feature_data.items()}
-        y_even = {
-            "assignment_labels": X_even["assignment_labels"],
-            "neutrino_truth": X_even.get("neutrino_truth", None),
-        }
-
         X_odd = {k: v[odd_mask] for k, v in self.feature_data.items()}
-        y_odd = {
-            "assignment_labels": X_odd["assignment_labels"],
-            "neutrino_truth": X_odd.get("neutrino_truth", None),
-        }
+        
+        _, y_even = self._create_xy_dict(X_even)
+        _, y_odd = self._create_xy_dict(X_odd)
 
         return X_even, y_even, X_odd, y_odd
 
 
-def combine_datasets(
-    data_list: List[DataPreprocessor],
-) -> DataPreprocessor:
+def get_load_config_from_yaml(file_path: str) -> LoadConfig:
     """
-    Combine multiple DataPreprocessor instances into one.
+    Load LoadConfig from a YAML file.
 
     Args:
-        data_list: List of DataPreprocessor instances to combine
-
+        file_path: Path to YAML configuration file
     Returns:
-        Combined DataPreprocessor instance
+        LoadConfig instance
     """
-    if not data_list:
-        raise ValueError("data_list must contain at least one DataPreprocessor")
+    import yaml
 
-    combined = DataPreprocessor(data_list[0].load_config)
+    with open(file_path, 'r') as file:
+        config_dict = yaml.safe_load(file)
 
-    combined.feature_data = {}
-    for key in data_list[0].feature_data.keys():
-        combined.feature_data[key] = np.concatenate(
-            [dp.feature_data[key] for dp in data_list], axis=0
-        )
-
-    combined.data_length = sum(dp.data_length for dp in data_list)
-    combined.data_config = data_list[0].data_config
-
-    return combined
+    return LoadConfig.from_dict(config_dict["LoadConfig"])
 
 
 def combine_train_datasets(
@@ -684,3 +705,24 @@ def combine_train_datasets(
         combined_y[key] = combined_y[key][permutation]
 
     return combined_X, combined_y
+
+
+def train_test_split(X, y, test_size: float = 0.1):
+    X_train = {}
+    X_test = {}
+    y_train = {}
+    y_test = {}
+    if 0 < test_size < 1:
+        raise ValueError("Test size should be a float number between 0 and 1.")
+
+    event_count = len(X[X.keys()[0]])
+    train_set_slice_index = int(event_count * (1 - 0.1))
+    for key in X.keys():
+        X_train[key] = X[key][:train_set_slice_index]
+        X_test[key] = X[key][train_set_slice_index:]
+
+    for key in y.keys():
+        y_train[key] = y[key][:train_set_slice_index]
+        y_test[key] = y[key][train_set_slice_index:]
+
+    return X_train, y_train, X_test, y_test

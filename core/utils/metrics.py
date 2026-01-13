@@ -2,6 +2,7 @@ import keras
 import tensorflow as tf
 
 
+
 @keras.utils.register_keras_serializable()
 class AssignmentAccuracy(keras.metrics.Metric):
     def __init__(self, name="accuracy", **kwargs):
@@ -28,6 +29,10 @@ class AssignmentAccuracy(keras.metrics.Metric):
     def reset_states(self):
         self.total.assign(0.0)
         self.count.assign(0.0)
+    
+    def get_config(self):
+        config = super().get_config()
+        return config
 
 import tensorflow as tf
 from tensorflow import keras
@@ -81,3 +86,8 @@ class RegressionDeviation(keras.metrics.Metric):
         config = super().get_config()
         config.update({"alpha": self.alpha})
         return config
+
+def _get_metric(metric_name):
+    if metric_name not in globals():
+        raise ValueError(f"Metric '{metric_name}' not found in core.metrics.")
+    return globals()[metric_name]

@@ -3,19 +3,25 @@ import tensorflow as tf
 import numpy as np
 
 
-from core.reconstruction import FFMLRecoBase
+from core.reconstruction import KerasFFRecoBase
 from core.components import (
-    MultiHeadAttentionBlock,
     SelfAttentionBlock,
+    MultiHeadAttentionBlock,
+    CrossAttentionBlock,
+    JetLeptonAssignment,
     MLP,
     TemporalSoftmax,
-    JetLeptonAssignment,
+    PoolingAttentionBlock,
+    ConcatLeptonCharge,
+    ExpandJetMask,
+    SplitTransformerOutput,
+
 )
 
 from core import DataConfig
 
 
-class CrossAttentionModel(FFMLRecoBase):
+class CrossAttentionAssigner(KerasFFRecoBase):
     def __init__(self, config: DataConfig, name="CrossAttentionModel"):
         super().__init__(config, name=name)
         self.perform_regression = False
@@ -27,6 +33,7 @@ class CrossAttentionModel(FFMLRecoBase):
         num_heads=8,
         dropout_rate=0.1,
         log_variables=False,
+        compute_HLF=False,
     ):
         """
         Builds the Assignment Transformer model.
@@ -39,7 +46,7 @@ class CrossAttentionModel(FFMLRecoBase):
             keras.Model: The constructed Keras model.
         """
         # Input layers
-        normed_inputs, masks = self._prepare_inputs(log_variables=log_variables)
+        normed_inputs, masks = self._prepare_inputs(log_variables=log_variables, compute_HLF=compute_HLF)
 
         normed_jet_inputs = normed_inputs["jet_inputs"]
         normed_lep_inputs = normed_inputs["lepton_inputs"]
@@ -145,17 +152,10 @@ class CrossAttentionModel(FFMLRecoBase):
         self._build_model_base(jet_assignment_probs, name="CrossAttentionModel")
 
 
-class FeatureConcatTransformer(FFMLRecoBase):
-    def __init__(
-        self, config: DataConfig, name="FeatureConcatTransformer", use_nu_flows=True
-    ):
-        if config.has_neutrino_truth:
-            print(
-                "FeatureConcatTransformer is designed for classification tasks; regression targets will be ignored."
-            )
-        super().__init__(
-            config, name=name, perform_regression=False, use_nu_flows=use_nu_flows
-        )
+class FeatureConcatAssigner(KerasFFRecoBase):
+    def __init__(self, config: DataConfig, name="CrossAttentionModel"):
+        super().__init__(config, name=name)
+        self.perform_regression = False
 
     def build_model(
         self,
@@ -256,3 +256,116 @@ class FeatureConcatTransformer(FFMLRecoBase):
         self._build_model_base(
             jet_assignment_probs, name="FeatureConcatTransformerModel"
         )
+
+
+class SPANetAssigner(KerasFFRecoBase):
+    def __init__(self, config: DataConfig, name="CrossAttentionModel"):
+        super().__init__(config, name=name)
+        self.perform_regression = False
+
+    def build_model(
+        self,
+        hidden_dim = 64,
+        encoder_layers = 4,
+        dropout_rate = 0.1,
+        log_variables=False,
+        use_global_event_features=False,
+        compute_HLF=True,
+    ):
+        normed_inputs, masks = self._prepare_inputs(
+            compute_HLF=compute_HLF,
+            log_variables=log_variables,
+            use_global_event_features=use_global_event_features,
+        )
+        normed_jet_inputs = normed_inputs["jet_inputs"]
+        normed_lep_inputs = normed_inputs["lepton_inputs"]
+        normed_met_inputs = normed_inputs["met_inputs"]
+        jet_mask = masks["jet_mask"]
+
+        if self.config.has_global_event_features:
+            normed_global_event_inputs = normed_inputs["global_event_inputs"]
+            raise NotImplementedError(
+                "FeatureConcatTransformer does not support global event features yet."
+            )
+        if compute_HLF:
+            normed_HLF_inputs = normed_inputs["hlf_inputs"]
+            flat_normed_HLF_inputs = keras.layers.Reshape((self.max_jets, -1))(
+                normed_HLF_inputs
+            )
+            normed_jet_inputs = keras.layers.Concatenate(axis=-1)(
+                [normed_jet_inputs, flat_normed_HLF_inputs]
+            )
+
+            # Embed jets
+        jet_embeddings = MLP(
+            output_dim=hidden_dim,
+            dropout_rate=dropout_rate,
+            name="jet_embedding_mlp",
+            num_layers=4,
+        )(normed_jet_inputs)
+
+        # Embed leptons
+        normed_lep_inputs = ConcatLeptonCharge()(normed_lep_inputs)
+        lepton_embeddings = MLP(
+            output_dim=hidden_dim,
+            dropout_rate=dropout_rate,
+            name="lepton_embedding_mlp",
+            num_layers=4,
+        )(normed_lep_inputs)
+
+        # Embed MET
+        met_embeddings = MLP(
+            output_dim=hidden_dim,
+            dropout_rate=dropout_rate,
+            name="met_embedding_mlp",
+            num_layers=4,
+        )(normed_met_inputs)
+
+        # Concatenate all embeddings
+        combined_embeddings = keras.layers.Concatenate(axis=1)(
+            [jet_embeddings, lepton_embeddings, met_embeddings]
+        )
+
+        x = combined_embeddings
+
+        # Transformer layers
+        self_attention_mask = ExpandJetMask(
+            name="expand_jet_mask",
+            extra_sequence_length=self.NUM_LEPTONS + 1,
+        )(jet_mask)
+        for i in range(encoder_layers):
+            x = SelfAttentionBlock(
+                num_heads=8,
+                key_dim=hidden_dim,
+                dropout_rate=dropout_rate,
+                name=f"encoder_self_attention_block_{i}",
+            )(x, self_attention_mask)
+
+        # Split outputs
+        jet_outputs, lepton_outputs, met_outputs = SplitTransformerOutput(
+            name="split_transformer_output",
+            max_jets=self.max_jets,
+            max_leptons=self.NUM_LEPTONS,
+        )(x)
+
+        jet_assignment_output = MLP(
+                    output_dim=hidden_dim,
+                    dropout_rate=dropout_rate,
+                    name="jet_assignment_mlp",
+                    num_layers=3,
+        )(jet_outputs)
+
+        lepton_assignment_output = MLP(
+                    output_dim=hidden_dim,
+                    dropout_rate=dropout_rate,
+                    name="lepton_assignment_mlp",
+                    num_layers=3,
+                )(lepton_outputs)
+        assignment_logits = JetLeptonAssignment(dim=hidden_dim, name="assignment")(
+            jets=jet_assignment_output,
+            leptons=lepton_assignment_output,
+            jet_mask=jet_mask,
+        )
+        self._build_model_base(
+                assignment_logits,
+            )

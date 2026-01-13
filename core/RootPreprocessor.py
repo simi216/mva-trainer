@@ -18,7 +18,10 @@ from typing import Optional, Dict, List, Tuple
 from dataclasses import dataclass
 import os
 from tqdm import tqdm
-from core.utils import lorentz_vector_array_from_pt_eta_phi_e, compute_mass_from_lorentz_vector_array
+from core.utils import (
+    lorentz_vector_array_from_pt_eta_phi_e,
+    compute_mass_from_lorentz_vector_array,
+)
 
 
 @dataclass
@@ -39,14 +42,15 @@ class PreprocessorConfig:
     n_jets_min: int = 2
     max_jets_for_truth: int = 10  # Maximum jet index for truth matching
     max_saved_jets: int = 10  # Maximum number of jets to save
-    lepton_parton_match_format : str = "old"
+    lepton_parton_match_format: str = "old"
 
     padding_value: float = -999.0  # Padding value for missing data
+
 
 @dataclass
 class DataSampleConfig:
     """Configuration for data sample preprocessing."""
-    
+
     preprocessor_config: PreprocessorConfig
     name: str
     output_dir: str
@@ -250,7 +254,7 @@ class RootPreprocessor:
         # Process event weights
         event_weight = self._proccess_event_weight(events)
         processed.update({"weight_mc": event_weight})
-    
+
         # Compute reconstructed mllbb
         reco_mllbb = self._compute_reco_mllbb(leptons, jets)
         processed.update(reco_mllbb)
@@ -272,7 +276,6 @@ class RootPreprocessor:
         event_number = ak.to_numpy(events.eventNumber)
         processed.update({"mc_event_number": event_number})
 
-
         return processed
 
     def _process_leptons(self, events: ak.Array) -> Dict[str, np.ndarray]:
@@ -290,13 +293,14 @@ class RootPreprocessor:
         # Combine electrons and muons using vectorized operations
         n_events = len(events)
 
-
         if self.config.lepton_parton_match_format == "old":
             # Pad electron truth indices and broadcast properly
             el_truth_padded = ak.fill_none(
                 ak.pad_none(events.event_electron_truth_idx, 2), -1
             )
-            mu_truth_padded = ak.fill_none(ak.pad_none(events.event_muon_truth_idx, 2), -1)
+            mu_truth_padded = ak.fill_none(
+                ak.pad_none(events.event_muon_truth_idx, 2), -1
+            )
         else:  # new format
             el_truth_padded = ak.fill_none(
                 ak.pad_none(events.event_electron_truth_idx, 6), -1
@@ -306,8 +310,6 @@ class RootPreprocessor:
             )
             el_truth_padded = el_truth_padded[:, [1, 4]]
             mu_truth_padded = mu_truth_padded[:, [1, 4]]
-    
-
 
         # Create lepton arrays with truth matching - use broadcasting that works with jagged arrays
         # For electrons - expand truth indices to match electron array shape
@@ -348,22 +350,35 @@ class RootPreprocessor:
         # Pad to 2 leptons and convert to numpy
         max_leptons = 2
         lep_pt_np = ak.to_numpy(
-            ak.fill_none(ak.pad_none(lep_pt, max_leptons, clip=True), self.config.padding_value)
+            ak.fill_none(
+                ak.pad_none(lep_pt, max_leptons, clip=True), self.config.padding_value
+            )
         )
         lep_eta_np = ak.to_numpy(
-            ak.fill_none(ak.pad_none(lep_eta, max_leptons, clip=True), self.config.padding_value)
+            ak.fill_none(
+                ak.pad_none(lep_eta, max_leptons, clip=True), self.config.padding_value
+            )
         )
         lep_phi_np = ak.to_numpy(
-            ak.fill_none(ak.pad_none(lep_phi, max_leptons, clip=True), self.config.padding_value)
+            ak.fill_none(
+                ak.pad_none(lep_phi, max_leptons, clip=True), self.config.padding_value
+            )
         )
         lep_e_np = ak.to_numpy(
-            ak.fill_none(ak.pad_none(lep_e, max_leptons, clip=True), self.config.padding_value)
+            ak.fill_none(
+                ak.pad_none(lep_e, max_leptons, clip=True), self.config.padding_value
+            )
         )
         lep_charge_np = ak.to_numpy(
-            ak.fill_none(ak.pad_none(lep_charge, max_leptons, clip=True), self.config.padding_value)
+            ak.fill_none(
+                ak.pad_none(lep_charge, max_leptons, clip=True),
+                self.config.padding_value,
+            )
         )
         lep_pid_np = ak.to_numpy(
-            ak.fill_none(ak.pad_none(lep_pid, max_leptons, clip=True), self.config.padding_value)
+            ak.fill_none(
+                ak.pad_none(lep_pid, max_leptons, clip=True), self.config.padding_value
+            )
         )
         lep_truth_np = ak.to_numpy(
             ak.fill_none(ak.pad_none(lep_truth, max_leptons, clip=True), -1)
@@ -430,12 +445,36 @@ class RootPreprocessor:
         max_jets = self.config.max_saved_jets
 
         # Pad and convert to numpy
-        jet_pt_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_pt, max_jets, clip=True), self.config.padding_value))
-        jet_eta_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_eta, max_jets, clip=True), self.config.padding_value))
-        jet_phi_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_phi, max_jets, clip=True), self.config.padding_value))
-        jet_e_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_e, max_jets, clip=True), self.config.padding_value))
-        jet_btag_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_btag, max_jets, clip=True), self.config.padding_value))
-        jet_truth_np = ak.to_numpy(ak.fill_none(ak.pad_none(jet_truth, max_jets, clip=True), self.config.padding_value))
+        jet_pt_np = ak.to_numpy(
+            ak.fill_none(
+                ak.pad_none(jet_pt, max_jets, clip=True), self.config.padding_value
+            )
+        )
+        jet_eta_np = ak.to_numpy(
+            ak.fill_none(
+                ak.pad_none(jet_eta, max_jets, clip=True), self.config.padding_value
+            )
+        )
+        jet_phi_np = ak.to_numpy(
+            ak.fill_none(
+                ak.pad_none(jet_phi, max_jets, clip=True), self.config.padding_value
+            )
+        )
+        jet_e_np = ak.to_numpy(
+            ak.fill_none(
+                ak.pad_none(jet_e, max_jets, clip=True), self.config.padding_value
+            )
+        )
+        jet_btag_np = ak.to_numpy(
+            ak.fill_none(
+                ak.pad_none(jet_btag, max_jets, clip=True), self.config.padding_value
+            )
+        )
+        jet_truth_np = ak.to_numpy(
+            ak.fill_none(
+                ak.pad_none(jet_truth, max_jets, clip=True), self.config.padding_value
+            )
+        )
 
         # Build jet truth index array
         event_jet_truth_idx = np.full((n_events, 6), -1, dtype=np.int32)
@@ -556,7 +595,11 @@ class RootPreprocessor:
             l1j_py = l1_py + j_py
             l1j_pz = l1_pz + j_pz
             m_l1j_squared = l1j_e**2 - l1j_px**2 - l1j_py**2 - l1j_pz**2
-            m_l1j = np.where(m_l1j_squared > 0, np.sqrt(np.abs(m_l1j_squared)), self.config.padding_value)
+            m_l1j = np.where(
+                m_l1j_squared > 0,
+                np.sqrt(np.abs(m_l1j_squared)),
+                self.config.padding_value,
+            )
 
             # l2 + jet
             l2j_e = l2_e + j_e
@@ -564,7 +607,11 @@ class RootPreprocessor:
             l2j_py = l2_py + j_py
             l2j_pz = l2_pz + j_pz
             m_l2j_squared = l2j_e**2 - l2j_px**2 - l2j_py**2 - l2j_pz**2
-            m_l2j = np.where(m_l2j_squared > 0, np.sqrt(np.abs(m_l2j_squared)), self.config.padding_value)
+            m_l2j = np.where(
+                m_l2j_squared > 0,
+                np.sqrt(np.abs(m_l2j_squared)),
+                self.config.padding_value,
+            )
 
         # Mark invalid jets
         valid_mask = j_pt != self.config.padding_value
@@ -592,45 +639,44 @@ class RootPreprocessor:
             "dR_l2j": dR_l2j,
             "dR_l1l2": dR_l1l2,
         }
-    
+
     def _compute_reco_mllbb(self, leptons, jets):
         # --- extract lepton 4-vectors ---
-        l1_pt  = leptons["lep_pt"][:, 0]
+        l1_pt = leptons["lep_pt"][:, 0]
         l1_eta = leptons["lep_eta"][:, 0]
         l1_phi = leptons["lep_phi"][:, 0]
-        l1_e   = leptons["lep_e"][:, 0]
+        l1_e = leptons["lep_e"][:, 0]
 
-        l2_pt  = leptons["lep_pt"][:, 1]
+        l2_pt = leptons["lep_pt"][:, 1]
         l2_eta = leptons["lep_eta"][:, 1]
         l2_phi = leptons["lep_phi"][:, 1]
-        l2_e   = leptons["lep_e"][:, 1]
+        l2_e = leptons["lep_e"][:, 1]
 
         # --- select 2 b-jets or fallback leading jets ---
         btag = jets["jet_b_tag"]
         jet_pt = jets["jet_pt"]
 
-
-        # Score = large bonus if b-tagged + pT 
+        # Score = large bonus if b-tagged + pT
         b_tag_mask = (btag > 2).astype(np.float32)
 
         # sort descending
-        bjet_indices = np.lexsort(( -jet_pt, -b_tag_mask ), axis=1)[:, :2]
+        bjet_indices = np.lexsort((-jet_pt, -b_tag_mask), axis=1)[:, :2]
 
-         # fallback to leading jets if less than 2 b-tagged jets
+        # fallback to leading jets if less than 2 b-tagged jets
 
         rows = np.arange(jet_pt.shape[0])
-        b1_idx, b2_idx = bjet_indices[:,0], bjet_indices[:,1]
+        b1_idx, b2_idx = bjet_indices[:, 0], bjet_indices[:, 1]
 
         # --- extract jet 4-vectors ---
-        b1_pt  = jets["jet_pt"][rows, b1_idx]
+        b1_pt = jets["jet_pt"][rows, b1_idx]
         b1_eta = jets["jet_eta"][rows, b1_idx]
         b1_phi = jets["jet_phi"][rows, b1_idx]
-        b1_e   = jets["jet_e"][rows, b1_idx]
+        b1_e = jets["jet_e"][rows, b1_idx]
 
-        b2_pt  = jets["jet_pt"][rows, b2_idx]
+        b2_pt = jets["jet_pt"][rows, b2_idx]
         b2_eta = jets["jet_eta"][rows, b2_idx]
         b2_phi = jets["jet_phi"][rows, b2_idx]
-        b2_e   = jets["jet_e"][rows, b2_idx]
+        b2_e = jets["jet_e"][rows, b2_idx]
 
         # --- compute invariant mass ---
         b1_4 = lorentz_vector_array_from_pt_eta_phi_e(b1_pt, b1_eta, b1_phi, b1_e)
@@ -640,7 +686,6 @@ class RootPreprocessor:
 
         total = b1_4 + b2_4 + l1_4 + l2_4
         return {"reco_mllbb": compute_mass_from_lorentz_vector_array(total)}
-
 
     @staticmethod
     def _delta_r(eta1, phi1, eta2, phi2):
@@ -700,17 +745,15 @@ class RootPreprocessor:
         lep_top_eta = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_eta)
         lep_top_phi = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_phi)
         lep_top_mass = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_t_m)
-        lep_top_e = np.sqrt(
-            lep_top_mass**2 + lep_top_pt**2 * np.cosh(lep_top_eta)**2
-        )
+        lep_top_e = np.sqrt(lep_top_mass**2 + lep_top_pt**2 * np.cosh(lep_top_eta) ** 2)
 
-         # Lepton from anti-top
+        # Lepton from anti-top
         lep_tbar_pt = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_tbar_pt)
         lep_tbar_eta = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_tbar_eta)
         lep_tbar_phi = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_tbar_phi)
         lep_tbar_mass = ak.to_numpy(events.Ttbar_MC_Wdecay1_afterFSR_from_tbar_m)
         lep_tbar_e = np.sqrt(
-            lep_tbar_mass**2 + lep_tbar_pt**2 * np.cosh(lep_tbar_eta)**2
+            lep_tbar_mass**2 + lep_tbar_pt**2 * np.cosh(lep_tbar_eta) ** 2
         )
 
         # Extract neutrino information
@@ -832,12 +875,11 @@ class RootPreprocessor:
             "truth_initial_parton_num_gluons": n_gluons,
         }
 
-
     def save_to_npz(self, output_path: str):
         """Save data to NPZ format."""
         np.savez_compressed(output_path, **self.processed_data)
 
-    def save_to_root(self,output_path):
+    def save_to_root(self, output_path):
         """Save data to ROOT format."""
         # Create output directory if needed
         output_dir = os.path.dirname(output_path)
@@ -866,7 +908,7 @@ class RootPreprocessor:
             Dictionary of processed features
         """
         return self.processed_data
-    
+
     def get_num_events(self) -> int:
         """Get the number of processed events."""
         if self.processed_data:
@@ -920,6 +962,7 @@ def preprocess_root_file(
 
     return preprocessor.get_processed_data()
 
+
 def preprocess_root_directory(
     config: DataSampleConfig,
 ):
@@ -946,7 +989,7 @@ def preprocess_root_directory(
     print(f"Found {num_files} files in {input_dir}.\nStarting processing...\n\n")
     num_total_events = 0
     preprocessor = RootPreprocessor(config.preprocessor_config)
-    for file_index,filename in enumerate(os.listdir(input_dir)):
+    for file_index, filename in enumerate(os.listdir(input_dir)):
         print(f"Processing file {file_index + 1} of {num_files}...\n")
         if filename.endswith(".root"):
             input_path = os.path.join(input_dir, filename)
@@ -954,9 +997,13 @@ def preprocess_root_directory(
             data_collected.append(preprocessor.process(input_path))
             num_events = preprocessor.get_num_events()
             num_total_events += num_events
-            print(f"Processed {num_events} events from {filename}. Total events so far: {num_total_events}\n\n")
+            print(
+                f"Processed {num_events} events from {filename}. Total events so far: {num_total_events}\n\n"
+            )
         if max_events is not None and num_total_events >= max_events:
-            print(f"Reached maximum number of events: {max_events}. Stopping processing.")
+            print(
+                f"Reached maximum number of events: {max_events}. Stopping processing."
+            )
             break
     print(f"Finished processing files. Total events processed: {num_total_events}")
     print("\nMerging data from all files...")
@@ -966,10 +1013,13 @@ def preprocess_root_directory(
         print(f"Merging key: {key} ({len(merged_data)+1}/{n_keys})")
         for data in data_collected:
             if key not in data:
-                raise KeyError(f"Key '{key}' not found in one of the data dictionaries.")
-        merged_data[key] = np.concatenate([data[key] for data in data_collected], axis=0)
+                raise KeyError(
+                    f"Key '{key}' not found in one of the data dictionaries."
+                )
+        merged_data[key] = np.concatenate(
+            [data[key] for data in data_collected], axis=0
+        )
 
     print("Saving merged data to npz file...")
     np.savez_compressed(output_file, **merged_data)
     print(f"Merged data saved to {output_file}")
-

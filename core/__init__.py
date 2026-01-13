@@ -5,5 +5,5 @@ from . import base_classes
 from . import evaluation
 from .DataPlotting import DataPlotter
 from .DataLoader import DataPreprocessor
-from .Configs import LoadConfig, DataConfig, get_load_config_from_yaml
+from .Configs import *
 from .RootPreprocessor import RootPreprocessor, PreprocessorConfig, preprocess_root_file, preprocess_root_directory

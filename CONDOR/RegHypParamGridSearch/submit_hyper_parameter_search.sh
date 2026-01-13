@@ -5,7 +5,6 @@ universe = vanilla
 
 # Resource requirements
 RequestGPUs    = 1
-Requirements = (GPUs_DriverVersion == 13.0)
 RequestMemory  = 60000
 +RequestRuntime = 43200
 

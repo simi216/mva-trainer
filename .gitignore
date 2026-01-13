@@ -25,3 +25,4 @@ models/
 legacy_models/
 .DS_Store
 **.npz
+training/*

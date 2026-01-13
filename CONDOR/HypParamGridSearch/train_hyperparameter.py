@@ -100,7 +100,7 @@ def main():
     args = parse_args()
 
     sys.path.append(args.root_dir)  # Ensure root directory is in the path
-    import core.assignment_models as Models
+    import core.keras_models as Models
     from core.DataLoader import (
         DataPreprocessor,
         DataConfig,
@@ -145,12 +145,11 @@ def main():
     config = DataProcessor.load_from_npz(
         data_config_yaml["data_path"][args.data_type],
         max_events=args.max_events,
+        event_numbers="even"
     )
 
     print("Splitting data...")
-    X_train, y_train, X_val, y_val = DataProcessor.split_data(
-        test_size=0.1, random_state=42
-    )
+    X_train, y_train = DataProcessor.get_data()
     del DataProcessor  # Free memory
 
     # Build model
@@ -170,6 +169,15 @@ def main():
             hidden_dim=args.hidden_dim,
             num_layers=args.num_layers,
             dropout_rate=args.dropout_rate,
+        )
+    elif args.architecture == "SPANetTransformer":
+        Model = Models.SPANetTransformer(config, name="Transformer")
+        Model.build_model(
+            hidden_dim=args.hidden_dim,
+            encoder_layers=int(args.num_layers),
+            dropout_rate=args.dropout_rate,
+            log_variables=True,
+            compute_HLF=True,
         )
     elif args.architecture == "CrossAttentionTransformer":
         Model = Models.CrossAttentionModel(config, name="RNN")
@@ -227,23 +235,6 @@ def main():
 
     print(f"Exporting to ONNX: {onnx_path}...")
     Model.export_to_onnx(onnx_path)
-
-    # Make predictions and create confusion matrix
-    print("Generating predictions and confusion matrix...")
-    predicted_indices = Model.predict_indices(X_val)
-    true_indices = y_val["assignment_labels"]
-
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ConfusionMatrixDisplay.from_predictions(
-        true_indices[:, :, 0].argmax(axis=1),
-        predicted_indices[:, :, 0].argmax(axis=1),
-        normalize="true",
-        ax=ax,
-    )
-
-    confusion_matrix_path = os.path.join(PLOTS_DIR, "confusion_matrix_lepton.pdf")
-    plt.savefig(confusion_matrix_path)
-    print(f"Confusion matrix saved to {confusion_matrix_path}")
 
     # Save training history and model info
     history_path = os.path.join(MODEL_DIR, f"history.npz")

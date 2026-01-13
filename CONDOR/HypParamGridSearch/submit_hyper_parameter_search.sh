@@ -7,7 +7,7 @@ universe = vanilla
 RequestGPUs    = 1
 #Requirements = (GPUs_DeviceName == "Tesla V100-PCIE-32GB")
 RequestMemory  = 60000
-+RequestRuntime = 43200
++RequestRuntime = 60000
 
 # Output files
 output = logs/job_$(Cluster)_$(ProcId).out

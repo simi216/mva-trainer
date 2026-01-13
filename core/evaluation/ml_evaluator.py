@@ -11,7 +11,7 @@ from .evaluator_base import (
     SelectionAccuracyCalculator,
     NeutrinoDeviationCalculator,
 )
-from ..reconstruction import FFMLRecoBase
+from ..reconstruction import KerasFFRecoBase
 from typing import List, Union
 import time
 import os
@@ -22,7 +22,7 @@ class FeatureImportanceCalculator:
 
     def __init__(
         self,
-        reconstructor: FFMLRecoBase,
+        reconstructor: KerasFFRecoBase,
         X_test: dict,
         y_test: dict,
     ):
@@ -174,7 +174,7 @@ class MLEvaluator:
 
     def __init__(
         self,
-        reconstructor: Union[FFMLRecoBase, List[FFMLRecoBase]],
+        reconstructor: Union[KerasFFRecoBase, List[KerasFFRecoBase]],
         X_test: Union[dict, List[dict]],
         y_test: Union[dict, List[dict]],
     ):

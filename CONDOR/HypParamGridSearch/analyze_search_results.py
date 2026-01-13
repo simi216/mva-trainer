@@ -28,7 +28,7 @@ def parse_model_name(model_name):
 
 def load_and_evaluate_model(model_dir, validation_data, data_config):
     """Load a trained model and evaluate its performance."""
-    model = core.reconstruction.FFMLRecoBase(data_config, name="model")
+    model = core.reconstruction.KerasFFRecoBase(data_config, name="model")
     model.load_model(os.path.join(model_dir, "model.keras"))
     results = model.evaluate(validation_data)
     return results
@@ -264,10 +264,10 @@ def main():
         config_dict = yaml.safe_load(f)
 
     data_config = data_loader.load_from_npz(
-        config_dict["data_path"]["nominal"], max_events=2_000_000
+        config_dict["data_path"]["nominal"], max_events=4_000_000, event_numbers="odd"
     )
 
-    validation_data, _ = data_loader.get_data()
+    validation_data,_ = data_loader.get_data()  # Get validation data
 
     print("\nEvaluating all models on validation data...")
     eval_results_df = evaluate_all_models(

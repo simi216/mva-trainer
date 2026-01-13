@@ -3,7 +3,7 @@
 
 > params.txt  # Clear the file
 
-for arch in FeatureConcatTransformer; do
+for arch in SPANetTransformer; do
     for hidden in 32 64 128 256; do
         for layers in 4 6 8 10; do
             for heads in 8; do

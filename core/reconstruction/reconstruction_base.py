@@ -3,7 +3,7 @@ import keras
 import numpy as np
 from abc import ABC, abstractmethod
 from core.DataLoader import DataConfig
-from core.base_classes import BaseUtilityModel, MLWrapperBase, KerasModelWrapper
+from core.base_classes import BaseUtilityModel, KerasMLWrapper, KerasModelWrapper
 from core.components import OutputUpScaleLayer
 
 
@@ -120,7 +120,7 @@ class EventReconstructorBase(BaseUtilityModel, ABC):
         return results
 
 
-class FFMLRecoBase(EventReconstructorBase, MLWrapperBase):
+class KerasFFRecoBase(EventReconstructorBase, KerasMLWrapper):
     def __init__(
         self,
         config: DataConfig,
@@ -139,6 +139,8 @@ class FFMLRecoBase(EventReconstructorBase, MLWrapperBase):
             perform_regression=perform_regression,
             use_nu_flows=use_nu_flows,
         )
+        self.assignment_submodel = None
+        self.regression_submodel = None
 
     def _build_model_base(self, jet_assignment_probs, regression_output=None, **kwargs):
         jet_assignment_probs.name = "assignment"
@@ -174,6 +176,14 @@ class FFMLRecoBase(EventReconstructorBase, MLWrapperBase):
                 ],
                 outputs={"assignment": jet_assignment_probs},
                 **kwargs,
+            )
+        self.assignment_submodel = KerasModelWrapper(
+            inputs=self.model.inputs, outputs={"assignment": jet_assignment_probs}
+        )
+        if regression_output is not None:
+            self.regression_submodel = KerasModelWrapper(
+                inputs=self.model.inputs,
+                outputs={"normalized_regression": regression_output},
             )
 
     def compile_model(self, loss, optimizer, metrics=None, **kwargs):

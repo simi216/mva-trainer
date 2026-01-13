@@ -31,7 +31,7 @@ class KerasModelWrapper(keras.Model):
         return predictions
 
 
-class MLWrapperBase(BaseUtilityModel, ABC):
+class KerasMLWrapper(BaseUtilityModel, ABC):
     def __init__(
         self,
         config: DataConfig,
@@ -101,49 +101,40 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             y_train.pop("regression")
 
         jet_data = None
-        for key in X_train.keys():
-            if "jet" in key:
-                jet_data = X_train.pop(key)
-                break
-
+        jet_data = X_train.pop("jet")
         if jet_data is None:
             raise ValueError("Jet data not found in X_train.")
         else:
             X_train["jet_inputs"] = jet_data
 
         lepton_data = None
-        for key in X_train.keys():
-            if "lepton" in key:
-                lepton_data = X_train.pop(key)
-                break
+        lepton_data = X_train.pop("lepton")
         if lepton_data is None:
             raise ValueError("Lepton data not found in X_train.")
         else:
             X_train["lep_inputs"] = lepton_data
         if self.n_met > 0:
             met_data = None
-            for key in X_train.keys():
-                if "met" in key:
-                    met_data = X_train.pop(key)
-                    break
+            met_data = X_train.pop("met")
             if met_data is None:
                 raise ValueError("met data not found in X_train.")
             else:
                 X_train["met_inputs"] = met_data
-
-        if self.config.has_global_event_features and "global_event_inputs" in self.model.input:
+        if (
+            self.config.has_global_event_features
+            and "global_event_inputs" in self.model.input
+        ):
             global_event_data = None
-            for key in X_train.keys():
-                if "global_event" in key:
-                    global_event_data = X_train.pop(key)
-                    break
+            global_event_data = X_train.pop("global_event_features")
             if global_event_data is None:
                 raise ValueError("Global event data not found in X_train.")
             else:
                 X_train["global_event_inputs"] = global_event_data
         return X_train, y_train, sample_weights
 
-    def _prepare_inputs(self, log_variables=True, compute_HLF=False, use_global_event_features=False):
+    def _prepare_inputs(
+        self, log_variables=True, compute_HLF=False, use_global_event_features=False
+    ):
         jet_inputs = keras.Input(shape=(self.max_jets, self.n_jets), name="jet_inputs")
         lep_inputs = keras.Input(
             shape=(self.NUM_LEPTONS, self.n_leptons), name="lep_inputs"
@@ -268,16 +259,23 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                     "Regression training requested, but regression targets not found in y_train."
                 )
             regression_scale_std = np.std(y_train["regression"], axis=0)
-            y_train["normalized_regression"] = y_train.pop("regression") / regression_scale_std
+            y_train["normalized_regression"] = (
+                y_train.pop("regression") / regression_scale_std
+            )
 
-            normalized_outputs = self.trainable_model.get_layer("normalized_regression").output
+            normalized_outputs = self.trainable_model.get_layer(
+                "normalized_regression"
+            ).output
 
             denormalized_outputs = keras.layers.Rescaling(
                 regression_scale_std, name="regression"
             )(normalized_outputs)
             self.model = KerasModelWrapper(
                 inputs=self.trainable_model.inputs,
-                outputs={"assignment" : self.trainable_model.get_layer("assignment").output, "regression": denormalized_outputs},
+                outputs={
+                    "assignment": self.trainable_model.get_layer("assignment").output,
+                    "regression": denormalized_outputs,
+                },
             )
 
         if self.history is None:
@@ -443,14 +441,12 @@ class MLWrapperBase(BaseUtilityModel, ABC):
             if isinstance(layer, keras.layers.Normalization):
                 submodel = get_pre_norm_submodel(self.model, layer.name)
                 submodel_inputs = submodel.inputs
-                print("Submodel inputs: ", submodel_inputs)
                 if not isinstance(submodel_inputs, list):
                     submodel_inputs = [submodel_inputs]
 
                 # Prepare input data for the submodel
                 submodel_input_data = {}
                 for input_tensor in submodel_inputs:
-                    print("Input tensor: ", input_tensor, input_tensor.name)
                     input_name = input_tensor.name.split(":")[0]
                     if input_name not in input_data:
                         raise ValueError(
@@ -461,11 +457,11 @@ class MLWrapperBase(BaseUtilityModel, ABC):
                 transformed_data = submodel.predict(
                     submodel_input_data,
                     batch_size=1024,
+                    verbose=0,
                 )
                 layer.adapt(transformed_data)
                 del submodel
                 print("Adapted normalization layer: ", layer.name)
-
 
     def export_to_onnx(self, onnx_file_path="model.onnx"):
         """
@@ -518,65 +514,9 @@ class MLWrapperBase(BaseUtilityModel, ABC):
 
         # Convert to ONNX
         spec = (tf.TensorSpec((None, flat_input_size), tf.float32, name="flat_input"),)
-        onnx_model, _ = tf2onnx.convert.from_keras(
+        tf2onnx.convert.from_keras(
             wrapped_model,
             input_signature=spec,
-            opset=13,
             output_path=onnx_file_path,
         )
         print(f"ONNX model saved to {onnx_file_path}")
-
-        # Save input names and positions to a text file
-        input_info_path = onnx_file_path.replace(".onnx", "_input_info.txt")
-        feature_index_dict = self.config.feature_indices
-        flat_feature_index_dict = {}
-
-        for feature_type, features in feature_index_dict.items():
-            if feature_type == "jet":
-                for i, feature in enumerate(features):
-                    for j in range(self.max_jets):
-                        flat_index = j * self.n_jets + i
-                        flat_feature_index_dict[flat_index] = f"jet_{j}_{feature}"
-            elif feature_type == "lepton":
-                for i, feature in enumerate(features):
-                    for j in range(self.NUM_LEPTONS):
-                        flat_index = (
-                            self.max_jets * self.n_jets + j * self.n_leptons + i
-                        )
-                        flat_feature_index_dict[flat_index] = f"lepton_{j}_{feature}"
-            elif feature_type == "met":
-                for i, feature in enumerate(features):
-                    flat_index = (
-                        self.max_jets * self.n_jets
-                        + self.NUM_LEPTONS * self.n_leptons
-                        + i
-                    )
-                    flat_feature_index_dict[flat_index] = f"met_{feature}"
-
-        inputs_list = [None] * flat_input_size
-        for idx, name in flat_feature_index_dict.items():
-            inputs_list[idx] = name
-
-    def save_TopCPToolkitConfig(self, output_file):
-        """
-        Prints a configuration file for TopCPToolKit based on the model's feature indices.
-        Args:
-            output_file (str): The file path where the configuration will be saved.
-        """
-        if self.model is None:
-            raise ValueError(
-                "Model not built. Please build the model using build_model() method."
-            )
-        with open(output_file, "w") as f:
-            f.write("DiLepAssigner\n")
-            f.write("\tjets: ")
-            f.write("\telectrons: ")
-            f.write("\tmuons: ")
-            f.write("\tmet: ")
-            f.write('\tbtagger: "GN2v01"')
-            f.write("\teventSelection: \n")
-            f.write("\tn_jets: {}\n".format(self.max_jets))
-            f.write("\tNN_padding_value: {}\n".format(self.padding_value))
-            f.write("\tmodel_paths: {}\n".format("path/to/model"))
-            f.write("\n")
-        print(f"TopCPToolKit configuration saved to {output_file}")

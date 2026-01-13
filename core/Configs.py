@@ -10,6 +10,8 @@ components like ML models.
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Tuple
 import numpy as np
+import keras
+
 
 @dataclass
 class LoadConfig:
@@ -19,9 +21,12 @@ class LoadConfig:
     Contains all options needed during the data loading phase, including
     feature names, truth labels, cuts, and preprocessing options.
 
-    This config is used by DataLoader and DataPreprocessor during loading.
+    This config is used by the DataPreprocessor during loading.
     After loading, a DataConfig is created to describe the loaded data structure.
     """
+
+    # Data source
+    data_path: Dict[str, str]
 
     # Feature specifications
     jet_features: List[str]
@@ -54,82 +59,6 @@ class LoadConfig:
 
     # Loading options
     padding_value: float = -999.0
-    def get_feature_clipping_dict(self) -> Dict[str, int]:
-        """Build feature clipping configuration for DataLoader."""
-        clipping = {
-            **{feat: self.max_jets for feat in self.jet_features},
-            **{feat: self.NUM_LEPTONS for feat in self.lepton_features},
-            self.jet_truth_label: 6,
-            self.lepton_truth_label: 2,
-        }
-        clipping.update({feat: 1 for feat in self.met_features})
-
-        if self.non_training_features:
-            clipping.update({feat: 1 for feat in self.non_training_features})
-
-        if self.event_weight:
-            clipping[self.event_weight] = 1
-        if self.mc_event_number:
-            clipping[self.mc_event_number] = 1
-
-        if (not self.neutrino_momentum_features is None) ^ (not self.antineutrino_momentum_features is None):
-            raise ValueError(
-                "Both neutrino_momentum_features and "
-                "antineutrino_momentum_features must be provided together."
-            )
-        elif self.neutrino_momentum_features and self.antineutrino_momentum_features:
-            if len(self.neutrino_momentum_features) != len(
-                self.antineutrino_momentum_features
-            ):
-                raise ValueError(
-                    "neutrino_momentum_features and "
-                    "antineutrino_momentum_features must have the same length."
-                )
-            clipping.update({feat: 1 for feat in self.neutrino_momentum_features})
-            clipping.update({feat: 1 for feat in self.antineutrino_momentum_features})
-        
-        if (not self.nu_flows_neutrino_momentum_features is None) ^ (not self.nu_flows_antineutrino_momentum_features is None):
-            raise ValueError(
-                "Both nu_flows_neutrino_momentum_features and "
-                "nu_flows_antineutrino_momentum_features must be provided together."
-            )
-        elif self.nu_flows_neutrino_momentum_features and self.nu_flows_antineutrino_momentum_features:
-            if len(self.nu_flows_neutrino_momentum_features) != len(
-                self.nu_flows_antineutrino_momentum_features
-            ):
-                raise ValueError(
-                    "nu_flows_neutrino_momentum_features and "
-                    "nu_flows_antineutrino_momentum_features must have the same length."
-                )
-            clipping.update({feat: 1 for feat in self.nu_flows_neutrino_momentum_features})
-            clipping.update({feat: 1 for feat in self.nu_flows_antineutrino_momentum_features})
-        
-        if self.top_truth_features and self.tbar_truth_features:
-            clipping.update({feat: 1 for feat in self.top_truth_features})
-            clipping.update({feat: 1 for feat in self.tbar_truth_features})
-        if (self.top_truth_features is None) or (self.tbar_truth_features is None):
-            raise ValueError(
-                "Both top_lepton_truth_features and tbar_lepton_truth_features "
-                "must be provided together."
-            )
-        if self.top_lepton_truth_features and self.tbar_lepton_truth_features:
-            if len(self.top_lepton_truth_features) != len(
-                self.tbar_lepton_truth_features
-            ):
-                raise ValueError(
-                    "top_lepton_truth_features and tbar_lepton_truth_features "
-                    "must have the same length."
-                )
-            clipping.update({feat: 1 for feat in self.top_lepton_truth_features})
-            clipping.update({feat: 1 for feat in self.tbar_lepton_truth_features})
-        elif (self.top_lepton_truth_features is None) or (self.tbar_lepton_truth_features is None):
-            raise ValueError(
-                "Both top_lepton_truth_features and tbar_lepton_truth_features "
-                "must be provided together."
-            )
-        if self.global_event_features:
-            clipping.update({feat: 1 for feat in self.global_event_features})
-        return clipping
 
     def to_data_config(self) -> "DataConfig":
         """
@@ -149,7 +78,8 @@ class LoadConfig:
             has_neutrino_truth=self.neutrino_momentum_features is not None,
             neutrino_momentum_features=self.neutrino_momentum_features,
             antineutrino_momentum_features=self.antineutrino_momentum_features,
-            has_nu_flows_neutrino_truth=self.nu_flows_neutrino_momentum_features is not None,
+            has_nu_flows_neutrino_truth=self.nu_flows_neutrino_momentum_features
+            is not None,
             nu_flows_neutrino_momentum_features=self.nu_flows_neutrino_momentum_features,
             nu_flows_antineutrino_momentum_features=self.nu_flows_antineutrino_momentum_features,
             top_truth_features=self.top_truth_features,
@@ -163,7 +93,8 @@ class LoadConfig:
             has_event_weight=self.event_weight is not None,
             has_event_number=self.mc_event_number is not None,
         )
-    
+
+
 def get_load_config_from_yaml(yaml_path: str) -> LoadConfig:
     """
     Load a LoadConfig from a YAML file.
@@ -244,7 +175,7 @@ class DataConfig:
 
     has_top_truth: bool = False
     has_lepton_truth: bool = False
-    
+
     # Event weights and numbers
     has_event_weight: bool = False
     has_event_number: bool = False
@@ -259,157 +190,108 @@ class DataConfig:
         self._build_feature_indices()
         self._build_data_shapes()
 
+    def _add_feature_indices(self, key: str, features: Optional[List[str]]) -> None:
+        """Helper to add feature indices for a given feature type."""
+        if features:
+            self.feature_indices[key] = {var: idx for idx, var in enumerate(features)}
+
     def _build_feature_indices(self) -> None:
         """Build index mapping for all feature types."""
-        self.feature_indices = {
-            "lepton": {var: idx for idx, var in enumerate(self.lepton_features)},
-            "jet": {var: idx for idx, var in enumerate(self.jet_features)},
-        }
+        self.feature_indices = {}
 
-        self.feature_indices["met"] = {
-            var: idx for idx, var in enumerate(self.met_features)
-        }
+        # Core features (always present)
+        self._add_feature_indices("lepton", self.lepton_features)
+        self._add_feature_indices("jet", self.jet_features)
+        self._add_feature_indices("met", self.met_features)
 
-        if self.non_training_features:
-            self.feature_indices["non_training"] = {
-                var: idx for idx, var in enumerate(self.non_training_features)
-            }
+        # Optional features
+        self._add_feature_indices("non_training", self.non_training_features)
 
+        # Single-value features
         if self.has_event_weight:
             self.feature_indices["event_weight"] = {"weight": 0}
-        
         if self.has_event_number:
             self.feature_indices["event_number"] = {"event_number": 0}
 
-        if self.has_neutrino_truth and self.neutrino_momentum_features:
-            self.feature_indices["neutrino_truth"] = {
-                target: idx
-                for idx, target in enumerate(self.neutrino_momentum_features)
-            }
-        
-        if self.has_neutrino_truth and self.nu_flows_neutrino_momentum_features:
-            self.feature_indices["nu_flows_neutrino_truth"] = {
-                target: idx
-                for idx, target in enumerate(self.nu_flows_neutrino_momentum_features)
-            }
-        
-        if self.has_top_truth and self.top_truth_features:
-            self.feature_indices["top_truth"] = {
-                target: idx
-                for idx, target in enumerate(self.top_truth_features)
-            }
-        if self.has_lepton_truth and self.top_lepton_truth_features:
-            self.feature_indices["lepton_truth"] = {
-                target: idx
-                for idx, target in enumerate(self.top_lepton_truth_features)
-            }
-
-        
+        # Truth features (conditional)
+        if self.has_neutrino_truth:
+            self._add_feature_indices("neutrino_truth", self.neutrino_momentum_features)
+        if self.has_nu_flows_neutrino_truth:
+            self._add_feature_indices(
+                "nu_flows_neutrino_truth", self.nu_flows_neutrino_momentum_features
+            )
+        if self.has_top_truth:
+            self._add_feature_indices("top_truth", self.top_truth_features)
+        if self.has_lepton_truth:
+            self._add_feature_indices("lepton_truth", self.top_lepton_truth_features)
 
     def _build_data_shapes(self) -> None:
         """Build expected data shapes for each feature type."""
-        # Shape: (n_events, NUM_LEPTONS, n_features)
-        self.data_shapes["lepton"] = (None, self.NUM_LEPTONS, len(self.lepton_features))
+        self.data_shapes = {}
 
-        # Shape: (n_events, max_jets, n_features)
-        self.data_shapes["jet"] = (None, self.max_jets, len(self.jet_features))
+        # Define shape configurations: (key, condition, feature_list, shape_dims)
+        shape_configs = [
+            # Core object features (n_events, n_objects, n_features)
+            ("lepton", True, self.lepton_features, (None, self.NUM_LEPTONS)),
+            ("jet", True, self.jet_features, (None, self.max_jets)),
+            ("met", self.met_features, self.met_features, (None, 1)),
+            # Event-level features (n_events, n_features)
+            (
+                "non_training",
+                self.non_training_features,
+                self.non_training_features,
+                (None,),
+            ),
+            (
+                "global_event",
+                self.has_global_event_features,
+                self.global_event_features,
+                (None,),
+            ),
+            # Truth features (n_events, NUM_LEPTONS, n_features)
+            (
+                "neutrino_truth",
+                self.has_neutrino_truth,
+                self.neutrino_momentum_features,
+                (None, self.NUM_LEPTONS),
+            ),
+            (
+                "nu_flows_neutrino_truth",
+                self.has_nu_flows_neutrino_truth,
+                self.nu_flows_neutrino_momentum_features,
+                (None, self.NUM_LEPTONS),
+            ),
+            (
+                "top_truth",
+                self.has_top_truth,
+                self.top_truth_features,
+                (None, self.NUM_LEPTONS),
+            ),
+            (
+                "lepton_truth",
+                self.has_lepton_truth,
+                self.top_lepton_truth_features,
+                (None, self.NUM_LEPTONS),
+            ),
+        ]
 
-        if self.met_features:
-            # Shape: (n_events, 1, n_features)
-            self.data_shapes["met"] = (None, 1, len(self.met_features))
+        # Build shapes based on configuration
+        for key, condition, features, base_shape in shape_configs:
+            if condition and features:
+                self.data_shapes[key] = base_shape + (len(features),)
 
-        if self.non_training_features:
-            # Shape: (n_events, n_features)
-            self.data_shapes["non_training"] = (None, len(self.non_training_features))
-
+        # Single-value features (n_events,)
         if self.has_event_weight:
-            # Shape: (n_events,)
             self.data_shapes["event_weight"] = (None,)
-        
         if self.has_event_number:
-            # Shape: (n_events,)
             self.data_shapes["event_number"] = (None,)
 
-        if self.has_neutrino_truth:
-            # Shape: (n_events, n_targets)
-            self.data_shapes["neutrino_truth"] = (
-                None,
-                self.NUM_LEPTONS,
-                len(self.neutrino_momentum_features),
-            )
-        if self.has_nu_flows_neutrino_truth:
-            # Shape: (n_events, n_targets)
-            self.data_shapes["nu_flows_neutrino_truth"] = (
-                None,
-                self.NUM_LEPTONS,
-                len(self.nu_flows_neutrino_momentum_features),
-            )
-
-        # MC truth shapes
-        if self.has_top_truth:
-            self.data_shapes["top_truth"] = (
-                None,
-                self.NUM_LEPTONS,
-                len(self.top_truth_features),
-            )
-        if self.has_lepton_truth:
-            self.data_shapes["lepton_truth"] = (
-                None,
-                self.NUM_LEPTONS,
-                len(self.top_lepton_truth_features),
-            )
-        
-        if self.has_global_event_features:
-            # Shape: (n_events, n_features)
-            self.data_shapes["global_event"] = (None, len(self.global_event_features))
-
-        # Shape: (n_events, max_jets, NUM_LEPTONS)
+        # Labels shape
         self.data_shapes["labels"] = (None, self.max_jets, self.NUM_LEPTONS)
 
     # =========================================================================
-    # Accessors for downstream components (e.g., ML models)
+    # Accessors for downstream evaluation components
     # =========================================================================
-
-    def get_n_jet_features(self) -> int:
-        """Get number of jet features."""
-        return len(self.jet_features)
-
-    def get_n_lepton_features(self) -> int:
-        """Get number of lepton features."""
-        return len(self.lepton_features)
-
-    def get_n_met_features(self) -> int:
-        """Get number of MET features."""
-        return len(self.met_features) if self.met_features else 0
-
-    def get_n_custom_features(self) -> int:
-        """Get number of custom features."""
-        return len(self.custom_features)
-    
-    def get_n_neutrino_truth(self) -> int:
-        """Get number of regression target features."""
-        return len(self.neutrino_momentum_features) if self.neutrino_momentum_features else 0
-
-    def get_n_nu_flows_neutrino_truth(self) -> int:
-        """Get number of nu-flows regression target features."""
-        return len(self.nu_flows_neutrino_momentum_features) if self.nu_flows_neutrino_momentum_features else 0
-
-    def get_n_top_truth(self) -> int:
-        """Get number of top truth features."""
-        return len(self.top_truth_features) if self.top_truth_features else 0
-    
-    def get_n_lepton_truth(self) -> int:
-        """Get number of lepton truth features."""
-        return len(self.top_lepton_truth_features) if self.top_lepton_truth_features else 0
-    
-    def get_n_non_training_features(self) -> int:
-        """Get number of non-training features."""
-        return len(self.non_training_features) if self.non_training_features else 0
-    
-    def get_n_global_event_features(self) -> int:
-        """Get number of global event features."""
-        return len(self.global_event_features) if self.global_event_features else 0
-
     def get_feature_index(self, feature_type: str, feature_name: str) -> int:
         """
         Get the index of a specific feature.
@@ -426,78 +308,6 @@ class DataConfig:
         """
         return self.feature_indices[feature_type][feature_name]
 
-    def get_feature_names(self, feature_type: str) -> List[str]:
-        """
-        Get all feature names of a given type.
-
-        Args:
-            feature_type: Type of feature ('jet', 'lepton', 'met', etc.)
-
-        Returns:
-            List of feature names
-        """
-        if feature_type == "jet":
-            return self.jet_features
-        elif feature_type == "lepton":
-            return self.lepton_features
-        elif feature_type == "met":
-            return self.met_features if self.met_features else []
-        elif feature_type == "non_training":
-            return self.non_training_features if self.non_training_features else []
-        elif feature_type == "custom":
-            return list(self.custom_features.keys())
-        elif feature_type == "neutrino_truth":
-            return self.neutrino_momentum_features if self.neutrino_momentum_features else []
-        elif feature_type == "nu_flows_neutrino_truth":
-            return self.nu_flows_neutrino_momentum_features if self.nu_flows_neutrino_momentum_features else []
-        elif feature_type == "top_truth":
-            return self.top_truth_features if self.top_truth_features else []
-        elif feature_type == "lepton_truth":
-            return self.top_lepton_truth_features if self.top_lepton_truth_features else []
-        elif feature_type == "global_event":
-            return self.global_event_features if self.global_event_features else []
-        else:
-            raise ValueError(f"Unknown feature type: {feature_type}")
-
-    def get_expected_shape(
-        self, feature_type: str, n_events: Optional[int] = None
-    ) -> Tuple[int, ...]:
-        """
-        Get expected data shape for a feature type.
-
-        Args:
-            feature_type: Type of feature ('jet', 'lepton', 'met', etc.)
-            n_events: Number of events (replaces None in shape)
-
-        Returns:
-            Expected shape tuple
-        """
-        shape = self.data_shapes[feature_type]
-        if n_events is not None:
-            shape = tuple(n_events if s is None else s for s in shape)
-        return shape
-
-    def validate_data_shape(self, feature_type: str, data: np.ndarray) -> bool:
-        """
-        Validate that data has the expected shape.
-
-        Args:
-            feature_type: Type of feature
-            data: Data array to validate
-
-        Returns:
-            True if shape is valid
-
-        Raises:
-            ValueError: If shape is invalid
-        """
-        expected_shape = self.get_expected_shape(feature_type, n_events=data.shape[0])
-        if data.shape != expected_shape:
-            raise ValueError(
-                f"Invalid shape for {feature_type}: expected {expected_shape}, got {data.shape}"
-            )
-        return True
-
     def add_custom_feature(self, name: str, index: int) -> None:
         """
         Register a custom feature.
@@ -510,144 +320,3 @@ class DataConfig:
         if "custom" not in self.feature_indices:
             self.feature_indices["custom"] = {}
         self.feature_indices["custom"][name] = index
-
-    def get_model_input_shapes(self) -> Dict[str, Tuple[int, ...]]:
-        """
-        Get input shapes for ML model (excluding batch dimension).
-
-        Returns:
-            Dictionary mapping input names to their shapes
-        """
-        shapes = {
-            "jet": (self.max_jets, len(self.jet_features)),
-            "lepton": (self.NUM_LEPTONS, len(self.lepton_features)),
-        }
-
-        if self.met_features:
-            shapes["met"] = (1, len(self.met_features))
-
-        return shapes
-
-    def summary(self) -> str:
-        """
-        Get a string summary of the data configuration.
-
-        Returns:
-            Formatted summary string
-        """
-        lines = [
-            "=" * 60,
-            "Data Configuration Summary",
-            "=" * 60,
-            "",
-            "Jet Features:",
-            f"  Count: {len(self.jet_features)}",
-            f"  Max jets: {self.max_jets}",
-            f"  Names: {', '.join(self.jet_features)}",
-            "",
-            "Lepton Features:",
-            f"  Count: {len(self.lepton_features)}",
-            f"  Max leptons: {self.NUM_LEPTONS}",
-            f"  Names: {', '.join(self.lepton_features)}",
-        ]
-
-        if self.met_features:
-            lines.extend(
-                [
-                    "",
-                    "MET Features:",
-                    f"  Count: {len(self.met_features)}",
-                    f"  Names: {', '.join(self.met_features)}",
-                ]
-            )
-        if self.global_event_features:
-            lines.extend(
-                [
-                    "",
-                    "Global Event Features:",
-                    f"  Count: {len(self.global_event_features)}",
-                    f"  Names: {', '.join(self.global_event_features)}",
-                ]
-            )
-
-        if self.non_training_features:
-            lines.extend(
-                [
-                    "",
-                    "Non-Training Features:",
-                    f"  Count: {len(self.non_training_features)}",
-                    f"  Names: {', '.join(self.non_training_features)}",
-                ]
-            )
-
-        if self.custom_features:
-            lines.extend(
-                [
-                    "",
-                    "Custom Features:",
-                    f"  Count: {len(self.custom_features)}",
-                    f"  Names: {', '.join(self.custom_features.keys())}",
-                ]
-            )
-
-        lines.extend(
-            [
-                "",
-                "Data Properties:",
-                f"  Padding value: {self.padding_value}",
-                f"  Has event weights: {self.has_event_weight}",
-                f"  Has regression targets: {self.has_neutrino_truth}",
-            ]
-        )
-
-        if self.has_neutrino_truth:
-            lines.extend(
-                [
-                "Neutrino Momentum Features:",
-                f"  Count: {len(self.neutrino_momentum_features)}",
-                f" Max neutrinos: {self.NUM_LEPTONS}",
-                f"  Names: {', '.join(self.neutrino_momentum_features)}",
-                ]
-            )
-        if self.has_nu_flows_neutrino_truth:
-            lines.extend(
-                [
-                "Nu-flows Neutrino Momentum Features:",
-                f"  Count: {len(self.nu_flows_neutrino_momentum_features)}",
-                f" Max neutrinos: {self.NUM_LEPTONS}",
-                f"  Names: {', '.join(self.nu_flows_neutrino_momentum_features)}",
-                ]
-            )
-        if self.has_top_truth:
-            lines.extend(
-                [
-                "",
-                "Top Truth Features:",
-                f"  Count: {len(self.top_truth_features)}",
-                f" Max tops: {self.NUM_LEPTONS}",
-                f"  Names: {', '.join(self.top_truth_features)}",
-                ]
-            )
-        if self.has_lepton_truth:
-            lines.extend(
-                [
-                "",
-                "Lepton Truth Features:",
-                f"  Count: {len(self.top_lepton_truth_features)}",
-                f" Max leptons: {self.NUM_LEPTONS}",
-                f"  Names: {', '.join(self.top_lepton_truth_features)}",
-                ]
-            )
-
-        lines.extend(
-            [
-                "",
-                "Expected Shapes:",
-            ]
-        )
-        for feature_type, shape in self.data_shapes.items():
-            lines.append(f"  {feature_type}: {shape}")
-
-        lines.append("=" * 60)
-
-        return "\n".join(lines)

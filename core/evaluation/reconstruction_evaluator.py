@@ -8,7 +8,7 @@ import timeit
 from core.reconstruction import (
     EventReconstructorBase,
     GroundTruthReconstructor,
-    FFMLRecoBase,
+    KerasFFRecoBase,
 )
 from .evaluator_base import (
     PlotConfig,
@@ -53,7 +53,7 @@ class PredictionManager:
     def _compute_all_predictions(self):
         """Compute predictions for all reconstructors."""
         for reconstructor in self.reconstructors:
-            if isinstance(reconstructor, FFMLRecoBase):
+            if isinstance(reconstructor, KerasFFRecoBase):
                 assignment_pred, neutrino_regression = (
                     reconstructor.complete_forward_pass(self.X_test)
                 )
@@ -1402,6 +1402,23 @@ class ReconstructionEvaluator:
             "c_hel", "deviation", feature_data_type, feature_name, **kwargs
         )
 
+    def plot_binned_neutrino_magnitude_resolution(
+        self, feature_data_type: str, feature_name: str, **kwargs
+    ):
+        """Plot binned neutrino magnitude resolution vs. a feature."""
+        return self._plot_binned_variable(
+            "neutrino_mag", "resolution", feature_data_type, feature_name, **kwargs
+        )
+    
+    def plot_binned_neutrino_magnitude_deviation(
+        self, feature_data_type: str, feature_name: str, **kwargs
+    ):
+        """Plot binned neutrino magnitude deviation (mean) vs. a feature."""
+        return self._plot_binned_variable(
+            "neutrino_mag", "deviation", feature_data_type, feature_name, **kwargs
+        )
+
+
     # ==================== Variable Configuration and Computation Methods ====================
 
     @staticmethod
@@ -1491,6 +1508,18 @@ class ReconstructionEvaluator:
                     "use_relative_deviation": False,
                     "ylabel_resolution": r"$c_{\text{hel}}$ Resolution",
                     "ylabel_deviation": r"Mean $c_{\text{hel}}$ Deviation",
+                },
+            },
+            "neutrino_mag": {
+                "compute_func": lambda l, j, n: (np.linalg.norm(n[:,0,:], axis=-1),np.linalg.norm(n[:,1,:], axis=-1)),
+                "extract_func": lambda X: (np.linalg.norm(X["neutrino_truth"][:,0,:], axis=-1),np.linalg.norm(X["neutrino_truth"][:,1,:], axis=-1)),
+                "label": r"$|\vec{p}(\nu)|$ [GeV]",
+                "combine_tops": True,
+                "use_relative_deviation": True,
+                "resolution": {
+                    "use_relative_deviation": True,
+                    "ylabel_resolution": r"Relative $|\vec{p}(\nu)|$ Resolution",
+                    "ylabel_deviation": r"Mean Relative $|\vec{p}(\nu)|$ Deviation",
                 },
             },
         }
@@ -1694,4 +1723,67 @@ class ReconstructionEvaluator:
         )
         plt.tight_layout()
 
+        return fig, ax
+    
+    def plot_relative_neutrino_deviations(self, bins = 10, xlims = None):
+        """
+        Plot deviation distributions for magnitude and direction of neutrino momenta
+                
+        :param bins: Number of bins
+        :param xlims: Optional x-axis limits
+        """
+        fig, ax = plt.subplots(figsize=(10,5*self.config.NUM_LEPTONS), ncols=2, nrows=self.config.NUM_LEPTONS)
+        true_neutrino = self.y_test["neutrino_truth"]
+        true_neutrino_mag = np.linalg.norm(true_neutrino[...,:3], axis=-1)
+        true_neutrino_dir = true_neutrino[...,:3] / true_neutrino_mag[..., np.newaxis]
+        event_weights = FeatureExtractor.get_event_weights(self.X_test)
+        neutrino_deviations = []
+        names = []
+        nu_flows = False
+        for i, reconstructor in enumerate(self.reconstructors):
+            if isinstance(reconstructor, GroundTruthReconstructor):
+                continue
+            if reconstructor.use_nu_flows and not nu_flows:
+                nu_flows = True
+                names.append(r"$\nu^2$-Flows")
+            elif reconstructor.use_nu_flows and nu_flows:
+                continue
+            else:
+                names.append(reconstructor.get_full_reco_name())
+            pred_neutrino = self.prediction_manager.get_neutrino_predictions(i)
+            pred_neutrino_mag = np.linalg.norm(pred_neutrino[...,:3], axis=-1)
+            pred_neutrino_dir = pred_neutrino[...,:3] / pred_neutrino_mag[..., np.newaxis]
+            # Compute deviations
+            mag_deviation = (pred_neutrino_mag - true_neutrino_mag )/ true_neutrino_mag
+            dir_deviation = np.arccos(np.clip(np.sum(pred_neutrino_dir * true_neutrino_dir, axis=-1), -1.0, 1.0))
+            neutrino_deviations.append(np.array([mag_deviation, dir_deviation]))
+
+        for lepton_idx in range(self.config.NUM_LEPTONS):
+            for comp_idx, component in enumerate([r"$\Delta |\vec{p}|$", r"$\Delta \phi$"]):
+                ax_i = ax[lepton_idx, comp_idx]
+                DistributionPlotter.plot_feature_distributions(
+                    [
+                        neutrino_deviations[i][comp_idx][..., lepton_idx]
+                        for i in range(len(neutrino_deviations))
+                    ],
+                    f"{component}" + r"$(\nu_{" + f"{lepton_idx+1}" + r"})$",
+                    event_weights=event_weights,
+                    labels=names,
+                    bins=bins,
+                    xlims=xlims,
+                    ax=ax_i,
+                )
+
+        # Collect handles and labels from the first axis
+        handles, labels = ax[0, 0].get_legend_handles_labels()
+        
+        # Remove individual legends from all axes
+        for lepton_idx in range(self.config.NUM_LEPTONS):
+            for comp_idx in range(2):
+                ax[lepton_idx, comp_idx].get_legend().remove()
+        
+        # Add single legend for the whole figure
+        fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 1.04), ncol=len(names))
+    
+        plt.tight_layout()
         return fig, ax
