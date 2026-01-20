@@ -143,7 +143,7 @@ def main():
     print("Loading data...")
     DataProcessor = DataPreprocessor(load_config)
     config = DataProcessor.load_from_npz(
-        data_config_yaml["data_path"][args.data_type],
+        data_config_yaml.data_path[args.data_type],
         max_events=args.max_events,
         event_numbers="even"
     )

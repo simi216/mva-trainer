@@ -250,7 +250,6 @@ class DataPlotter:
         if plot_average:
             # Get average of the y feature in each x bin
             bin_centers_x = 0.5 * (bins_x[:-1] + bins_x[1:])
-            bin_centers_y = 0.5 * (bins_y[:-1] + bins_y[1:])
             avg_y = []
             for i in range(len(bins_x) - 1):
                 mask = (

@@ -86,6 +86,39 @@ class TopReconstructor:
         """
         ttbar_p4 = top1_p4 + top2_p4
         return compute_mass_from_lorentz_vector_array(ttbar_p4)
+    
+    @staticmethod
+    def project_vectors_onto_axis(
+        vectors: np.ndarray,
+        axis: np.ndarray,
+    ) -> np.ndarray:
+        """
+        Project vectors onto a given axis.
+
+        Args:
+            vectors: Array of vectors (n_events, 3)
+            axis: Axis to project onto (3,)
+
+        Returns:
+            Array of projected components (n_events,)
+        """
+        axis_norm = np.linalg.norm(axis)
+        axis_norm = np.clip(axis_norm, 1e-10, None)  # Avoid division by zero
+        
+        # Check for finite values
+        valid_axis = np.isfinite(axis_norm) & np.all(np.isfinite(axis))
+        axis_norm = np.where(valid_axis, axis_norm, 1.0)
+        
+        unit_axis = axis / axis_norm
+        unit_axis = np.where(valid_axis, unit_axis, 0.0)
+        
+        # Safe dot product
+        valid_vectors = np.all(np.isfinite(vectors), axis=1, keepdims=True)
+        projections = np.dot(vectors, unit_axis)
+        
+        # Return 0 for invalid cases
+        projections = np.where(np.isfinite(projections) & valid_vectors.squeeze(), projections, 0.0)
+        return projections
 
 
 class ResolutionCalculator:
@@ -272,19 +305,45 @@ def c_han(top, tbar, lep_pos, lep_neg):
     p1, p2 = _prep_leptons(top, tbar, lep_pos, lep_neg)
 
     # CMS-specific flip along tbar direction
-    p2 = p2.copy()
-    tbar_norm = np.linalg.norm(tbar[:, :3], axis=1, keepdims=True)
-    tbar_norm = np.maximum(tbar_norm, 1e-6)  # Avoid division by zero
-    tbar_norm = np.where(np.isfinite(tbar_norm), tbar_norm, 1e-6)  # Handle non-finite values
-    tbar_dir = tbar[:, :3] / tbar_norm
-    p2_z = np.sum(p2 * tbar_dir, axis=1)
-    p2 -= 2 * (p2_z[:, None] * tbar_dir)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        tbar_norm = np.linalg.norm(tbar[:, :3], axis=1, keepdims=True)
+        tbar_norm = np.clip(tbar_norm, 1e-10, None)  # Avoid division by zero
+        
+        # Check for finite values
+        valid_tbar = np.isfinite(tbar_norm) & np.all(np.isfinite(tbar[:, :3]), axis=1, keepdims=True)
+        tbar_norm = np.where(valid_tbar, tbar_norm, 1.0)
+        
+        tbar_dir = tbar[:, :3] / tbar_norm
+        tbar_dir = np.where(valid_tbar, tbar_dir, np.array([0, 0, 1]))  # Default z-direction
+        
+        # Project and flip p2 along tbar direction
+        p2_z = np.sum(p2 * tbar_dir, axis=1)
+        p2_z_inverted = p2 - 2 * (p2_z[:, None] * tbar_dir)
+        
+        # Safely handle p2_z_inverted if p2 was invalid
+        valid_p2 = np.all(np.isfinite(p2), axis=1, keepdims=True)
+        p2_z_inverted = np.where(valid_p2, p2_z_inverted, p2)
 
-    # normalize
-    u1 = p1 / np.linalg.norm(p1, axis=1)[:, None]
-    u2 = p2 / np.linalg.norm(p2, axis=1)[:, None]
+        # Normalize with safe division
+        p1_norm = np.linalg.norm(p1, axis=1, keepdims=True)
+        p1_norm = np.clip(p1_norm, 1e-10, None)
+        valid_p1 = np.isfinite(p1_norm) & np.all(np.isfinite(p1), axis=1, keepdims=True)
+        p1_norm = np.where(valid_p1, p1_norm, 1.0)
+        u1 = p1 / p1_norm
+        u1 = np.where(valid_p1, u1, 0.0)
+        
+        p2_inv_norm = np.linalg.norm(p2_z_inverted, axis=1, keepdims=True)
+        p2_inv_norm = np.clip(p2_inv_norm, 1e-10, None)
+        valid_p2_inv = np.isfinite(p2_inv_norm) & np.all(np.isfinite(p2_z_inverted), axis=1, keepdims=True)
+        p2_inv_norm = np.where(valid_p2_inv, p2_inv_norm, 1.0)
+        u2 = p2_z_inverted / p2_inv_norm
+        u2 = np.where(valid_p2_inv, u2, 0.0)
 
-    return np.sum(u1 * u2, axis=1)
+        result = np.sum(u1 * u2, axis=1)
+        # Return 0 for invalid cases
+        result = np.where(np.isfinite(result), result, 0.0)
+        
+    return result
 
 
 # ----------------------------------------------------------------------
@@ -293,7 +352,12 @@ def c_han(top, tbar, lep_pos, lep_neg):
 def c_hel(top, tbar, lep_pos, lep_neg):
     p1, p2 = _prep_leptons(top, tbar, lep_pos, lep_neg)
 
-    u1 = p1 / np.linalg.norm(p1, axis=1)[:, None]
-    u2 = p2 / np.linalg.norm(p2, axis=1)[:, None]
+    p1_norm = np.linalg.norm(p1, axis=1, keepdims=True)
+    p1_norm = np.maximum(p1_norm, 1e-10)
+    u1 = p1 / p1_norm
+    
+    p2_norm = np.linalg.norm(p2, axis=1, keepdims=True)
+    p2_norm = np.maximum(p2_norm, 1e-10)
+    u2 = p2 / p2_norm
 
     return np.sum(u1 * u2, axis=1)

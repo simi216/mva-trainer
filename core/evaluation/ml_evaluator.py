@@ -750,8 +750,6 @@ class MLEvaluator:
         self,
         n_bootstrap: int = 100,
         confidence: float = 0.95,
-        caption: str = "Reconstruction Accuracies",
-        label: str = "tab:accuracies",
         save_dir: Optional[str] = None,
     ) -> str:
         """

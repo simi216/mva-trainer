@@ -8,6 +8,7 @@ from .evaluator_base import (
     AccuracyCalculator,
     NeutrinoDeviationCalculator,
 )
+from .reco_variable_config import reconstruction_variable_configs
 
 from .plotting_utils import (
     AccuracyPlotter,

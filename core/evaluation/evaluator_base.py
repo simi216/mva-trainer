@@ -310,7 +310,20 @@ class FeatureExtractor:
         """Get event weights from test data."""
         n_events = X_test[list(X_test.keys())[0]].shape[0]
         return X_test.get("event_weight", np.ones(n_events))
+    
+    @staticmethod
+    def get_event_indices(X_test: dict) -> np.ndarray:
+        """Get event indices from test data."""
+        n_events = X_test[list(X_test.keys())[0]].shape[0]
+        return X_test.get("event_number", np.arange(n_events))
 
+    @staticmethod
+    def align_to_event_indices(
+        X_test: dict,
+        current_event_indices: np.ndarray,
+        loaded_event_indices: np.ndarray,
+    ) -> dict:
+        """Align X_test to loaded event indices."""
 
 class AccuracyCalculator:
     """Utilities for computing accuracy metrics."""

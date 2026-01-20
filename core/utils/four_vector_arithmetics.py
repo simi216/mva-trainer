@@ -116,3 +116,20 @@ def lorentz_vector_from_neutrino_momenta_array(array, padding_value = -999):
     pz = array[..., 2]
     e = np.where((px == padding_value) | (py == padding_value) | (pz == padding_value), padding_value, np.sqrt(px**2 + py**2 + pz**2))
     return np.stack((px, py, pz, e), axis=-1)
+
+def compute_pt_from_lorentz_vector_array(array, padding_value = -999):
+    """
+    Computes the transverse momentum (pt) from an array of four-momentum components.
+
+    Args:
+        array (np.ndarray): An array with shape (..., 4) containing px, py, pz, and e.
+    Returns:
+        array (np.ndarray): An array with shape (...) containing the transverse momentum (pt).
+    """
+    px = array[..., 0]
+    py = array[..., 1]
+    mask = (px == padding_value) | (py == padding_value)
+    px = np.where(mask, 0, px)
+    py = np.where(mask, 0, py)
+    pt = np.sqrt(px**2 + py**2)
+    return np.where(mask, padding_value, pt)

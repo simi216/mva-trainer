@@ -18,7 +18,7 @@ arguments = python3 ../TrainScript.py \
     --load_config training/load_config.yaml \
     --train_config training/train_config.yaml \
     --model_config training/model_config.yaml \
-    --event_numbers $(EventNumbers)
+    --event_numbers $(EventNumbers) \
 
 # Queue from file - reads each line and assigns to variables
-queue EventNumbers from even, odd
+queue EventNumbers from scripts/event_numbers.txt

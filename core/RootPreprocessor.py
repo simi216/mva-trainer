@@ -104,6 +104,12 @@ class RootPreprocessor:
 
         # Process events
         self.processed_data = self._process_events(events)
+
+        valid_mask = np.ones(self.n_events_passed, dtype=bool)
+        for key, array in self.processed_data.items():
+            valid_mask &= ~np.any(np.isnan(array), axis=(np.arange(array.ndim)[1:])) 
+            valid_mask &= ~np.any(np.isinf(array), axis=(np.arange(array.ndim)[1:]))
+
         return self.processed_data
 
     def _preselection(self, events: ak.Array) -> np.ndarray:

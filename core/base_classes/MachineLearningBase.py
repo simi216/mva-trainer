@@ -38,6 +38,7 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
         name="ml_assigner",
         assignment_name=None,
         full_reco_name=None,
+        model_id=None,
     ):
         """
         Initializes the AssignmentBaseModel class.
@@ -68,6 +69,7 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
         self.transformed_inputs = {}
         self.normed_inputs = {}
         self.masks = {}
+        self.model_id = None
 
         # Use assignment_name and full_reco_name if provided, otherwise fall back to name
         if assignment_name is None:
@@ -344,7 +346,7 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
             np.savez(history_path, **self.history.history)
         print(f"Model saved to {file_path}")
 
-    def load_model(self, file_path):
+    def load_model(self, file_path, model_id=None):
         """
         Loads a pre-trained Keras model from the specified file path.
 
@@ -374,6 +376,7 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
             if isinstance(obj, type) and issubclass(obj, keras.layers.Layer)
         }
         custom_objects.update({"KerasModelWrapper": KerasModelWrapper})
+        self.model_id = model_id
 
         self.model = keras.saving.load_model(file_path, custom_objects=custom_objects)
         print(f"Model loaded from {file_path}")
@@ -494,6 +497,9 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
         if self.n_met > 0:
             met_shape = (1, self.n_met)
             input_shapes.append(met_shape)
+        if self.config.has_global_event_features and "global_event_inputs" in self.model.input:
+            global_event_shape = (self.n_global,)
+            input_shapes.append(global_event_shape)
 
         # Create a new model that takes a flat input and splits it
         flat_input_size = sum(np.prod(shape) for shape in input_shapes)
@@ -502,13 +508,7 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
         split_layer = onnx_support.SplitInputsLayer(input_shapes)
         split_inputs = split_layer(flat_input)
 
-        if self.n_met > 0:
-            jet_input, lep_input, met_input = split_inputs
-
-            model_outputs = self.model([jet_input, lep_input, met_input])
-        else:
-            jet_input, lep_input = split_inputs
-            model_outputs = self.model([jet_input, lep_input])
+        model_outputs = self.model([*split_inputs])
 
         wrapped_model = keras.Model(inputs=flat_input, outputs=model_outputs)
 

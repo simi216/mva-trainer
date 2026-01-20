@@ -4,7 +4,7 @@ venv**
 plots/**
 *plots/
 **.keras
-**.png
+**.pdf
 **.pdf
 **.out
 **.onnx

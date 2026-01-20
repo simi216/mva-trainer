@@ -264,7 +264,7 @@ def main():
         config_dict = yaml.safe_load(f)
 
     data_config = data_loader.load_from_npz(
-        config_dict["data_path"]["nominal"], max_events=4_000_000, event_numbers="odd"
+        config_dict.data_path["nominal"], max_events=4_000_000, event_numbers="odd"
     )
 
     validation_data,_ = data_loader.get_data()  # Get validation data

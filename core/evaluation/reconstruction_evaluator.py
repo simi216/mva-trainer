@@ -5,11 +5,14 @@ from typing import Union, Optional, List, Tuple
 import matplotlib.pyplot as plt
 import os
 import timeit
+import keras
 from core.reconstruction import (
     EventReconstructorBase,
     GroundTruthReconstructor,
     KerasFFRecoBase,
+    CompositeNeutrinoComponentReconstructor,
 )
+from core.base_classes import KerasMLWrapper
 from .evaluator_base import (
     PlotConfig,
     BootstrapCalculator,
@@ -35,6 +38,9 @@ from .physics_calculations import (
     c_hel,
     c_han,
 )
+from .reco_variable_config import reconstruction_variable_configs
+
+from core.utils import compute_pt_from_lorentz_vector_array
 
 
 class PredictionManager:
@@ -42,13 +48,23 @@ class PredictionManager:
 
     def __init__(
         self,
-        reconstructors: List[EventReconstructorBase],
+        reconstructors: Union[EventReconstructorBase, List[EventReconstructorBase]],
         X_test: dict,
+        y_test: dict,
+        load_directory: Optional[str] = None,
     ):
+    # Handle single reconstructor
+        if isinstance(reconstructors, EventReconstructorBase):
+            reconstructors = [reconstructors]
+
         self.reconstructors = reconstructors
         self.X_test = X_test
+        self.y_test = y_test
         self.predictions = []
-        self._compute_all_predictions()
+        if load_directory is not None:
+            self.load_predictions(load_directory)
+        else:
+            self._compute_all_predictions()
 
     def _compute_all_predictions(self):
         """Compute predictions for all reconstructors."""
@@ -78,6 +94,78 @@ class PredictionManager:
                         "regression": neutrino_pred,
                     }
                 )
+            keras.backend.clear_session(free_memory=True)
+
+    def save_predictions(self, output_dir: str):
+        """Save predictions to the specified output directory."""
+        os.makedirs(output_dir, exist_ok=True)
+
+        for idx, reconstructor in enumerate(self.reconstructors):
+            reconstructor_dir = os.path.join(
+                output_dir, reconstructor.get_full_reco_name().replace(" ", "_")
+            )
+            os.makedirs(reconstructor_dir, exist_ok=True)
+
+            assignment_path = os.path.join(reconstructor_dir, "assignment_predictions.npz")
+            np.savez(
+                assignment_path,
+                predictions=self.predictions[idx]["assignment"],
+            )
+
+            if self.predictions[idx]["regression"] is not None:
+                regression_path = os.path.join(
+                    reconstructor_dir, "neutrino_regression_predictions.npz"
+                )
+                np.savez(
+                    regression_path,
+                    predictions=self.predictions[idx]["regression"],
+                )
+            print(f"Predictions saved for {reconstructor.get_full_reco_name()}.")
+
+        np.savez(
+            os.path.join(output_dir, "event_indices.npz"),
+            event_indices=FeatureExtractor.get_event_indices(self.X_test),
+        )
+
+    def load_predictions(self, input_dir: str):
+        """Load predictions from the specified input directory."""
+        for idx, reconstructor in enumerate(self.reconstructors):
+            reconstructor_dir = os.path.join(
+                input_dir, reconstructor.get_full_reco_name().replace(" ", "_")
+            )
+
+            assignment_path = os.path.join(reconstructor_dir, "assignment_predictions.npz")
+            assignment_data = np.load(assignment_path)
+            assignment_predictions = assignment_data["predictions"]
+
+            regression_path = os.path.join(
+                reconstructor_dir, "neutrino_regression_predictions.npz"
+            )
+            if os.path.exists(regression_path):
+                regression_data = np.load(regression_path)
+                regression_predictions = regression_data["predictions"]
+            else:
+                regression_predictions = None
+
+            self.predictions.append(
+                {
+                    "assignment": assignment_predictions,
+                    "regression": regression_predictions,
+                }
+            )
+            print(f"Predictions loaded for {reconstructor.get_full_reco_name()}.")
+        event_indices_path = os.path.join(input_dir, "event_indices.npz")
+        event_indices_data = np.load(event_indices_path)
+        loaded_event_indices = event_indices_data["event_indices"]
+        if "event_number" not in self.X_test:
+            raise ValueError(
+                "Event indices not found in X_test. "
+                "Cannot align loaded predictions."
+            )
+        current_event_indices = FeatureExtractor.get_event_indices(self.X_test)
+        if not np.array_equal(loaded_event_indices, current_event_indices):
+            shared_event_indicies = np.union1d(loaded_event_indices, current_event_indices)
+
 
     def get_assignment_predictions(self, index: int) -> np.ndarray:
         """Get assignment predictions for a specific reconstructor."""
@@ -86,6 +174,7 @@ class PredictionManager:
     def get_neutrino_predictions(self, index: int) -> np.ndarray:
         """Get neutrino predictions for a specific reconstructor."""
         return self.predictions[index]["regression"]
+
 
 class ComputationTimeEvaluator:
     """Evaluator for measuring computation time of reconstructors."""
@@ -107,6 +196,7 @@ class ComputationTimeEvaluator:
             end_time = timeit.default_timer()
             times.append(end_time - start_time)
         return times
+
 
 class ComplementarityAnalyzer:
     """Analyzes complementarity between reconstructors."""
@@ -175,32 +265,151 @@ class ComplementarityAnalyzer:
         return accuracies
 
 
+class ReconstructionVariableHandler:
+    """Handles configuration for reconstructed physics variables."""
+
+    def __init__(
+        self, variable_config, prediction_manager: PredictionManager, X_test: dict
+    ):
+        self.reco_variable_cache = {}
+        self.prediction_manager = prediction_manager
+        self.X_test = X_test
+        self.configs = variable_config
+
+    def compute_reconstructed_variable(
+        self,
+        reconstructor_index: int,
+        variable_name: str,
+    ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+        """
+        Compute any reconstructed variable from event kinematics.
+
+        Args:
+            reconstructor_index: Index of the reconstructor
+            variable_func: Function that takes (top1_p4, top2_p4, lepton_features, jet_features, neutrino_pred)
+                          and returns the reconstructed variable(s)
+            truth_extractor: Optional function to extract truth values from X_test
+            combine_tops: If True, concatenate results for both tops (for per-top quantities)
+
+        Returns:
+            Reconstructed variable array or tuple of (reconstructed, truth) if truth_extractor provided
+        """
+        combine_tops = self.configs[variable_name]["combine_tops"]
+        if variable_name not in self.configs:
+            raise ValueError(f"Variable '{variable_name}' not found in configurations.")
+
+        if (
+            variable_name in self.reco_variable_cache
+            and reconstructor_index in self.reco_variable_cache[variable_name]
+        ):
+            print(
+                f"Using cached reconstructed variable '{variable_name}' for reconstructor {self.prediction_manager.reconstructors[reconstructor_index].get_full_reco_name()}.")
+            return self.reco_variable_cache[variable_name][reconstructor_index]
+
+        variable_func = self.configs[variable_name]["compute_func"]
+
+        # Get predictions
+        assignment_pred = self.prediction_manager.get_assignment_predictions(
+            reconstructor_index
+        )
+        neutrino_pred = self.prediction_manager.get_neutrino_predictions(
+            reconstructor_index
+        )
+        valid_events_mask = np.all(~np.isnan(neutrino_pred), axis = (1,2)) & np.all(np.isfinite(neutrino_pred), axis = (1,2))
+        if not np.all(valid_events_mask):
+            print(f"Warning: NaN or infinite neutrino predictions found for reconstructor {self.prediction_manager.reconstructors[reconstructor_index].get_full_reco_name()}. These events will be skipped in variable computation.")
+            neutrino_pred[~valid_events_mask] = 1  # or some other default value
+
+
+        # Get lepton features
+        lepton_features = self.X_test[
+            "lepton"
+        ]  # Assuming shape (n_events, n_leptons, n_features)
+
+        # Get correctly assigned jet features
+        jet_features = self.X_test["jet"][
+            :, :, :4
+        ]  # Assuming first 4 features are kinematic (Pt, Eta, Phi, E)
+        selected_jet_indices = assignment_pred.argmax(axis=-2)
+        reco_jets = np.take_along_axis(
+            jet_features,
+            selected_jet_indices[:, :, np.newaxis],
+            axis=1,
+        )
+
+        # Compute reconstructed variable
+        reconstructed = variable_func(lepton_features, reco_jets, neutrino_pred)
+
+        # Handle per-top quantities
+        if isinstance(reconstructed, tuple):
+            reconstructed = np.concatenate(reconstructed)
+
+        if variable_name not in self.reco_variable_cache:
+            self.reco_variable_cache[variable_name] = {}
+
+        self.reco_variable_cache[variable_name][reconstructor_index] = reconstructed
+
+        return reconstructed
+
+    def compute_true_variable(
+        self,
+        variable_name: str,
+    ) -> np.ndarray:
+        """
+        Compute any truth variable from X_test.
+
+        Args:
+            truth_extractor: Function to extract truth values from X_test
+            combine_tops: If True, concatenate results for both tops (for per-top quantities)
+        Returns:
+            Truth variable array
+        """
+        combine_tops = self.configs[variable_name]["combine_tops"]
+        if variable_name not in self.configs:
+            raise ValueError(f"Variable '{variable_name}' not found in configurations.")
+        
+        # Use a special key for truth values
+        truth_cache_key = f"{variable_name}_truth"
+        if truth_cache_key in self.reco_variable_cache:
+            return self.reco_variable_cache[truth_cache_key]
+
+        truth_extractor = self.configs[variable_name]["extract_func"]
+
+        truth = truth_extractor(self.X_test)
+
+        # Handle per-top quantities
+        if combine_tops and isinstance(truth, tuple):
+            truth = np.concatenate(truth)
+
+        # Store truth with special key
+        truth_cache_key = f"{variable_name}_truth"
+        self.reco_variable_cache[truth_cache_key] = truth
+
+        return truth
+
+
 class ReconstructionEvaluator:
     """Evaluator for comparing event reconstruction methods."""
 
     def __init__(
         self,
-        reconstructors: Union[List[EventReconstructorBase], EventReconstructorBase],
-        X_test: dict,
-        y_test: dict,
+        prediction_manager: PredictionManager,
     ):
-        # Handle single reconstructor
-        if isinstance(reconstructors, EventReconstructorBase):
-            reconstructors = [reconstructors]
+        self.variable_configs = reconstruction_variable_configs
 
-        self.reconstructors = reconstructors
-        self.X_test = X_test
-        self.y_test = y_test
+        self.prediction_manager = prediction_manager
 
-        # Validate configurations
-        self._validate_configs()
-        self.config = reconstructors[0].config
+        self.reconstructors = prediction_manager.reconstructors
+        self.X_test = prediction_manager.X_test
+        self.y_test = prediction_manager.y_test
 
-        # Initialize managers
-        self.prediction_manager = PredictionManager(reconstructors, X_test)
-        self.complementarity_analyzer = ComplementarityAnalyzer(
-            self.prediction_manager, y_test
+
+        self.config = self.reconstructors[0].config
+
+        self.variable_handler = ReconstructionVariableHandler(
+            reconstruction_variable_configs, prediction_manager, self.X_test
         )
+            
 
     def _validate_configs(self):
         """Validate that all reconstructors have the same configuration."""
@@ -276,7 +485,7 @@ class ReconstructionEvaluator:
 
     def plot_all_accuracies(
         self,
-        n_bootstrap: int = 100,
+        n_bootstrap: int = 10,
         confidence: float = 0.95,
         figsize: Tuple[int, int] = (10, 6),
     ):
@@ -307,7 +516,7 @@ class ReconstructionEvaluator:
 
     def plot_all_selection_accuracies(
         self,
-        n_bootstrap: int = 100,
+        n_bootstrap: int = 10,
         confidence: float = 0.95,
         figsize: Tuple[int, int] = (10, 6),
     ):
@@ -404,7 +613,7 @@ class ReconstructionEvaluator:
 
     def plot_all_neutrino_deviations(
         self,
-        n_bootstrap: int = 100,
+        n_bootstrap: int = 10,
         confidence: float = 0.95,
         figsize: Tuple[int, int] = (10, 6),
         deviation_type: str = "relative",
@@ -479,7 +688,7 @@ class ReconstructionEvaluator:
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 100,
+        n_bootstrap: int = 10,
         confidence: float = 0.95,
         show_errorbar: bool = True,
         show_combinatoric: bool = True,
@@ -568,7 +777,7 @@ class ReconstructionEvaluator:
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 100,
+        n_bootstrap: int = 10,
         confidence: float = 0.95,
         show_errorbar: bool = True,
         show_combinatoric: bool = True,
@@ -708,7 +917,7 @@ class ReconstructionEvaluator:
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 100,
+        n_bootstrap: int = 10,
         confidence: float = 0.95,
         show_errorbar: bool = True,
     ):
@@ -763,91 +972,16 @@ class ReconstructionEvaluator:
             bin_centers, binned_comp, bin_counts, bin_edges, feature_label, config
         )
 
-    def compute_reconstructed_variable(
-        self,
-        reconstructor_index: int,
-        variable_func: callable,
-        combine_tops: bool = False,
-    ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
-        """
-        Compute any reconstructed variable from event kinematics.
-
-        Args:
-            reconstructor_index: Index of the reconstructor
-            variable_func: Function that takes (top1_p4, top2_p4, lepton_features, jet_features, neutrino_pred)
-                          and returns the reconstructed variable(s)
-            truth_extractor: Optional function to extract truth values from X_test
-            combine_tops: If True, concatenate results for both tops (for per-top quantities)
-
-        Returns:
-            Reconstructed variable array or tuple of (reconstructed, truth) if truth_extractor provided
-        """
-        # Get predictions
-        assignment_pred = self.prediction_manager.get_assignment_predictions(
-            reconstructor_index
-        )
-        neutrino_pred = self.prediction_manager.get_neutrino_predictions(
-            reconstructor_index
-        )
-
-        # Get lepton features
-        lepton_features = self.X_test[
-            "lepton"
-        ]  # Assuming shape (n_events, n_leptons, n_features)
-
-        # Get correctly assigned jet features
-        jet_features = self.X_test["jet"][
-            :, :, :4
-        ]  # Assuming first 4 features are kinematic (Pt, Eta, Phi, E)
-        selected_jet_indices = assignment_pred.argmax(axis=-2)
-        reco_jets = np.take_along_axis(
-            jet_features,
-            selected_jet_indices[:, :, np.newaxis],
-            axis=1,
-        )
-
-        # Compute reconstructed variable
-        reconstructed = variable_func(lepton_features, reco_jets, neutrino_pred)
-
-        # Handle per-top quantities
-        if combine_tops and isinstance(reconstructed, tuple):
-            reconstructed = np.concatenate(reconstructed)
-
-        return reconstructed
-
-    def compute_true_variable(
-        self,
-        truth_extractor: callable,
-        combine_tops: bool = False,
-    ) -> np.ndarray:
-        """
-        Compute any truth variable from X_test.
-
-        Args:
-            truth_extractor: Function to extract truth values from X_test
-            combine_tops: If True, concatenate results for both tops (for per-top quantities)
-        Returns:
-            Truth variable array
-        """
-        truth = truth_extractor(self.X_test)
-
-        # Handle per-top quantities
-        if combine_tops and isinstance(truth, tuple):
-            truth = np.concatenate(truth)
-
-        return truth
-
     def plot_binned_reco_resolution(
         self,
         feature_data_type: str,
         feature_name: str,
-        variable_func: callable,
-        truth_extractor: callable,
+        variable_name: str,
         ylabel: str,
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 100,
+        n_bootstrap: int = 10,
         confidence: float = 0.95,
         show_errorbar: bool = True,
         statistic: str = "std",
@@ -903,12 +1037,10 @@ class ReconstructionEvaluator:
 
         for i, reconstructor in enumerate(self.reconstructors):
             # Compute reconstructed and truth values
-            reconstructed = self.compute_reconstructed_variable(
-                i, variable_func, combine_tops=combine_tops
+            reconstructed = self.variable_handler.compute_reconstructed_variable(
+                i, variable_name
             )
-            truth = self.compute_true_variable(
-                truth_extractor, combine_tops=combine_tops
-            )
+            truth = self.variable_handler.compute_true_variable(variable_name)
 
             # Compute deviation
             deviation = ResolutionCalculator.compute_deviation(
@@ -971,8 +1103,7 @@ class ReconstructionEvaluator:
         self,
         ax,
         reconstructor_index: int,
-        variable_func: callable,
-        truth_extractor: callable,
+        variable_name: str,
         variable_label: str,
         bins: int = 50,
         xlims: Optional[Tuple[float, float]] = None,
@@ -995,10 +1126,11 @@ class ReconstructionEvaluator:
             Tuple of (figure, axis)
         """
         # Compute reconstructed and truth values
-        reconstructed = self.compute_reconstructed_variable(
-            reconstructor_index, variable_func
+        reconstructed = self.variable_handler.compute_reconstructed_variable(
+            reconstructor_index, variable_name
         )
-        truth = self.compute_true_variable(truth_extractor)
+        truth = self.variable_handler.compute_true_variable(variable_name)
+
         event_weights = FeatureExtractor.get_event_weights(self.X_test)
 
         if combine_tops:
@@ -1019,8 +1151,7 @@ class ReconstructionEvaluator:
         self,
         ax,
         reconstructor_index: int,
-        variable_func: callable,
-        truth_extractor: callable,
+        variable_name: str,
         variable_label: str,
         use_relative_deviation: bool = True,
         use_signed_deviation: bool = True,
@@ -1029,10 +1160,10 @@ class ReconstructionEvaluator:
     ):
         """Plot distribution of deviations between reconstructed variable and truth."""
         # Compute reconstructed and truth values
-        reconstructed = self.compute_reconstructed_variable(
-            reconstructor_index, variable_func
+        reconstructed = self.variable_handler.compute_reconstructed_variable(
+            reconstructor_index, variable_name
         )
-        truth = self.compute_true_variable(truth_extractor)
+        truth = self.variable_handler.compute_true_variable(variable_name)
         event_weights = FeatureExtractor.get_event_weights(self.X_test)
 
         # Compute deviation
@@ -1057,8 +1188,7 @@ class ReconstructionEvaluator:
 
     def plot_deviations_distributions_all_reconstructors(
         self,
-        variable_func: callable,
-        truth_extractor: callable,
+        variable_name: str,
         variable_label: str,
         figsize: Optional[Tuple[int, int]] = (10, 10),
         **kwargs,
@@ -1090,14 +1220,13 @@ class ReconstructionEvaluator:
         use_signed_deviation = kwargs.pop("use_signed_deviation", True)
         combine_tops = kwargs.pop("combine_tops", False)
 
-        reco_index = 0
-        for reconstructor in self.reconstructors:
+        for reco_index, reconstructor in enumerate(self.reconstructors):
 
             # Compute reconstructed and truth values
-            reconstructed = self.compute_reconstructed_variable(
-                reco_index, variable_func
+            reconstructed = self.variable_handler.compute_reconstructed_variable(
+                reco_index, variable_name
             )
-            truth = self.compute_true_variable(truth_extractor)
+            truth = self.variable_handler.compute_true_variable(variable_name)
 
             # Compute deviation
             deviation = ResolutionCalculator.compute_deviation(
@@ -1106,12 +1235,9 @@ class ReconstructionEvaluator:
                 use_signed_deviation=use_signed_deviation,
                 use_relative_deviation=use_relative_deviation,
             )
-            if combine_tops:
-                deviation = np.concatenate(deviation)
 
             all_deviations.append(deviation)
             labels.append(reconstructor.get_full_reco_name())
-            reco_index += 1
 
         # Handle combined tops for event weights
         if combine_tops:
@@ -1135,8 +1261,7 @@ class ReconstructionEvaluator:
 
     def plot_distributions_all_reconstructors(
         self,
-        variable_func: callable,
-        truth_extractor: callable,
+        variable_name: str,
         variable_label: str,
         xlims: Optional[Tuple[float, float]] = None,
         bins: int = 50,
@@ -1170,7 +1295,10 @@ class ReconstructionEvaluator:
                 figsize=figsize,
                 constrained_layout=True,
             )
-            axes = axes.flatten()
+            if isinstance(axes, np.ndarray):
+                axes = axes.flatten()
+            else:
+                axes = [axes]
         else:
             fig, axes = [], []
             for i in range(num_plots):
@@ -1181,75 +1309,44 @@ class ReconstructionEvaluator:
                 fig.append(fig_i)
                 axes.append(ax_i)
 
-        reco_index = 0
-        for reconstructor in self.reconstructors:
+        for reco_index, reconstructor in enumerate(self.reconstructors):
             #            if isinstance(reconstructor, GroundTruthReconstructor):
             #                continue
             ax = axes[reco_index]
             self.plot_reco_vs_truth_distribution(
                 ax,
                 reco_index,
-                variable_func,
-                truth_extractor,
+                variable_name,
                 variable_label,
                 bins=bins,
                 xlims=xlims,
                 **kwargs,
             )
-            reco_index += 1
             ax.set_title(reconstructor.get_full_reco_name())
 
         if not save_individual_plots:
-            for i in range(reco_index, len(axes)):
+            for i in range(len(self.reconstructors), len(axes)):
                 fig.delaxes(axes[i])  # Remove unused subplots
 
         return fig, axes
 
     # ==================== Plot Specific Variable distributions ====================
 
-    def _plot_variable_distribution(self, variable_key: str, **kwargs):
+    def plot_variable_distribution(self, variable_key: str, **kwargs):
         """Generic method to plot variable distributions using configuration."""
-        config = self._get_variable_config(variable_key)
+        config = self.variable_configs[variable_key]
         return self.plot_distributions_all_reconstructors(
-            variable_func=config["compute_func"],
-            truth_extractor=config["extract_func"],
+            variable_key,
             variable_label=config["label"],
             combine_tops=config.get("combine_tops", False),
             **kwargs,
         )
 
-    def plot_c_hel_distributions(self, **kwargs):
-        """Plot cos_hel distributions for all reconstructors and truth."""
-        return self._plot_variable_distribution("c_hel", **kwargs)
-
-    def plot_c_han_distributions(self, **kwargs):
-        """Plot cos_han distributions for all reconstructors and truth."""
-        return self._plot_variable_distribution("c_han", **kwargs)
-
-    def plot_top_mass_distributions(self, **kwargs):
-        """Plot top mass distributions for all reconstructors and truth."""
-
-        fig, axes = self._plot_variable_distribution("top_mass", **kwargs)
-        for ax in axes:
-            ticks = ax.get_xticks()
-            ax.set_xticks(ticks)
-            ax.set_xticklabels([f"{tick/1000:.1f}" for tick in ticks])  # Convert to TeV
-        return fig, axes
-
-    def plot_ttbar_mass_distributions(self, **kwargs):
-        """Plot ttbar mass distributions for all reconstructors and truth."""
-        fig, axes = self._plot_variable_distribution("ttbar_mass", **kwargs)
-        for ax in axes:
-            ticks = ax.get_xticks()
-            ax.set_xticks(ticks)
-            ax.set_xticklabels([f"{tick/1000:.1f}" for tick in ticks])  # Convert to TeV
-        return fig, axes
-
     # ==================== Deviation Distribution Methods ====================
 
-    def _plot_variable_deviation(self, variable_key: str, **kwargs):
+    def plot_variable_deviation(self, variable_key: str, **kwargs):
         """Generic method to plot variable deviations using configuration."""
-        config = self._get_variable_config(variable_key)
+        config = self.variable_configs[variable_key]
         # Set defaults from config, allow kwargs to override
         defaults = {
             "use_relative_deviation": config.get("use_relative_deviation", False),
@@ -1258,33 +1355,111 @@ class ReconstructionEvaluator:
         defaults.update(kwargs)
 
         return self.plot_deviations_distributions_all_reconstructors(
-            variable_func=config["compute_func"],
-            truth_extractor=config["extract_func"],
+            variable_name=variable_key,
             variable_label=f"{config['label']}",
             **defaults,
         )
 
-    def plot_top_mass_deviation_distribution(self, **kwargs):
-        """Plot top mass deviation distribution for all reconstructors."""
-        kwargs.setdefault("use_relative_deviation", True)
-        kwargs.setdefault("combine_tops", True)
-        return self._plot_variable_deviation("top_mass", **kwargs)
+    def plot_variable_confusion_matrix(
+        self,
+        variable_key: str,
+        **kwargs,
+    ):
+        """Generic method to plot variable confusion matrices using configuration."""
+        if variable_key not in self.variable_configs:
+            raise ValueError(
+                f"Variable key '{variable_key}' not found in configurations."
+            )
 
-    def plot_ttbar_mass_deviation_distribution(self, **kwargs):
-        """Plot ttbar mass deviation distribution for all reconstructors."""
-        return self._plot_variable_deviation("ttbar_mass", **kwargs)
+        return self.plot_variable_confusion_matrix_for_all_reconstructors(
+            variable_name=variable_key,
+            variable_label=f"{self.variable_configs[variable_key]['label']}",
+            **kwargs,
+        )
 
-    def plot_c_han_deviation_distribution(self, **kwargs):
-        """Plot cos_han deviation distribution for all reconstructors."""
-        return self._plot_variable_deviation("c_han", **kwargs)
+    def plot_variable_confusion_matrix_for_all_reconstructors(
+        self,
+        variable_name: str,
+        variable_label: str,
+        bins: int = 10,
+        xlims: Optional[Tuple[float, float]] = None,
+        figsize_per_plot: Tuple[int, int] = (5, 5),
+        normalize: str = "true",
+        **kwargs,
+    ):
+        """Plot confusion matrices for all reconstructors for a specific variable."""
+        names = []
+        truth = self.variable_handler.compute_true_variable(variable_name)
+        reconstructed_list = []
+        for i, reconstructor in enumerate(self.reconstructors):
+            if (
+                isinstance(reconstructor, GroundTruthReconstructor)
+                and not reconstructor.use_nu_flows
+                and not reconstructor.perform_regression
+            ):
+                continue
 
-    def plot_c_hel_deviation_distribution(self, **kwargs):
-        """Plot cos_hel deviation distribution for all reconstructors."""
-        return self._plot_variable_deviation("c_hel", **kwargs)
+            # Compute reconstructed and truth values
+            reconstructed_list.append(
+                self.variable_handler.compute_reconstructed_variable(i, variable_name)
+            )
+            names.append(reconstructor.get_full_reco_name())
+
+        if xlims is None:
+            xlims = np.min(np.concatenate([*reconstructed_list, truth])), np.max(
+                np.concatenate([*reconstructed_list, truth])
+            )
+
+        # Digitize into bins
+        bin_edges = np.linspace(
+            xlims[0],
+            xlims[1],
+            bins + 1,
+        )
+        num_plots = len(self.reconstructors)  # Exclude ground truth
+        num_cols = np.ceil(np.sqrt(num_plots)).astype(int)
+        num_rows = np.ceil(num_plots / num_cols).astype(int)
+        fig, axes = plt.subplots(
+            num_rows,
+            num_cols,
+            figsize=(figsize_per_plot[0] * num_cols, figsize_per_plot[1] * num_rows),
+            constrained_layout=True,
+        )
+        if isinstance(axes, np.ndarray):
+            axes = axes.flatten()
+        else:
+            axes = [axes]
+        
+        for reco_index, reconstructed, name in zip(
+            range(len(reconstructed_list)), reconstructed_list, names
+        ):
+            ConfusionMatrixPlotter.plot_variable_confusion_matrix(
+                truth,
+                reconstructed,
+                variable_label,
+                axes[reco_index],
+                bin_edges,
+                normalize=normalize,
+                **kwargs,
+            )
+            # Add correlation coefficient to axis
+            corr = np.corrcoef(truth.flatten(), reconstructed.flatten())[0, 1]
+            axes[reco_index].text(
+                0.05,
+                0.95,
+                f"ρ = {corr:.3f}",
+                transform=axes[reco_index].transAxes,
+                verticalalignment="top",
+                bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
+            )
+            axes[reco_index].set_title(name)
+        for i in range(len(reconstructed_list), len(axes)):
+            fig.delaxes(axes[i])  # Remove unused subplots
+        return fig, axes
 
     # ==================== Binned Variable Resolution/Deviation Methods ====================
 
-    def _plot_binned_variable(
+    def plot_binned_variable(
         self,
         variable_key: str,
         metric_type: str,
@@ -1301,7 +1476,7 @@ class ReconstructionEvaluator:
             feature_name: Name of feature for binning
             **kwargs: Additional arguments passed to plot_binned_reco_resolution
         """
-        config = self._get_variable_config(variable_key)
+        config = self.variable_configs[variable_key]
         resolution_config = config.get("resolution", {})
 
         # Determine parameters based on metric type
@@ -1332,208 +1507,17 @@ class ReconstructionEvaluator:
         return self.plot_binned_reco_resolution(
             feature_data_type=feature_data_type,
             feature_name=feature_name,
-            variable_func=config["compute_func"],
-            truth_extractor=config["extract_func"],
+            variable_name=variable_key,
             ylabel=ylabel_template,
             **defaults,
         )
 
-    def plot_binned_top_mass_resolution(
-        self, feature_data_type: str, feature_name: str, **kwargs
-    ):
-        """Plot binned top mass resolution vs. a feature."""
-        return self._plot_binned_variable(
-            "top_mass", "resolution", feature_data_type, feature_name, **kwargs
-        )
-
-    def plot_binned_ttbar_mass_resolution(
-        self, feature_data_type: str, feature_name: str, **kwargs
-    ):
-        """Plot binned ttbar mass resolution vs. a feature."""
-        return self._plot_binned_variable(
-            "ttbar_mass", "resolution", feature_data_type, feature_name, **kwargs
-        )
-
-    def plot_binned_top_mass_deviation(
-        self, feature_data_type: str, feature_name: str, **kwargs
-    ):
-        """Plot binned top mass deviation (mean) vs. a feature."""
-        return self._plot_binned_variable(
-            "top_mass", "deviation", feature_data_type, feature_name, **kwargs
-        )
-
-    def plot_binned_ttbar_mass_deviation(
-        self, feature_data_type: str, feature_name: str, **kwargs
-    ):
-        """Plot binned ttbar mass deviation (mean) vs. a feature."""
-        return self._plot_binned_variable(
-            "ttbar_mass", "deviation", feature_data_type, feature_name, **kwargs
-        )
-
-    def plot_binned_c_han_resolution(
-        self, feature_data_type: str, feature_name: str, **kwargs
-    ):
-        """Plot binned cos_han resolution vs. a feature."""
-        return self._plot_binned_variable(
-            "c_han", "resolution", feature_data_type, feature_name, **kwargs
-        )
-
-    def plot_binned_c_hel_resolution(
-        self, feature_data_type: str, feature_name: str, **kwargs
-    ):
-        """Plot binned cos_hel resolution vs. a feature."""
-        return self._plot_binned_variable(
-            "c_hel", "resolution", feature_data_type, feature_name, **kwargs
-        )
-
-    def plot_binned_c_han_deviation(
-        self, feature_data_type: str, feature_name: str, **kwargs
-    ):
-        """Plot binned cos_han deviation (mean) vs. a feature."""
-        return self._plot_binned_variable(
-            "c_han", "deviation", feature_data_type, feature_name, **kwargs
-        )
-
-    def plot_binned_c_hel_deviation(
-        self, feature_data_type: str, feature_name: str, **kwargs
-    ):
-        """Plot binned cos_hel deviation (mean) vs. a feature."""
-        return self._plot_binned_variable(
-            "c_hel", "deviation", feature_data_type, feature_name, **kwargs
-        )
-
-    def plot_binned_neutrino_magnitude_resolution(
-        self, feature_data_type: str, feature_name: str, **kwargs
-    ):
-        """Plot binned neutrino magnitude resolution vs. a feature."""
-        return self._plot_binned_variable(
-            "neutrino_mag", "resolution", feature_data_type, feature_name, **kwargs
-        )
-    
-    def plot_binned_neutrino_magnitude_deviation(
-        self, feature_data_type: str, feature_name: str, **kwargs
-    ):
-        """Plot binned neutrino magnitude deviation (mean) vs. a feature."""
-        return self._plot_binned_variable(
-            "neutrino_mag", "deviation", feature_data_type, feature_name, **kwargs
-        )
-
-
     # ==================== Variable Configuration and Computation Methods ====================
-
-    @staticmethod
-    def _get_variable_config(variable_key: str) -> dict:
-        """Get configuration for a specific physics variable.
-
-        Returns a dict with:
-            - compute_func: Function to compute variable from reconstructed kinematics
-            - extract_func: Function to extract truth value from X_test
-            - label: LaTeX label for plotting
-            - combine_tops: Whether to combine both tops for this variable
-            - use_relative_deviation: Whether to use relative deviation
-            - resolution: Dict with ylabel templates for resolution/deviation plots
-        """
-        configs = {
-            "top_mass": {
-                "compute_func": lambda l, j, n: TopReconstructor.compute_top_masses(
-                    *TopReconstructor.compute_top_lorentz_vectors(l, j, n)
-                ),
-                "extract_func": lambda X: TopReconstructor.compute_top_masses(
-                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 0, :4]),
-                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 1, :4]),
-                ),
-                "label": r"$m(t)$ [GeV]",
-                "combine_tops": True,
-                "use_relative_deviation": True,
-                "resolution": {
-                    "use_relative_deviation": True,
-                    "ylabel_resolution": r"Relative $m(t)$ Resolution",
-                    "ylabel_deviation": r"Mean Relative $m(t)$ Deviation",
-                },
-            },
-            "ttbar_mass": {
-                "compute_func": lambda l, j, n: TopReconstructor.compute_ttbar_mass(
-                    *TopReconstructor.compute_top_lorentz_vectors(l, j, n)
-                ),
-                "extract_func": lambda X: TopReconstructor.compute_ttbar_mass(
-                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 0, :4]),
-                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 1, :4]),
-                ),
-                "label": r"$m(t\overline{t})$ [GeV]",
-                "combine_tops": False,
-                "use_relative_deviation": True,
-                "resolution": {
-                    "use_relative_deviation": True,
-                    "ylabel_resolution": r"Relative $m(t\overline{t})$ Resolution",
-                    "ylabel_deviation": r"Mean Relative $m(t\overline{t})$ Deviation",
-                },
-            },
-            "c_han": {
-                "compute_func": lambda l, j, n: c_han(
-                    *TopReconstructor.compute_top_lorentz_vectors(l, j, n),
-                    lorentz_vector_from_PtEtaPhiE_array(l[:, 0, :4]),
-                    lorentz_vector_from_PtEtaPhiE_array(l[:, 1, :4]),
-                ),
-                "extract_func": lambda X: c_han(
-                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 0, :4]),
-                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 1, :4]),
-                    lorentz_vector_from_PtEtaPhiE_array(X["lepton_truth"][:, 0, :4]),
-                    lorentz_vector_from_PtEtaPhiE_array(X["lepton_truth"][:, 1, :4]),
-                ),
-                "label": r"$c_{\text{han}}$",
-                "combine_tops": False,
-                "use_relative_deviation": False,
-                "resolution": {
-                    "use_relative_deviation": False,
-                    "ylabel_resolution": r"$c_{\text{han}}$ Resolution",
-                    "ylabel_deviation": r"Mean $c_{\text{han}}$ Deviation",
-                },
-            },
-            "c_hel": {
-                "compute_func": lambda l, j, n: c_hel(
-                    *TopReconstructor.compute_top_lorentz_vectors(l, j, n),
-                    lorentz_vector_from_PtEtaPhiE_array(l[:, 0, :4]),
-                    lorentz_vector_from_PtEtaPhiE_array(l[:, 1, :4]),
-                ),
-                "extract_func": lambda X: c_hel(
-                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 0, :4]),
-                    lorentz_vector_from_PtEtaPhiE_array(X["top_truth"][:, 1, :4]),
-                    lorentz_vector_from_PtEtaPhiE_array(X["lepton_truth"][:, 0, :4]),
-                    lorentz_vector_from_PtEtaPhiE_array(X["lepton_truth"][:, 1, :4]),
-                ),
-                "label": r"$c_{\text{hel}}$",
-                "combine_tops": False,
-                "use_relative_deviation": False,
-                "resolution": {
-                    "use_relative_deviation": False,
-                    "ylabel_resolution": r"$c_{\text{hel}}$ Resolution",
-                    "ylabel_deviation": r"Mean $c_{\text{hel}}$ Deviation",
-                },
-            },
-            "neutrino_mag": {
-                "compute_func": lambda l, j, n: (np.linalg.norm(n[:,0,:], axis=-1),np.linalg.norm(n[:,1,:], axis=-1)),
-                "extract_func": lambda X: (np.linalg.norm(X["neutrino_truth"][:,0,:], axis=-1),np.linalg.norm(X["neutrino_truth"][:,1,:], axis=-1)),
-                "label": r"$|\vec{p}(\nu)|$ [GeV]",
-                "combine_tops": True,
-                "use_relative_deviation": True,
-                "resolution": {
-                    "use_relative_deviation": True,
-                    "ylabel_resolution": r"Relative $|\vec{p}(\nu)|$ Resolution",
-                    "ylabel_deviation": r"Mean Relative $|\vec{p}(\nu)|$ Deviation",
-                },
-            },
-        }
-
-        if variable_key not in configs:
-            raise ValueError(f"Unknown variable key: {variable_key}")
-        return configs[variable_key]
 
     def save_accuracy_latex_table(
         self,
-        n_bootstrap: int = 100,
+        n_bootstrap: int = 10,
         confidence: float = 0.95,
-        caption: str = "Reconstruction Accuracies",
-        label: str = "tab:accuracies",
         save_dir: Optional[str] = None,
     ) -> str:
         """
@@ -1590,10 +1574,22 @@ class ReconstructionEvaluator:
             sel_mean, sel_lower, sel_upper = res["selection_accuracy"]
 
             acc_str = (
-                f"${acc_mean:.4f}" +"_{-" +f"{acc_mean - acc_lower:.4f}"+ "}" +"^{+"+f"{acc_upper - acc_mean:.4f}" + "}$"
+                f"${acc_mean:.4f}"
+                + "_{-"
+                + f"{acc_mean - acc_lower:.4f}"
+                + "}"
+                + "^{+"
+                + f"{acc_upper - acc_mean:.4f}"
+                + "}$"
             )
             sel_str = (
-                f"${sel_mean:.4f}" +"_{-" +f"{sel_mean - sel_lower:.4f}"+ "}" +"^{+"+f"{sel_upper - sel_mean:.4f}" + "}$"
+                f"${sel_mean:.4f}"
+                + "_{-"
+                + f"{sel_mean - sel_lower:.4f}"
+                + "}"
+                + "^{+"
+                + f"{sel_upper - sel_mean:.4f}"
+                + "}$"
             )
 
             latex.append(f"        {name} & {acc_str} & {sel_str} \\\\")
@@ -1609,7 +1605,6 @@ class ReconstructionEvaluator:
             f.write(latex_str)
         print(f"LaTeX table saved to {file_name}")
 
-
     def plot_binned_accuracy_quotients(
         self,
         feature_data_type: str,
@@ -1617,7 +1612,7 @@ class ReconstructionEvaluator:
         fancy_feature_label: Optional[str] = None,
         bins: int = 20,
         xlims: Optional[Tuple[float, float]] = None,
-        n_bootstrap: int = 100,
+        n_bootstrap: int = 10,
         confidence: float = 0.95,
     ):
         """
@@ -1674,14 +1669,16 @@ class ReconstructionEvaluator:
             assignment_acc = self.evaluate_accuracy(i, per_event=True)
             selection_acc = self.evaluate_selection_accuracy(i, per_event=True)
 
-            mean_quotient, lower, upper = BootstrapCalculator.compute_binned_function_bootstrap(
-                binning_mask,
-                event_weights,
-                (assignment_acc, selection_acc),
-                lambda x, y: np.divide(x,y, out=np.zeros_like(x), where=y != 0),
-                config.n_bootstrap,
-                config.confidence,
-                statistic="mean",
+            mean_quotient, lower, upper = (
+                BootstrapCalculator.compute_binned_function_bootstrap(
+                    binning_mask,
+                    event_weights,
+                    (assignment_acc, selection_acc),
+                    lambda x, y: np.divide(x, y, out=np.zeros_like(x), where=y != 0),
+                    config.n_bootstrap,
+                    config.confidence,
+                    statistic="mean",
+                )
             )
             binned_quotients.append((mean_quotient, lower, upper))
 
@@ -1696,7 +1693,7 @@ class ReconstructionEvaluator:
         feature_label = fancy_feature_label or feature_name
         fig, ax = plt.subplots(figsize=(10, 6))
         color_map = plt.get_cmap("tab10")
-        fmt_map = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '8']
+        fmt_map = ["o", "s", "D", "^", "v", "P", "*", "X", "h", "8"]
 
         for i, (name, (mean, lower, upper)) in enumerate(zip(names, binned_quotients)):
             ax.errorbar(
@@ -1710,56 +1707,133 @@ class ReconstructionEvaluator:
             )
 
         ax.plot(
-            bin_centers, 0.5 * np.ones_like(bin_centers), linestyle="--", color="black", label="Random Assignment"
+            bin_centers,
+            0.5 * np.ones_like(bin_centers),
+            linestyle="--",
+            color="black",
+            label="Random Assignment",
         )
 
         ax.set_xlabel(feature_label)
-        ax.set_ylabel('Assignment Accuracy / Selection Accuracy')
+        ax.set_ylabel("Assignment Accuracy / Selection Accuracy")
         ax.legend()
         ax.grid(alpha=0.3)
-        ax.set_title(f"Binned Accuracy Quotients vs {feature_label} ({config.confidence*100:.0f}% CI)")
-        AccuracyPlotter._add_count_histogram(
-            ax, bin_centers, bin_counts, bin_edges
+        ax.set_title(
+            f"Binned Accuracy Quotients vs {feature_label} ({config.confidence*100:.0f}% CI)"
         )
+        AccuracyPlotter._add_count_histogram(ax, bin_centers, bin_counts, bin_edges)
         plt.tight_layout()
 
         return fig, ax
-    
-    def plot_relative_neutrino_deviations(self, bins = 10, xlims = None):
+
+    def plot_relative_neutrino_deviations(
+        self, bins=10, xlims=None, coords="cartesian"
+    ):
         """
         Plot deviation distributions for magnitude and direction of neutrino momenta
-                
+
         :param bins: Number of bins
         :param xlims: Optional x-axis limits
         """
-        fig, ax = plt.subplots(figsize=(10,5*self.config.NUM_LEPTONS), ncols=2, nrows=self.config.NUM_LEPTONS)
         true_neutrino = self.y_test["neutrino_truth"]
-        true_neutrino_mag = np.linalg.norm(true_neutrino[...,:3], axis=-1)
-        true_neutrino_dir = true_neutrino[...,:3] / true_neutrino_mag[..., np.newaxis]
         event_weights = FeatureExtractor.get_event_weights(self.X_test)
         neutrino_deviations = []
         names = []
         nu_flows = False
         for i, reconstructor in enumerate(self.reconstructors):
-            if isinstance(reconstructor, GroundTruthReconstructor):
+            if isinstance(reconstructor, GroundTruthReconstructor) and not reconstructor.use_nu_flows and not reconstructor.perform_regression:
                 continue
-            if reconstructor.use_nu_flows and not nu_flows:
+            if (
+                reconstructor.use_nu_flows
+                and not nu_flows
+                and not isinstance(
+                    reconstructor, CompositeNeutrinoComponentReconstructor
+                )
+            ):
                 nu_flows = True
                 names.append(r"$\nu^2$-Flows")
-            elif reconstructor.use_nu_flows and nu_flows:
+                pred_neutrino = self.prediction_manager.get_neutrino_predictions(i)
+
+            elif (
+                reconstructor.use_nu_flows
+                and nu_flows
+                and not isinstance(
+                    reconstructor, CompositeNeutrinoComponentReconstructor
+                )
+            ):
                 continue
             else:
                 names.append(reconstructor.get_full_reco_name())
-            pred_neutrino = self.prediction_manager.get_neutrino_predictions(i)
-            pred_neutrino_mag = np.linalg.norm(pred_neutrino[...,:3], axis=-1)
-            pred_neutrino_dir = pred_neutrino[...,:3] / pred_neutrino_mag[..., np.newaxis]
-            # Compute deviations
-            mag_deviation = (pred_neutrino_mag - true_neutrino_mag )/ true_neutrino_mag
-            dir_deviation = np.arccos(np.clip(np.sum(pred_neutrino_dir * true_neutrino_dir, axis=-1), -1.0, 1.0))
-            neutrino_deviations.append(np.array([mag_deviation, dir_deviation]))
+                pred_neutrino = self.prediction_manager.get_neutrino_predictions(i)
+
+
+            if coords == "spherical":
+                true_neutrino_mag = np.linalg.norm(true_neutrino[..., :3], axis=-1)
+                pred_neutrino_mag = np.linalg.norm(pred_neutrino[..., :3], axis=-1)
+                # Compute deviations
+                mag_deviation = (
+                    pred_neutrino_mag - true_neutrino_mag
+                ) / true_neutrino_mag
+
+
+                mag_product = true_neutrino_mag*pred_neutrino_mag
+
+                dir_deviation = np.arccos(
+                    np.clip(
+                        np.divide(
+                            np.sum(
+                                pred_neutrino[..., :3] * true_neutrino[..., :3], axis=-1
+                            ),
+                            mag_product,
+                            out=np.zeros_like(true_neutrino_mag),
+                            where=(
+                                (mag_product)
+                                != 0 )  & ( ~np.isnan(mag_product) & ~np.isinf(mag_product)
+                            ),
+                        ),
+                        -1.0,
+                        1.0,
+                    )
+                )
+                neutrino_deviations.append(np.array([mag_deviation, dir_deviation]))
+            elif coords == "cartesian":
+                x_deviation = (pred_neutrino[..., 0] - true_neutrino[..., 0]) / 1e3
+                y_deviation = (pred_neutrino[..., 1] - true_neutrino[..., 1]) / 1e3
+                z_deviation = (pred_neutrino[..., 2] - true_neutrino[..., 2]) / 1e3
+                neutrino_deviations.append(
+                    np.array([x_deviation, y_deviation, z_deviation])
+                )
+            elif coords == "spherical_lepton_fixed":
+                lepton_features = self.X_test["lepton"]
+                lepton_3vect = lorentz_vector_from_PtEtaPhiE_array(
+                    lepton_features[..., :4])[..., :3]
+                
+                true_neutrino_z = 
+
+
+
+
+
+        if coords == "spherical":
+            component_labels = [
+                r"$\Delta |\vec{p}| / |\vec{p}_{\text{true}}|$",
+                r"$\Delta \phi$",
+            ]
+        elif coords == "cartesian":
+            component_labels = [
+                r"$\Delta p_x$ [GeV]",
+                r"$\Delta p_y$ [GeV]",
+                r"$\Delta p_z$ [GeV]",
+            ]
+
+        fig, ax = plt.subplots(
+            figsize=(5 * len(component_labels), 5 * self.config.NUM_LEPTONS),
+            ncols=len(component_labels),
+            nrows=self.config.NUM_LEPTONS,
+        )
 
         for lepton_idx in range(self.config.NUM_LEPTONS):
-            for comp_idx, component in enumerate([r"$\Delta |\vec{p}|$", r"$\Delta \phi$"]):
+            for comp_idx, component in enumerate(component_labels):
                 ax_i = ax[lepton_idx, comp_idx]
                 DistributionPlotter.plot_feature_distributions(
                     [
@@ -1776,14 +1850,20 @@ class ReconstructionEvaluator:
 
         # Collect handles and labels from the first axis
         handles, labels = ax[0, 0].get_legend_handles_labels()
-        
+
         # Remove individual legends from all axes
         for lepton_idx in range(self.config.NUM_LEPTONS):
-            for comp_idx in range(2):
+            for comp_idx in range(len(component_labels)):
                 ax[lepton_idx, comp_idx].get_legend().remove()
-        
+
         # Add single legend for the whole figure
-        fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 1.04), ncol=len(names))
-    
+        fig.legend(
+            handles,
+            labels,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 1.04),
+            ncol=len(names),
+        )
+
         plt.tight_layout()
         return fig, ax

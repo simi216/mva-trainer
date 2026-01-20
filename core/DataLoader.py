@@ -659,7 +659,7 @@ def get_load_config_from_yaml(file_path: str) -> LoadConfig:
     with open(file_path, 'r') as file:
         config_dict = yaml.safe_load(file)
 
-    return LoadConfig.from_dict(config_dict["LoadConfig"])
+    return LoadConfig(**(config_dict["LoadConfig"]))
 
 
 def combine_train_datasets(

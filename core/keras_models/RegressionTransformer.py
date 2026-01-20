@@ -17,8 +17,8 @@ from core.components import (
 )
 
 class FeatureConcatFullReconstructor(KerasFFRecoBase):
-    def __init__(self, config, name="FeatureConcatTransformer"):
-        super().__init__(config, name=name, perform_regression=True, use_nu_flows=False)
+    def __init__(self, config, name="FeatureConcatTransformer",use_nu_flows=False, perform_regression=True):
+        super().__init__(config, name=name, perform_regression = False if use_nu_flows else perform_regression, use_nu_flows=use_nu_flows)
 
     def build_model(
         self,
@@ -142,17 +142,11 @@ class FeatureConcatFullReconstructor(KerasFFRecoBase):
             output_dim=hidden_dim,
             dropout_rate=dropout_rate,
             name="lepton_regression_mlp",
-            num_layers=4,
+            num_layers=2,
         )(lepton_outputs)
-        met_regression_outputs = MLP(
-            output_dim=hidden_dim,
-            dropout_rate=dropout_rate,
-            name="met_regression_mlp",
-            num_layers=3,
-        )(met_outputs)
 
         regression_outputs = keras.layers.Concatenate(axis=1)(
-            [lepton_regression_outputs, met_regression_outputs]
+            [lepton_regression_outputs, met_outputs]
         )
         regression_outputs = keras.layers.Flatten()(regression_outputs)
         regression_outputs = MLP(

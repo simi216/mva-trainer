@@ -79,7 +79,7 @@ class AccuracyPlotter:
         """Plot binned accuracy vs. a feature."""
         fig, ax = plt.subplots(figsize=config.figsize)
         color_map = plt.get_cmap("tab10")
-        fmt_map = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '8']
+        fmt_map = ["o", "s", "D", "^", "v", "P", "*", "X", "h", "8"]
 
         # Plot combinatoric baseline if requested
         if show_combinatoric and combinatoric_accuracy is not None:
@@ -102,7 +102,7 @@ class AccuracyPlotter:
                     bin_centers,
                     mean_acc,
                     yerr=[errors_lower, errors_upper],
-                    fmt = fmt_map[index % len(fmt_map)],
+                    fmt=fmt_map[index % len(fmt_map)],
                     label=name,
                     color=color_map(index),
                     linestyle="None",
@@ -145,7 +145,7 @@ class AccuracyPlotter:
             width=(bins[1] - bins[0]),
             alpha=0.2,
             color="red",
-            #label="Event Count",
+            # label="Event Count",
         )
         ax_twin.set_ylabel("Normalised Event Count", color="red")
         ax_twin.tick_params(axis="y", labelcolor="red")
@@ -187,7 +187,8 @@ class AccuracyPlotter:
 
         fig.tight_layout()
         return fig, ax
-    
+
+
 class SelectionAccuracyPlotter:
     """Handles plotting of selection accuracy metrics."""
 
@@ -238,7 +239,7 @@ class SelectionAccuracyPlotter:
         fig.tight_layout()
 
         return fig, ax
-    
+
     def plot_binned_selection_accuracy(
         bin_centers: np.ndarray,
         binned_accuracies: List[Tuple[np.ndarray, np.ndarray, np.ndarray]],
@@ -253,7 +254,7 @@ class SelectionAccuracyPlotter:
         """Plot binned accuracy vs. a feature."""
         fig, ax = plt.subplots(figsize=config.figsize)
         color_map = plt.get_cmap("tab10")
-        fmt_map = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '8']
+        fmt_map = ["o", "s", "D", "^", "v", "P", "*", "X", "h", "8"]
 
         # Plot combinatoric baseline if requested
         if show_combinatoric and combinatoric_accuracy is not None:
@@ -276,7 +277,7 @@ class SelectionAccuracyPlotter:
                     bin_centers,
                     mean_acc,
                     yerr=[errors_lower, errors_upper],
-                    fmt = fmt_map[index % len(fmt_map)],
+                    fmt=fmt_map[index % len(fmt_map)],
                     label=name,
                     color=color_map(index),
                     linestyle="None",
@@ -378,6 +379,65 @@ class ConfusionMatrixPlotter:
         fig.suptitle("Confusion Matrix")
         fig.tight_layout()
         return fig, axes[: i + 1]
+
+    @staticmethod
+    def plot_variable_confusion_matrix(
+        true_values: np.ndarray,
+        predicted_values: np.ndarray,
+        variable_name: str,
+        axes: plt.Axes,
+        bins: np.ndarray,
+        normalize: Optional[str] = None,
+        plot_mean=False,
+        **kwargs,
+    ):
+        """Plot confusion matrix for a specific variable."""
+
+        hist, xedges, yedges = np.histogram2d(
+            true_values, predicted_values, bins=[bins, bins]
+        )
+
+        if normalize == "true":
+            hist = hist / hist.sum(axis=1, keepdims=True)
+        elif normalize == "pred":
+            hist = hist / hist.sum(axis=0, keepdims=True)
+        elif normalize == "all":
+            hist = hist / hist.sum()
+        else:
+            pass  # No normalization
+
+        im = axes.imshow(
+            hist.T,
+            origin="lower",
+            cmap="viridis",
+            extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
+            aspect="auto",
+        )
+
+        if plot_mean:
+            bin_centers_x = 0.5 * (xedges[:-1] + xedges[1:])
+            avg_y = []
+            for i in range(len(xedges) - 1):
+                mask = (true_values.flatten() >= xedges[i]) & (
+                    true_values.flatten() < xedges[i + 1]
+                )
+                if np.sum(mask) > 0:
+                    avg_y.append(np.mean(predicted_values.flatten()[mask]))
+                else:
+                    avg_y.append(np.nan)
+            axes.plot(
+            bin_centers_x,
+            avg_y,
+            color="red",
+            marker="o",
+            linestyle="--",
+            label=f"Mean Prediction",
+            )
+
+        axes.set_title(f"Confusion Matrix for {variable_name}")
+        axes.set_xlabel("Truth")
+        axes.set_ylabel("Prediction")
+        axes.get_figure().colorbar(im, ax=axes)
 
 
 class ComplementarityPlotter:
@@ -491,12 +551,12 @@ class ResolutionPlotter:
         """Plot binned resolution vs. a feature."""
         fig, ax = plt.subplots(figsize=config.figsize)
         color_map = plt.get_cmap("tab10")
-        fmt_map = ['o', 's', 'D', '^', 'v', 'P', '*', 'X', 'h', '8']
+        fmt_map = ["o", "s", "D", "^", "v", "P", "*", "X", "h", "8"]
         # Plot each reconstructor
         for index, (name, (mean_res, lower, upper)) in enumerate(
             zip(reconstructor_names, binned_resolutions)
         ):
-            
+
             if config.show_errorbar:
                 errors_lower = mean_res - lower
                 errors_upper = upper - mean_res
@@ -504,11 +564,10 @@ class ResolutionPlotter:
                     bin_centers,
                     mean_res,
                     yerr=[errors_lower, errors_upper],
-                    fmt = fmt_map[index % len(fmt_map)],
+                    fmt=fmt_map[index % len(fmt_map)],
                     label=name,
                     color=color_map(index),
                     linestyle="None",
-
                 )
             else:
                 ax.plot(
@@ -546,6 +605,7 @@ class ResolutionPlotter:
 
         fig.tight_layout()
         return fig, ax
+
 
 class NeutrinoDeviationPlotter:
     """Handles plotting of neutrino regression deviation metrics."""
@@ -681,7 +741,7 @@ class NeutrinoDeviationPlotter:
         Plot histograms of relative deviation for each neutrino momentum component.
 
         Args:
-            predicted_neutrinos: List of predicted neutrino momenta arrays 
+            predicted_neutrinos: List of predicted neutrino momenta arrays
                                  [(n_events, 2, 3), ...] for each reconstructor
             true_neutrinos: True neutrino momenta (n_events, 2, 3)
             reconstructor_names: List of reconstructor names
@@ -696,22 +756,22 @@ class NeutrinoDeviationPlotter:
         """
         n_components = 3  # px, py, pz
         n_reconstructors = len(predicted_neutrinos)
-        
+
         fig, axes = plt.subplots(2, n_components, figsize=figsize)
         color_map = plt.get_cmap("tab10")
-        
+
         if event_weights is None:
             event_weights = np.ones(true_neutrinos.shape[0])
-        
+
         # Extend weights for both neutrinos
         weights_extended = np.concatenate([event_weights, event_weights])
-        
+
         for comp_idx in range(n_components):
             # Top row: First neutrino
             ax_top = axes[0, comp_idx]
             # Bottom row: Second neutrino (anti-neutrino)
             ax_bottom = axes[1, comp_idx]
-            
+
             for recon_idx, (pred, name) in enumerate(
                 zip(predicted_neutrinos, reconstructor_names)
             ):
@@ -724,7 +784,7 @@ class NeutrinoDeviationPlotter:
                     out=np.zeros_like(diff_nu1, dtype=float),
                     where=true_neutrinos[:, 0, comp_idx] != 0,
                 )
-                
+
                 # Second neutrino (anti-neutrino)
                 diff_nu2 = np.abs(pred[:, 1, comp_idx] - true_neutrinos[:, 1, comp_idx])
                 rel_dev_nu2 = np.divide(
@@ -733,7 +793,7 @@ class NeutrinoDeviationPlotter:
                     out=np.zeros_like(diff_nu2, dtype=float),
                     where=true_neutrinos[:, 1, comp_idx] != 0,
                 )
-                
+
                 # Determine bins
                 if xlims is not None:
                     bin_edges = np.linspace(xlims[0], xlims[1], bins + 1)
@@ -741,11 +801,9 @@ class NeutrinoDeviationPlotter:
                     # Combine all data to get consistent binning
                     all_dev = np.concatenate([rel_dev_nu1, rel_dev_nu2])
                     bin_edges = np.linspace(
-                        np.percentile(all_dev, 1),
-                        np.percentile(all_dev, 99),
-                        bins + 1
+                        np.percentile(all_dev, 1), np.percentile(all_dev, 99), bins + 1
                     )
-                
+
                 # Plot histograms
                 ax_top.hist(
                     rel_dev_nu1,
@@ -754,12 +812,14 @@ class NeutrinoDeviationPlotter:
                     alpha=0.5,
                     label=name,
                     color=color_map(recon_idx),
-                    histtype='step',
+                    histtype="step",
                     linewidth=2,
                     density=True,
                 )
-                ax_top.axvline(np.median(rel_dev_nu1), color=color_map(recon_idx), linestyle='--')
-                
+                ax_top.axvline(
+                    np.median(rel_dev_nu1), color=color_map(recon_idx), linestyle="--"
+                )
+
                 ax_bottom.hist(
                     rel_dev_nu2,
                     bins=bin_edges,
@@ -767,26 +827,28 @@ class NeutrinoDeviationPlotter:
                     alpha=0.5,
                     label=name,
                     color=color_map(recon_idx),
-                    histtype='step',
+                    histtype="step",
                     linewidth=2,
                     density=True,
                 )
-                ax_bottom.axvline(np.median(rel_dev_nu2), color=color_map(recon_idx), linestyle='--')
-            
+                ax_bottom.axvline(
+                    np.median(rel_dev_nu2), color=color_map(recon_idx), linestyle="--"
+                )
+
             # Configure top axes
             ax_top.set_xlabel(f"Relative Deviation {component_labels[comp_idx]}")
             ax_top.set_ylabel("Density")
             ax_top.set_title(f"Neutrino {component_labels[comp_idx]}")
             ax_top.grid(alpha=0.3)
             ax_top.legend(loc="best")
-            
+
             # Configure bottom axes
             ax_bottom.set_xlabel(f"Relative Deviation {component_labels[comp_idx]}")
             ax_bottom.set_ylabel("Density")
             ax_bottom.set_title(f"Antineutrino {component_labels[comp_idx]}")
             ax_bottom.grid(alpha=0.3)
             ax_bottom.legend(loc="best")
-        
+
         fig.suptitle("Neutrino Component Relative Deviation Distribution", fontsize=14)
         fig.tight_layout()
         return fig, axes
@@ -805,7 +867,7 @@ class NeutrinoDeviationPlotter:
         Plot histogram of overall relative deviation distribution for all reconstructors.
 
         Args:
-            predicted_neutrinos: List of predicted neutrino momenta arrays 
+            predicted_neutrinos: List of predicted neutrino momenta arrays
                                  [(n_events, 2, 3), ...] for each reconstructor
             true_neutrinos: True neutrino momenta (n_events, 2, 3)
             reconstructor_names: List of reconstructor names
@@ -819,16 +881,16 @@ class NeutrinoDeviationPlotter:
         """
         fig, ax = plt.subplots(figsize=figsize)
         color_map = plt.get_cmap("tab10")
-        
+
         if event_weights is None:
             event_weights = np.ones(true_neutrinos.shape[0])
-        
+
         # Extend weights for both neutrinos
         weights_extended = np.concatenate([event_weights, event_weights])
-        
+
         # Collect all deviations to determine consistent binning
         all_deviations = []
-        
+
         for pred in predicted_neutrinos:
             # Compute L2 norm deviation for each neutrino
             diff_norm = np.linalg.norm(pred - true_neutrinos, axis=-1)
@@ -842,7 +904,7 @@ class NeutrinoDeviationPlotter:
             # Flatten to get all neutrinos (both neutrino and anti-neutrino)
             rel_dev_flat = rel_dev.flatten()
             all_deviations.append(rel_dev_flat)
-        
+
         # Determine bins
         if xlims is not None:
             bin_edges = np.linspace(xlims[0], xlims[1], bins + 1)
@@ -850,11 +912,9 @@ class NeutrinoDeviationPlotter:
             # Use percentiles across all data
             combined = np.concatenate(all_deviations)
             bin_edges = np.linspace(
-                np.percentile(combined, 1),
-                np.percentile(combined, 99),
-                bins + 1
+                np.percentile(combined, 1), np.percentile(combined, 99), bins + 1
             )
-        
+
         # Plot histograms for each reconstructor
         for idx, (rel_dev_flat, name) in enumerate(
             zip(all_deviations, reconstructor_names)
@@ -866,18 +926,18 @@ class NeutrinoDeviationPlotter:
                 alpha=0.5,
                 label=name,
                 color=color_map(idx),
-                histtype='step',
+                histtype="step",
                 linewidth=2,
                 density=True,
             )
-        
+
         # Configure axes
         ax.set_xlabel("Relative Deviation")
         ax.set_ylabel("Density")
         ax.set_title("Overall Neutrino Reconstruction Relative Deviation Distribution")
         ax.grid(alpha=0.3)
         ax.legend(loc="best")
-        
+
         fig.tight_layout()
         return fig, ax
 
@@ -894,7 +954,6 @@ class DistributionPlotter:
         ax: Optional[plt.Axes] = None,
         bins: int = 50,
         xlims: Optional[Tuple[float, float]] = None,
-
     ):
         """
         Plot histogram of a feature's distribution.
@@ -923,34 +982,32 @@ class DistributionPlotter:
             # Combine all data to get consistent binning
             all_values = np.concatenate(feature_values)
             bin_edges = np.linspace(
-                np.percentile(all_values, 1),
-                np.percentile(all_values, 99),
-                bins + 1
+                np.percentile(all_values, 1), np.percentile(all_values, 99), bins + 1
             )
 
         # Plot histograms
         for idx, values in enumerate(feature_values):
             label = labels[idx] if labels is not None else None
-            
+
             # Filter out NaN and inf values
             valid_mask = np.isfinite(values)
             valid_values = values[valid_mask]
-            valid_weights = event_weights[valid_mask] if len(event_weights) == len(values) else event_weights
-            
+            valid_weights = event_weights[valid_mask]
+
             if len(valid_values) == 0:
                 print(f"Warning: No valid values for {label}")
                 continue
-                
+
             ax.hist(
                 valid_values,
                 bins=bin_edges,
                 weights=valid_weights,
                 alpha=0.5,
                 label=label,
-                histtype='step',
+                histtype="step",
                 linewidth=2,
                 density=True,
-                color = plt.get_cmap("tab10")(idx),
+                color=plt.get_cmap("tab10")(idx),
             )
         ax.set_xlabel(feature_label)
         ax.set_ylabel("Density")

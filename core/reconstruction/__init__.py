@@ -12,7 +12,7 @@ methods with support for:
 """
 from .reconstruction_base import EventReconstructorBase, KerasFFRecoBase
 from .BaselineMethods import *
-from .ground_truth_reconstructor import GroundTruthReconstructor, FixedPrecisionReconstructor
+from .ground_truth_reconstructor import GroundTruthReconstructor, PerfectAssignmentReconstructor, CompositeNeutrinoComponentReconstructor
 
 
 __all__ = [

@@ -26,6 +26,7 @@ class LoadConfig:
     """
 
     # Data source
+    data_dir: str
     data_path: Dict[str, str]
 
     # Feature specifications
