@@ -105,12 +105,22 @@ class RootPreprocessor:
         # Process events
         self.processed_data = self._process_events(events)
 
+        self.clean_event_data()
+    
+        return self.processed_data
+
+    def clean_event_data(self):
         valid_mask = np.ones(self.n_events_passed, dtype=bool)
         for key, array in self.processed_data.items():
-            valid_mask &= ~np.any(np.isnan(array), axis=(np.arange(array.ndim)[1:])) 
-            valid_mask &= ~np.any(np.isinf(array), axis=(np.arange(array.ndim)[1:]))
-
-        return self.processed_data
+            valid_mask &= ~np.any(np.isnan(array), axis=tuple(range(1, array.ndim)))
+            valid_mask &= ~np.any(np.isinf(array), axis=tuple(range(1, array.ndim)))
+        
+        if self.config.verbose:
+            n_invalid = self.n_events_passed - np.sum(valid_mask)
+            print(f"Events with invalid data (NaN/Inf): {n_invalid}")
+    
+        for key in self.processed_data.keys():
+            self.processed_data[key] = self.processed_data[key][valid_mask]
 
     def _preselection(self, events: ak.Array) -> np.ndarray:
         """
