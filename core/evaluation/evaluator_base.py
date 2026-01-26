@@ -11,7 +11,7 @@ class PlotConfig:
 
     figsize: Tuple[int, int] = (10, 6)
     confidence: float = 0.95
-    n_bootstrap: int = 1000
+    n_bootstrap: int = 10
     show_errorbar: bool = True
     alpha: float = 0.3
 
@@ -22,7 +22,7 @@ class BootstrapCalculator:
     @staticmethod
     def compute_bootstrap_ci(
         data: np.ndarray,
-        n_bootstrap: int = 1000,
+        n_bootstrap: int = 10,
         confidence: float = 0.95,
         statistic_fn=np.mean,
     ) -> Tuple[float, float, float]:
@@ -61,7 +61,7 @@ class BootstrapCalculator:
         binning_mask: np.ndarray,
         event_weights: np.ndarray,
         data: np.ndarray,
-        n_bootstrap: int = 1000,
+        n_bootstrap: int = 10,
         confidence: float = 0.95,
         statistic: str = "mean",
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -111,7 +111,7 @@ class BootstrapCalculator:
         event_weights: np.ndarray,
         data: Tuple[np.ndarray],
         function : Callable = np.mean,
-        n_bootstrap: int = 1000,
+        n_bootstrap: int = 10,
         confidence: float = 0.95,
         statistic: str = "mean",
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
