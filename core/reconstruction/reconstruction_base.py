@@ -1,10 +1,10 @@
 import tensorflow as tf
-import keras
+import keras as keras
 import numpy as np
 from abc import ABC, abstractmethod
 from core.DataLoader import DataConfig
 from core.base_classes import BaseUtilityModel, KerasMLWrapper, KerasModelWrapper
-from core.components import OutputUpScaleLayer
+from core.components import OutputUpScaleLayer, PhysicsInformedLoss
 
 
 class EventReconstructorBase(BaseUtilityModel, ABC):
@@ -139,14 +139,14 @@ class KerasFFRecoBase(EventReconstructorBase, KerasMLWrapper):
             perform_regression=perform_regression,
             use_nu_flows=use_nu_flows,
         )
-        self.assignment_submodel = None
-        self.regression_submodel = None
+        self.model: KerasModelWrapper = None
+        self.trainable_model: KerasModelWrapper = None
 
     def _build_model_base(self, jet_assignment_probs, regression_output=None, **kwargs):
         jet_assignment_probs.name = "assignment"
         if self.config.has_neutrino_truth and regression_output is not None:
             regression_output._name = "normalized_regression"
-            self.model = KerasModelWrapper(
+            self.trainable_model = KerasModelWrapper(
                 inputs=[
                     self.inputs["jet_inputs"],
                     self.inputs["lep_inputs"],
@@ -158,6 +158,17 @@ class KerasFFRecoBase(EventReconstructorBase, KerasMLWrapper):
                 },
                 **kwargs,
             )
+            denormalized_outputs = OutputUpScaleLayer(
+                name="regression"
+            )(regression_output)
+            self.model = KerasModelWrapper(
+                inputs=self.trainable_model.inputs,
+                outputs={
+                    "assignment": jet_assignment_probs,
+                    "regression": denormalized_outputs,
+                },
+            )
+
         else:
             if self.config.has_neutrino_truth and regression_output is None:
                 print(
@@ -177,21 +188,21 @@ class KerasFFRecoBase(EventReconstructorBase, KerasMLWrapper):
                 outputs={"assignment": jet_assignment_probs},
                 **kwargs,
             )
-        self.assignment_submodel = KerasModelWrapper(
-            inputs=self.model.inputs, outputs={"assignment": jet_assignment_probs}
-        )
-        if regression_output is not None:
-            self.regression_submodel = KerasModelWrapper(
-                inputs=self.model.inputs,
-                outputs={"normalized_regression": regression_output},
-            )
+            self.trainable_model = self.model
 
-    def compile_model(self, loss, optimizer, metrics=None, **kwargs):
-        if self.model is None:
+    def compile_model(self, loss, optimizer, metrics=None, add_physics_informed_loss=False, **kwargs):
+        if self.trainable_model is None:
             raise ValueError(
                 "Model has not been built yet. Call build_model() before compile_model()."
             )
-        self.model.compile(loss=loss, optimizer=optimizer, metrics=metrics, **kwargs)
+        if add_physics_informed_loss:
+            self.add_reco_mass_deviation_loss()
+            print(
+                "Compiling model with physics informed loss. Ensure that the loss dictionary includes 'reco_mass_deviation'."
+            )
+            if "reco_mass_deviation" not in loss:
+                loss["reco_mass_deviation"] = lambda y_true, y_pred: y_pred
+        self.trainable_model.compile(loss=loss, optimizer=optimizer, metrics=metrics, **kwargs)
 
     def generate_one_hot_encoding(self, predictions, exclusive):
         """

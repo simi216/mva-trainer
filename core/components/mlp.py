@@ -1,4 +1,4 @@
-import keras
+import keras as keras
 from keras import regularizers
 
 

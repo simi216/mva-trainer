@@ -1,17 +1,18 @@
 from abc import ABC, abstractmethod
 from . import BaseUtilityModel
 from core.DataLoader import DataConfig
-import keras
+import keras as keras
 import numpy as np
 import tensorflow as tf
 import tf2onnx
 import os
-from core.components import onnx_support
 from core.components import (
+    onnx_support,
     GenerateMask,
     InputPtEtaPhiELayer,
     InputMetPhiLayer,
     ComputeHighLevelFeatures,
+    PhysicsInformedLoss,
 )
 import core.components as components
 import core.utils as utils
@@ -132,7 +133,54 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
                 raise ValueError("Global event data not found in X_train.")
             else:
                 X_train["global_event_inputs"] = global_event_data
+        if "regression" in y_train:
+            regression_data = y_train.pop("regression")
+            regression_std = np.std(regression_data, axis=0)
+            regression_mean = np.mean(regression_data, axis=0)
+            y_train["normalized_regression"] = (regression_data) / regression_std
+
+        if "reco_mass_deviation" in self.trainable_model.output_names:
+            y_train["reco_mass_deviation"] = np.zeros(
+                (jet_data.shape[0], 1), dtype=np.float32
+            )
+
         return X_train, y_train, sample_weights
+
+    def add_reco_mass_deviation_loss(self):
+        if "regression" not in self.model.output_names:
+            raise ValueError(
+                "Regression output not found in model outputs. Cannot add physics-informed loss."
+            )
+        reco_mass_deviation_layer = PhysicsInformedLoss(name="reco_mass_deviation")
+        assignment_probs = self.model.get_layer("assignment").output
+        neutrino_momenta = self.model.get_layer("regression").output
+        normalised_neutrino_output = self.trainable_model.get_layer("normalized_regression").output
+
+        if assignment_probs is None:
+            raise ValueError(
+                "Assignment output not found in model outputs. Cannot add physics-informed loss."
+            )
+        if neutrino_momenta is None:
+            raise ValueError(
+                "Regression output not found in model outputs. Cannot add physics-informed loss."
+            )
+
+        jet_momenta = self.inputs["jet_inputs"]
+        lepton_momenta = self.inputs["lep_inputs"]
+
+        new_assignment_probs = reco_mass_deviation_layer(
+            assignment_probs, neutrino_momenta, jet_momenta, lepton_momenta
+        )
+        self.trainable_model = keras.Model(
+            inputs=self.model.inputs,
+            outputs={
+                "assignment": assignment_probs,
+                "normalized_regression": normalised_neutrino_output,
+                "reco_mass_deviation": new_assignment_probs,
+            },
+        )
+
+        print("Added physics-informed loss to the model.")
 
     def _prepare_inputs(
         self, log_variables=True, compute_HLF=False, use_global_event_features=False
@@ -244,41 +292,11 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
         X_train, y_train, sample_weights = self.prepare_training_data(
             X_train, y_train, sample_weights=sample_weights, copy_data=copy_data
         )
-
         if self.history is not None:
             print("Warning: Overwriting existing training history.")
 
         if self.trainable_model is None:
             self.trainable_model = self.model
-
-        if self.perform_regression:
-            if "normalized_regression" not in self.trainable_model.output_names:
-                raise ValueError(
-                    "Model was not built with regression output, but regression training requested."
-                )
-            elif "regression" not in y_train:
-                raise ValueError(
-                    "Regression training requested, but regression targets not found in y_train."
-                )
-            regression_scale_std = np.std(y_train["regression"], axis=0)
-            y_train["normalized_regression"] = (
-                y_train.pop("regression") / regression_scale_std
-            )
-
-            normalized_outputs = self.trainable_model.get_layer(
-                "normalized_regression"
-            ).output
-
-            denormalized_outputs = keras.layers.Rescaling(
-                regression_scale_std, name="regression"
-            )(normalized_outputs)
-            self.model = KerasModelWrapper(
-                inputs=self.trainable_model.inputs,
-                outputs={
-                    "assignment": self.trainable_model.get_layer("assignment").output,
-                    "regression": denormalized_outputs,
-                },
-            )
 
         if self.history is None:
             self.history = self.trainable_model.fit(
@@ -319,16 +337,6 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
         Args:
             file_path (str): The file path where the model will be saved.
                             Must end with ".keras". Defaults to "model.keras".
-        Raises:
-            ValueError: If the model has not been built (i.e., `self.model` is None).
-            ValueError: If the provided file path does not end with ".keras".
-        Side Effects:
-            - Saves the model to the specified file path in Keras format.
-            - Writes the model's structure to a text file with the same name as the model file,
-            but with "_structure.txt" appended instead of ".keras".
-            - Prints a confirmation message indicating the model has been saved.
-        Example:
-            self.save_model("my_model.keras")
         """
 
         if self.model is None:
@@ -356,18 +364,6 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
 
         Args:
             file_path (str): The file path to the saved Keras model.
-
-        Attributes:
-            self.model: The loaded Keras model instance.
-
-        Raises:
-            ImportError: If the required Keras modules are not available.
-            ValueError: If the file_path is invalid or the model cannot be loaded.
-
-        Example:
-            >>> model_instance = AssignmentBaseModel()
-            >>> model_instance.load_model("/path/to/saved_model")
-            Model loaded from /path/to/saved_model
         """
 
         custom_objects = {
@@ -466,6 +462,17 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
                 del submodel
                 print("Adapted normalization layer: ", layer.name)
 
+        if self.perform_regression and "regression" in self.model.output_names:
+            neutrino_truth_std = np.std(data["neutrino_truth"], axis=0)
+            regression_layer = self.model.get_layer("regression")
+            if hasattr(regression_layer, "set_stats"):
+                regression_layer.set_stats(neutrino_truth_std)
+                print("Set regression layer stats.")
+            else:
+                print(
+                    "WARNING: Regression layer has no set_stats method. Stats not set."
+                )
+
     def export_to_onnx(self, onnx_file_path="model.onnx"):
         """
         Exports the current Keras model to onnx format.
@@ -497,7 +504,10 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
         if self.n_met > 0:
             met_shape = (1, self.n_met)
             input_shapes.append(met_shape)
-        if self.config.has_global_event_features and "global_event_inputs" in self.model.input:
+        if (
+            self.config.has_global_event_features
+            and "global_event_inputs" in self.model.input
+        ):
             global_event_shape = (self.n_global,)
             input_shapes.append(global_event_shape)
 

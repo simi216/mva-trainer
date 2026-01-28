@@ -10,7 +10,7 @@ components like ML models.
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Tuple
 import numpy as np
-import keras
+import keras as keras
 
 
 @dataclass

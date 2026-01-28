@@ -472,12 +472,8 @@ class NeutrinoDeviationCalculator:
         Returns:
             Deviation value(s)
         """
-        # Compute L2 norm of the difference for each neutrino
-        # Shape: (n_events, 2)
         diff_norm = np.linalg.norm(predicted_neutrinos - true_neutrinos, axis=-1)
         
-        # Average over both neutrinos
-        # Shape: (n_events,)
         per_event_deviation = np.mean(diff_norm, axis=-1)
         
         if per_event:

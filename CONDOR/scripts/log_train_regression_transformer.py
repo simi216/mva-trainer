@@ -8,7 +8,7 @@ from core.DataLoader import (
 from importlib import reload
 import yaml
 import core
-import keras
+import keras as keras
 import core.keras_models.RegressionTransformer as RegressionTransformer
 import numpy as np
 

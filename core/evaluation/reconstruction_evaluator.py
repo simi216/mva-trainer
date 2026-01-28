@@ -5,7 +5,7 @@ from typing import Union, Optional, List, Tuple, Callable
 import matplotlib.pyplot as plt
 import os
 import timeit
-import keras
+import keras as keras
 from core.reconstruction import (
     EventReconstructorBase,
     GroundTruthReconstructor,
