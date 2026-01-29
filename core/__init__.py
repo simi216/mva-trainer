@@ -1,5 +1,3 @@
-
-
 from .Configs import DataConfig, LoadConfig
 
 try:

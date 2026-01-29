@@ -33,6 +33,9 @@ class OutputUpScaleLayer(keras.layers.Layer):
         config = super().get_config()
         return config
     
+    def get_stats(self):
+        return {"mean": self.mean.numpy(), "std": self.std.numpy()}
+    
     @classmethod
     def from_config(cls, config):
         return cls(**config)

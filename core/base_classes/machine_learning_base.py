@@ -135,9 +135,18 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
                 X_train["global_event_inputs"] = global_event_data
         if "regression" in y_train:
             regression_data = y_train.pop("regression")
-            regression_std = np.std(regression_data, axis=0)
-            regression_mean = np.mean(regression_data, axis=0)
-            y_train["normalized_regression"] = (regression_data) / regression_std
+            upscale_layer = self.model.get_layer("regression")
+            if upscale_layer is None:
+                raise ValueError(
+                    "Regression layer not found in model. Cannot prepare regression targets."
+                )
+            stats = upscale_layer.get_stats()
+            regression_mean = stats["mean"]
+            regression_std = stats["std"]
+            y_train["normalized_regression"] = (
+                regression_data - regression_mean
+            ) / regression_std
+            print("Prepared regression targets with normalization.")
 
         if "reco_mass_deviation" in self.trainable_model.output_names:
             y_train["reco_mass_deviation"] = np.zeros(
@@ -152,32 +161,29 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
                 "Regression output not found in model outputs. Cannot add physics-informed loss."
             )
         reco_mass_deviation_layer = PhysicsInformedLoss(name="reco_mass_deviation")
-        assignment_probs = self.model.get_layer("assignment").output
         neutrino_momenta = self.model.get_layer("regression").output
-        normalised_neutrino_output = self.trainable_model.get_layer("normalized_regression").output
+        assignment_probs = self.model.get_layer("assignment").output
+        normalised_neutrino_output = self.trainable_model.get_layer(
+            "normalized_regression"
+        ).output
 
-        if assignment_probs is None:
-            raise ValueError(
-                "Assignment output not found in model outputs. Cannot add physics-informed loss."
-            )
         if neutrino_momenta is None:
             raise ValueError(
                 "Regression output not found in model outputs. Cannot add physics-informed loss."
             )
 
-        jet_momenta = self.inputs["jet_inputs"]
         lepton_momenta = self.inputs["lep_inputs"]
 
-        new_assignment_probs = reco_mass_deviation_layer(
-            assignment_probs, neutrino_momenta, jet_momenta, lepton_momenta
+        reco_mass_deviation = reco_mass_deviation_layer(
+            neutrino_momenta, lepton_momenta
         )
+        model_outputs = self.model.outputs
         self.trainable_model = keras.Model(
             inputs=self.model.inputs,
-            outputs={
-                "assignment": assignment_probs,
-                "normalized_regression": normalised_neutrino_output,
-                "reco_mass_deviation": new_assignment_probs,
-            },
+            outputs=
+            {"assignment": assignment_probs,
+             "normalized_regression": normalised_neutrino_output,
+             "reco_mass_deviation": reco_mass_deviation},
         )
 
         print("Added physics-informed loss to the model.")
@@ -466,7 +472,7 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
             neutrino_truth_std = np.std(data["neutrino_truth"], axis=0)
             regression_layer = self.model.get_layer("regression")
             if hasattr(regression_layer, "set_stats"):
-                regression_layer.set_stats(neutrino_truth_std)
+                regression_layer.set_stats(std=neutrino_truth_std)
                 print("Set regression layer stats.")
             else:
                 print(

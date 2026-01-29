@@ -33,6 +33,7 @@ reconstruction_variable_configs = {
         ),
         "label": r"$m(t)$ [GeV]",
         "combine_tops": True,
+        "use_relative_deviation": True,
         "resolution": {
             "use_relative_deviation": True,
             "ylabel_resolution": r"Relative $m(t)$ Resolution",

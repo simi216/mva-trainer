@@ -36,9 +36,10 @@ def neutrino_3_vect_to_4_vect_tensor(tensor: tf.Tensor):
     return four_vector
 
 
-def reco_mass_deviation(
+def reco_mass_deviation_weight_jets(
     assignment_probs, neutrino_momenta, jet_momenta, lepton_momenta
 ):
+    
     W_MASS = 80.379  # GeV
 
     # Convert to 4-vectors
@@ -78,6 +79,49 @@ def reco_mass_deviation(
 
     mass_loss = tf.reduce_mean(weighted_loss, axis=[1, 2])
 
+    # Safety check
+    mass_loss = tf.where(
+        tf.math.is_finite(mass_loss),
+        mass_loss,
+        tf.constant(0.0, dtype=mass_loss.dtype),
+    )
+
+    return mass_loss
+
+def reco_W_mass_deviation(
+    neutrino_momenta, lepton_momenta
+):
+    
+    W_MASS = 80.379  # GeV
+
+    # Convert to 4-vectors
+    lepton_momenta_4v = pt_eta_phi_e_tensor_to_4_vect_tensor(lepton_momenta) # (batch_size, 2, 4)
+    neutrino_momenta_4v = neutrino_3_vect_to_4_vect_tensor(neutrino_momenta) # (batch_size, 2, 4)
+
+
+    # Sum momenta
+    total_momenta = lepton_momenta_4v + neutrino_momenta_4v
+
+    total_energy = total_momenta[..., 3]
+    total_momentum_squared = tf.reduce_sum(total_momenta[..., 0:3] ** 2, axis=-1)
+    # Invariant mass with numerical stability
+    invariant_mass_squared = (total_energy**2 - total_momentum_squared )
+    # Ensure non-negative before sqrt
+    invariant_mass_squared = tf.maximum(invariant_mass_squared, 0.0)
+    invariant_mass = tf.sqrt(invariant_mass_squared + 1e-6) /1e3  # Convert to GeV
+    # Normalized mass difference
+    mass_diff = (invariant_mass - W_MASS) / W_MASS
+    mass_diff_square = tf.square(mass_diff)
+    mass_loss = mass_diff_square
+    # Safety check
+    mass_loss = tf.where(
+        tf.math.is_finite(mass_loss),
+        mass_loss,
+        tf.constant(0.0, dtype=mass_loss.dtype),
+    )
+
+    mass_loss = tf.reduce_mean(mass_loss, axis=-1)
+
     return mass_loss
 
 
@@ -85,16 +129,9 @@ class PhysicsInformedLoss(keras.layers.Layer):
     def __init__(self, name="reco_mass_deviation", **kwargs):
         super().__init__(name=name, **kwargs)
 
-    def call(self, assignment_probs, neutrino_momenta, jet_momenta, lepton_momenta):
-        mass_loss = reco_mass_deviation(
-            assignment_probs, neutrino_momenta, jet_momenta, lepton_momenta
-        )
-
-        # Safety check
-        mass_loss = tf.where(
-            tf.math.is_finite(mass_loss),
-            mass_loss,
-            tf.constant(0.0, dtype=mass_loss.dtype),
+    def call(self, neutrino_momenta, lepton_momenta):
+        mass_loss = reco_W_mass_deviation(
+            neutrino_momenta, lepton_momenta
         )
         return mass_loss
 
