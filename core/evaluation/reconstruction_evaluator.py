@@ -330,10 +330,10 @@ class ReconstructionVariableHandler:
             neutrino_pred[~valid_events_mask] = 1 
 
         lepton_features = self.X_test[
-            "lepton"
+            "lep_inputs"
         ]
 
-        jet_features = self.X_test["jet"][
+        jet_features = self.X_test["jet_inputs"][
             :, :, :4
         ]
         selected_jet_indices = assignment_pred.argmax(axis=-2)
@@ -1690,7 +1690,7 @@ class ReconstructionEvaluator:
                     np.array([x_deviation, y_deviation, z_deviation])
                 )
             elif coords == "spherical_lepton_fixed":
-                lepton_features = self.X_test["lepton"]
+                lepton_features = self.X_test["lep_inputs"]
                 lepton_3vect = lorentz_vector_from_PtEtaPhiE_array(
                     lepton_features[..., :4]
                 )[..., :3]

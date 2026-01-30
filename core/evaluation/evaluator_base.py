@@ -360,7 +360,7 @@ class AccuracyCalculator:
         n_leptons: int = 2,
     ) -> np.ndarray:
         """Compute random assignment baseline accuracy."""
-        num_jets = np.all(X_test["jet"] != padding_value, axis=-1).sum(axis=-1)
+        num_jets = np.all(X_test["jet_inputs"] != padding_value, axis=-1).sum(axis=-1)
         return 1 / (num_jets * (num_jets - 1))
 
 class SelectionAccuracyCalculator:
@@ -374,7 +374,7 @@ class SelectionAccuracyCalculator:
         n_leptons: int = 2,
     ) -> np.ndarray:
         """Compute random assignment baseline accuracy."""
-        num_jets = np.all(X_test["jet"] != padding_value, axis=-1).sum(axis=-1)
+        num_jets = np.all(X_test["jet_inputs"] != padding_value, axis=-1).sum(axis=-1)
         return 2 / (num_jets * (num_jets - 1))
 
     @staticmethod
@@ -410,7 +410,7 @@ class NeutrinoDeviationCalculator:
         n_leptons: int = 2,
     ) -> np.ndarray:
         """Compute random assignment baseline accuracy."""
-        num_jets = np.all(X_test["jet"] != padding_value, axis=-1).sum(axis=-1)
+        num_jets = np.all(X_test["jet_inputs"] != padding_value, axis=-1).sum(axis=-1)
         return 2 / (num_jets * (num_jets - 1))
 
     @staticmethod

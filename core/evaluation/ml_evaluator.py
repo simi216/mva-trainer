@@ -79,7 +79,7 @@ class FeatureImportanceCalculator:
         regression_importances = {}
 
         # Compute importance for each available feature type
-        available_feature_types = ["jet", "lepton", "met"]
+        available_feature_types = ["jet_inputs", "lep_inputs", "met_inputs"]
 
         for feature_type in available_feature_types:
             # Check if this feature type is available in both config and test data
@@ -127,11 +127,11 @@ class FeatureImportanceCalculator:
             for _ in range(num_repeats):
                 X_permuted = deepcopy(self.X_test)
 
-                if feature_type == "jet":
+                if feature_type == "jet_inputs":
                     # Only permute non-padded jet features
-                    mask = np.any(X_permuted["jet"] != self.padding_value, axis=-1)
-                    X_permuted["jet"][mask, feature_idx] = np.random.permutation(
-                        X_permuted["jet"][mask, feature_idx]
+                    mask = np.any(X_permuted["jet_inputs"] != self.padding_value, axis=-1)
+                    X_permuted["jet_inputs"][mask, feature_idx] = np.random.permutation(
+                        X_permuted["jet_inputs"][mask, feature_idx]
                     )
                 else:
                     # Permute lepton/MET features directly
@@ -407,7 +407,7 @@ class MLEvaluator:
                 model_name = reconstructor.get_full_reco_name()
             # Get available features for this model
             available_features = []
-            for feature_type in ["jet", "lepton", "met"]:
+            for feature_type in ["jet_inputs", "lep_inputs", "met_inputs"]:
                 if (
                     hasattr(reconstructor.config, "feature_indices")
                     and feature_type in reconstructor.config.feature_indices
@@ -526,7 +526,7 @@ class MLEvaluator:
         if num_samples is None:
             # Use minimum dataset size to ensure all models can be tested equally
             min_samples = min(
-                len(X["jet"]) if "jet" in X else len(next(iter(X.values())))
+                len(X["jet_inputs"]) if "jet_inputs" in X else len(next(iter(X.values())))
                 for X in self.X_test
             )
             num_samples = min_samples
@@ -535,7 +535,7 @@ class MLEvaluator:
             # Verify all datasets have enough samples
             for idx, X in enumerate(self.X_test):
                 dataset_size = (
-                    len(X["jet"]) if "jet" in X else len(next(iter(X.values())))
+                    len(X["jet_inputs"]) if "jet_inputs" in X else len(next(iter(X.values())))
                 )
                 if dataset_size < num_samples:
                     raise ValueError(

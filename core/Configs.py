@@ -201,9 +201,9 @@ class DataConfig:
         self.feature_indices = {}
 
         # Core features (always present)
-        self._add_feature_indices("lepton", self.lepton_features)
-        self._add_feature_indices("jet", self.jet_features)
-        self._add_feature_indices("met", self.met_features)
+        self._add_feature_indices("lep_inputs", self.lepton_features)
+        self._add_feature_indices("jet_inputs", self.jet_features)
+        self._add_feature_indices("met_inputs", self.met_features)
 
         # Optional features
         self._add_feature_indices("non_training", self.non_training_features)
@@ -233,9 +233,9 @@ class DataConfig:
         # Define shape configurations: (key, condition, feature_list, shape_dims)
         shape_configs = [
             # Core object features (n_events, n_objects, n_features)
-            ("lepton", True, self.lepton_features, (None, self.NUM_LEPTONS)),
-            ("jet", True, self.jet_features, (None, self.max_jets)),
-            ("met", self.met_features, self.met_features, (None, 1)),
+            ("lep_inputs", True, self.lepton_features, (None, self.NUM_LEPTONS)),
+            ("jet_inputs", True, self.jet_features, (None, self.max_jets)),
+            ("met_inputs", self.met_features, self.met_features, (None, 1)),
             # Event-level features (n_events, n_features)
             (
                 "non_training",
@@ -244,7 +244,7 @@ class DataConfig:
                 (None,),
             ),
             (
-                "global_event",
+                "global_event_inputs",
                 self.has_global_event_features,
                 self.global_event_features,
                 (None,),

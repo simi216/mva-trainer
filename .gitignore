@@ -17,7 +17,7 @@
 
 
 # Ignore specific files and directories
-CONDOR/HypParamGridSearch/*.txt
 config
 models/
 legacy_models/
+CONDOR/submit_params

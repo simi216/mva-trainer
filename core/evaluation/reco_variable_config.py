@@ -291,12 +291,12 @@ reconstruction_variable_configs = {
         ),
         "extract_func": lambda X: (
             compute_mass_from_lorentz_vector_array(
-                make_4vect(X["lepton"][:, 0, :4])
+                make_4vect(X["lep_inputs"][:, 0, :4])
                 + make_nu_4vect(X["neutrino_truth"][:, 0, :])
             )
             / 1e3,
             compute_mass_from_lorentz_vector_array(
-                make_4vect(X["lepton"][:, 1, :4])
+                make_4vect(X["lep_inputs"][:, 1, :4])
                 + make_nu_4vect(X["neutrino_truth"][:, 1, :])
             )
             / 1e3,
@@ -317,12 +317,12 @@ reconstruction_variable_configs = {
         ),
         "extract_func": lambda X: (
             (
-                make_4vect(X["lepton"][:, 0, :4])[..., 3]
+                make_4vect(X["lep_inputs"][:, 0, :4])[..., 3]
                 + make_nu_4vect(X["neutrino_truth"][:, 0, :])[..., 3]
             )
             / 1e3,
             (
-                make_4vect(X["lepton"][:, 1, :4])[..., 3]
+                make_4vect(X["lep_inputs"][:, 1, :4])[..., 3]
                 + make_nu_4vect(X["neutrino_truth"][:, 1, :])[..., 3]
             )
             / 1e3,
@@ -342,9 +342,9 @@ reconstruction_variable_configs = {
             (make_4vect(l[:, 1, :4]) + make_nu_4vect(n[:, 1, :]))[...,:3],
         ),
         "extract_func": lambda X: (
-               ( make_4vect(X["lepton"][:, 0, :4])
+               ( make_4vect(X["lep_inputs"][:, 0, :4])
                 + make_nu_4vect(X["neutrino_truth"][:, 0, :]))[...,:3],
-                (make_4vect(X["lepton"][:, 1, :4])
+                (make_4vect(X["lep_inputs"][:, 1, :4])
                 + make_nu_4vect(X["neutrino_truth"][:, 1, :]))[...,:3]
         ),
         "label": r"$\Delta \phi(W_{\text{true}},W_{\text{reco}})$",
@@ -368,10 +368,10 @@ reconstruction_variable_configs = {
         ),
         "extract_func": lambda X: (
             project_vectors_onto_axis(
-                X["neutrino_truth"][:, 0, :], make_4vect(X["lepton"][:, 0, :4])[..., :3]
+                X["neutrino_truth"][:, 0, :], make_4vect(X["lep_inputs"][:, 0, :4])[..., :3]
             )/1e3,
             project_vectors_onto_axis(
-                X["neutrino_truth"][:, 1, :], make_4vect(X["lepton"][:, 1, :4])[..., :3]
+                X["neutrino_truth"][:, 1, :], make_4vect(X["lep_inputs"][:, 1, :4])[..., :3]
             )/1e3,
         ),
         "label": r"$p_{\parallel}(\nu)$ [GeV]",

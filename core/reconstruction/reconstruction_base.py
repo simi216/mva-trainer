@@ -248,7 +248,7 @@ class KerasFFRecoBase(EventReconstructorBase, KerasMLWrapper):
         encoded array indicating the associations between jets and leptons.
         Args:
             data (dict): A dictionary containing input data for prediction. It should
-                include keys "jet" and "lepton", and optionally "met" if met
+                include keys "jet_inputs" and "lep_inputs", and optionally "met_inputs" if met
                 features are used by the model.
             exclusive (bool, optional): If True, ensures exclusive assignments between
                 jets and leptons, where each jet is assigned to at most one lepton and
@@ -267,11 +267,11 @@ class KerasFFRecoBase(EventReconstructorBase, KerasMLWrapper):
             )
         if self.met_features is not None:
             predictions = self.model.predict_dict(
-                [data["jet"], data["lepton"], data["met"]], verbose=0, batch_size=128
+                [data["jet_inputs"], data["lep_inputs"], data["met_inputs"]], verbose=0, batch_size=128
             )["assignment"]
         else:
             predictions = self.model.predict_dict(
-                [data["jet"], data["lepton"]], verbose=0, batch_size=128
+                [data["jet_inputs"], data["lep_inputs"]], verbose=0, batch_size=128
             )["assignment"]
         one_hot = self.generate_one_hot_encoding(predictions, exclusive)
         return one_hot
@@ -283,7 +283,7 @@ class KerasFFRecoBase(EventReconstructorBase, KerasMLWrapper):
         the reconstructed neutrino kinematics.
         Args:
             data (dict): A dictionary containing input data for prediction. It should
-                include keys "jet" and "lepton", and optionally "met" if met
+                include keys "jet_inputs" and "lep_inputs", and optionally "met_inputs" if met
                 features are used by the model.
         Returns:
             np.ndarray: An array containing the reconstructed neutrino kinematics.
@@ -300,13 +300,13 @@ class KerasFFRecoBase(EventReconstructorBase, KerasMLWrapper):
         if "regression" in self.model.output_names and self.perform_regression:
             if self.met_features is not None:
                 neutrino_prediction = self.model.predict_dict(
-                    [data["jet"], data["lepton"], data["met"]],
+                    [data["jet_inputs"], data["lep_inputs"], data["met_inputs"]],
                     verbose=0,
                     batch_size=128,
                 )["regression"]
             else:
                 neutrino_prediction = self.model.predict_dict(
-                    [data["jet"], data["lepton"]], verbose=0, batch_size=128
+                    [data["jet_inputs"], data["lep_inputs"]], verbose=0, batch_size=128
                 )["regression"]
             return neutrino_prediction
         else:
@@ -320,7 +320,7 @@ class KerasFFRecoBase(EventReconstructorBase, KerasMLWrapper):
         both the assignment predictions and the reconstructed neutrino kinematics.
         Args:
             data (dict): A dictionary containing input data for prediction. It should
-                include keys "jet" and "lepton", and optionally "met" if met
+                include keys "jet_inputs" and "lep_inputs", and optionally "met_inputs" if met
                 features are used by the model.
         Returns:
             Tuple[np.ndarray, np.ndarray]: A tuple containing:
@@ -339,13 +339,13 @@ class KerasFFRecoBase(EventReconstructorBase, KerasMLWrapper):
         if self.perform_regression:
             if self.met_features is not None:
                 predictions = self.model.predict_dict(
-                    [data["jet"], data["lepton"], data["met"]],
+                    [data["jet_inputs"], data["lep_inputs"], data["met_inputs"]],
                     verbose=0,
                     batch_size=128,
                 )
             else:
                 predictions = self.model.predict_dict(
-                    [data["jet"], data["lepton"]], verbose=0, batch_size=128
+                    [data["jet_inputs"], data["lep_inputs"]], verbose=0, batch_size=128
                 )
             assignment_predictions = self.generate_one_hot_encoding(
                 predictions["assignment"], exclusive=True

@@ -264,25 +264,25 @@ class DataPreprocessor:
     def _load_core_features(self, loaded: Dict) -> None:
         """Load core jet and lepton features."""
         if self.load_config.jet_features:
-            self.feature_data["jet"] = self._load_feature_array(
+            self.feature_data["jet_inputs"] = self._load_feature_array(
                 loaded, self.load_config.jet_features, max_objects=self.load_config.max_jets
             )
 
         if self.load_config.lepton_features:
-            self.feature_data["lepton"] = self._load_feature_array(
+            self.feature_data["lep_inputs"] = self._load_feature_array(
                 loaded, self.load_config.lepton_features
             )
 
     def _load_optional_features(self, loaded: Dict) -> None:
         """Load optional features (MET, global, non-training, weights)."""
         if self.load_config.global_event_features:
-            self.feature_data["global_event"] = self._load_feature_array(
+            self.feature_data["global_event_inputs"] = self._load_feature_array(
                 loaded, self.load_config.global_event_features
             )
 
         if self.load_config.met_features:
             met_data = self._load_feature_array(loaded, self.load_config.met_features)
-            self.feature_data["met"] = met_data[:, np.newaxis, :]
+            self.feature_data["met_inputs"] = met_data[:, np.newaxis, :]
 
         if self.load_config.non_training_features:
             self.feature_data["non_training"] = self._load_feature_array(
@@ -450,7 +450,7 @@ class DataPreprocessor:
         # Get feature index from DataConfig
         feature_idx = self.data_config.get_feature_index(data_type, feature_name)
 
-        if data_type in ["jet", "lepton", "met"]:
+        if data_type in ["jet_inputs", "lep_inputs", "met_inputs"]:
             return self.feature_data[data_type][:, :, feature_idx].copy()
         elif data_type in ["non_training", "custom"]:
             return self.feature_data[data_type][:, feature_idx].copy()

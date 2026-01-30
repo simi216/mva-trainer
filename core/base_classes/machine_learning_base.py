@@ -103,36 +103,6 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
         if not self.perform_regression:
             y_train.pop("regression")
 
-        jet_data = None
-        jet_data = X_train.pop("jet")
-        if jet_data is None:
-            raise ValueError("Jet data not found in X_train.")
-        else:
-            X_train["jet_inputs"] = jet_data
-
-        lepton_data = None
-        lepton_data = X_train.pop("lepton")
-        if lepton_data is None:
-            raise ValueError("Lepton data not found in X_train.")
-        else:
-            X_train["lep_inputs"] = lepton_data
-        if self.n_met > 0:
-            met_data = None
-            met_data = X_train.pop("met")
-            if met_data is None:
-                raise ValueError("met data not found in X_train.")
-            else:
-                X_train["met_inputs"] = met_data
-        if (
-            self.config.has_global_event_features
-            and "global_event_inputs" in self.model.input
-        ):
-            global_event_data = None
-            global_event_data = X_train.pop("global_event_features")
-            if global_event_data is None:
-                raise ValueError("Global event data not found in X_train.")
-            else:
-                X_train["global_event_inputs"] = global_event_data
         if "regression" in y_train:
             regression_data = y_train.pop("regression")
             upscale_layer = self.model.get_layer("regression")
@@ -150,7 +120,7 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
 
         if "reco_mass_deviation" in self.trainable_model.output_names:
             y_train["reco_mass_deviation"] = np.zeros(
-                (jet_data.shape[0], 1), dtype=np.float32
+                (y_train["assignment"].shape[0], 1), dtype=np.float32
             )
 
         return X_train, y_train, sample_weights
@@ -399,7 +369,7 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
         through all preceding layers (up to but excluding the normalization layer).
         """
         # --- Prepare and unpad jet data ---
-        jet_data = data["jet"]  # (num_events, n_jets, n_features)
+        jet_data = data["jet_inputs"]  # (num_events, n_jets, n_features)
         jet_mask = np.any(jet_data != self.padding_value, axis=-1)
         unpadded_jet_data = jet_data[jet_mask]
         num_jets = unpadded_jet_data.shape[0]
@@ -407,10 +377,10 @@ class KerasMLWrapper(BaseUtilityModel, ABC):
         unpadded_jet_data = unpadded_jet_data[: num_events * self.max_jets, :].reshape(
             (num_events, self.max_jets, self.n_jets)
         )
-        lep_data = data["lepton"][:num_events, :, :]
-        met_data = data["met"][:num_events, :, :]
+        lep_data = data["lep_inputs"][:num_events, :, :]
+        met_data = data["met_inputs"][:num_events, :, :]
         if self.config.has_global_event_features:
-            global_event_data = data["global_event"][:num_events, :]
+            global_event_data = data["global_event_inputs"][:num_events, :]
 
         # --- Helper: build a submodel up to (but not including) a target layer ---
         def get_pre_norm_submodel(model, target_layer_name):
